@@ -1,0 +1,27 @@
+# Releasing an update
+
+Installed copies (StupidBrowser-Setup.exe) check GitHub Releases on startup and every 4 hours,
+download new versions in the background, and show “Restart to update” (or install on quit).
+The portable exe can't update itself.
+
+## One command
+1. Bump `"version"` in `package.json` (must be higher than the last release, e.g. 1.1.0 → 1.2.0).
+2. Commit: `git commit -am "v1.2.0"`
+3. Ship: `npm run release -- "What's new in this version"`
+
+`npm run release` (scripts/release.sh) builds with `npm run dist:win`, checks that `latest.yml` matches the
+version and file name, pushes the commit, and creates GitHub Release `v<version>` with:
+`StupidBrowser-Setup.exe`, `StupidBrowser-Setup.exe.blockmap`, `latest.yml` (+ the portable exe).
+
+## By hand
+```
+npm run dist:win
+gh release create v1.2.0 -R lattewirell-creator/stupid-browser --title "The Stupid Browser 1.2.0" --notes "…" \
+  release/StupidBrowser-Setup.exe release/StupidBrowser-Setup.exe.blockmap release/latest.yml
+```
+Don't rename the files: electron-updater downloads exactly the names listed in `latest.yml`.
+Don't change `appId` in package.json, or Windows treats it as a different app.
+
+## Before releasing
+- `npm test` (headless self-tests, needs xvfb on Linux)
+- Building on Linux needs wine for the Windows exe resources (`apt install wine wine64`).

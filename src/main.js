@@ -1,0 +1,860 @@
+'use strict';
+const {
+  app, BrowserWindow, ipcMain, session, shell, webContents, nativeTheme, protocol, net,
+  Menu, clipboard, dialog, safeStorage
+} = require('electron');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { pathToFileURL } = require('url');
+const store = require('./store');
+
+app.setName('The Stupid Browser');
+app.setAppUserModelId('com.emil.stupidbrowser');
+
+// Plain Chrome user agent so sites (Google, AI chats) treat us like a normal browser.
+const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+app.userAgentFallback = UA;
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'stupid', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false } }
+]);
+
+/* =========================================================================
+   Defaults and data
+   ========================================================================= */
+const DEFAULT_BOTS = [
+  { name: 'Claude', url: 'https://claude.ai' },
+  { name: 'Grok', url: 'https://grok.com' },
+  { name: 'ChatGPT', url: 'https://chatgpt.com' },
+  { name: 'Gemini', url: 'https://gemini.google.com' },
+  { name: 'Perplexity', url: 'https://www.perplexity.ai' }
+];
+const SEARCH_ENGINES = {
+  google: { name: 'Google', url: 'https://www.google.com/search?q=%s' },
+  bing: { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
+  duckduckgo: { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
+  ecosia: { name: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' }
+};
+const DEFAULT_SETTINGS = () => ({
+  name: '',
+  theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true,
+  startup: 'continue', startupPages: [],
+  search: 'google', customSearch: '',
+  adblock: true, dnt: false, savePasswords: true,
+  downloadDir: app.getPath('downloads'), askWhereToSave: false,
+  defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
+  pinned: []
+});
+const DEFAULT_SIDEBAR = [
+  { id: 'claude', name: 'Claude', url: 'https://claude.ai', ai: true },
+  { id: 'whatsapp', name: 'WhatsApp', url: 'https://web.whatsapp.com' },
+  { id: 'discord', name: 'Discord', url: 'https://discord.com/app' },
+  { id: 'instagram', name: 'Instagram', url: 'https://www.instagram.com' },
+  { id: 'spotify', name: 'Spotify', url: 'https://open.spotify.com' },
+  { id: 'ytmusic', name: 'YouTube Music', url: 'https://music.youtube.com' },
+  { id: 'twitch', name: 'Twitch', url: 'https://www.twitch.tv' }
+];
+const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source'];
+const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
+const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
+
+const getSettings = () => Object.assign(DEFAULT_SETTINGS(), store.read('settings.json', {}));
+function setSettings(patch) {
+  const prev = getSettings();
+  const next = Object.assign(prev, patch);
+  store.write('settings.json', next);
+  applySettingsSideEffects(patch);
+  broadcast('settings:changed', publicSettings());
+  return next;
+}
+function publicSettings() {
+  const s = getSettings();
+  return Object.assign({}, s, { searchUrl: searchUrlFor(s), engines: SEARCH_ENGINES });
+}
+function searchUrlFor(s) {
+  if (s.search === 'custom' && /%s/.test(s.customSearch || '') && /^https?:\/\//.test(s.customSearch)) return s.customSearch;
+  return (SEARCH_ENGINES[s.search] || SEARCH_ENGINES.google).url;
+}
+
+function getBookmarks() {
+  let b = store.read('bookmarks.json', []);
+  // v1 stored a flat list of {title,url,favicon}; migrate to nodes with ids.
+  if (b.length && !b[0].id) {
+    b = b.map((x, i) => ({ id: 'b' + Date.now().toString(36) + i, type: 'bookmark', title: x.title, url: x.url, favicon: x.favicon || null, parentId: null, ts: Date.now() }));
+    store.write('bookmarks.json', b);
+  }
+  return b;
+}
+const getBots = () => store.read('ai-bots.json', DEFAULT_BOTS);
+const getHistory = () => store.read('history.json', []);
+const getSitePerms = () => store.read('site-permissions.json', {});
+const getPasswords = () => store.read('passwords.json', []);
+
+/* =========================================================================
+   Windows, sessions, partitions
+   ========================================================================= */
+const PERSIST = 'persist:stupid';
+const PERSIST_AI = 'persist:stupid-ai';
+const PERSIST_APPS = 'persist:stupid-apps';
+const windows = new Map();     // BrowserWindow.id -> { win, incognito, partition, aiPartition }
+const sessions = new Map();    // BrowserWindow.id -> { tabs, active }  (persistent windows only)
+let quitting = false;
+let incognitoCounter = 0;
+const preparedSessions = new WeakSet();
+
+function themeColors(incognito) {
+  if (incognito) return { bg: '#1B1A19', bar: '#232120', fg: '#ECE9E1' };
+  return nativeTheme.shouldUseDarkColors
+    ? { bg: '#1F1E1D', bar: '#262624', fg: '#ECE9E1' }
+    : { bg: '#FAF9F5', bar: '#F0EEE6', fg: '#3D3929' };
+}
+
+function createWindow({ incognito = false, restore = null, urls = null } = {}) {
+  const partition = incognito ? `incognito-${++incognitoCounter}` : PERSIST;   // no "persist:" = in memory only
+  const aiPartition = incognito ? `${partition}-ai` : PERSIST_AI;
+  const appsPartition = incognito ? `${partition}-apps` : PERSIST_APPS;
+  prepareSession(session.fromPartition(partition), { tabs: true, incognito });
+  prepareSession(session.fromPartition(aiPartition), { tabs: false, incognito });
+  prepareSession(session.fromPartition(appsPartition), { tabs: false, incognito });
+  const c = themeColors(incognito);
+  const win = new BrowserWindow({
+    width: 1360, height: 860, minWidth: 720, minHeight: 480,
+    title: incognito ? 'Private — The Stupid Browser' : 'The Stupid Browser',
+    backgroundColor: c.bg,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: c.bar, symbolColor: c.fg, height: 40 },
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true,
+      spellcheck: true
+    }
+  });
+  win.removeMenu();
+  const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
+  windows.set(win.id, entry);
+  win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
+  win.once('ready-to-show', () => win.show());
+  hookShortcuts(win.webContents);
+  win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
+  win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
+  win.on('closed', () => {
+    windows.delete(win.id);
+    const otherPersistent = [...windows.values()].some((w) => !w.incognito);
+    if (!incognito && !quitting && otherPersistent) sessions.delete(win.id);
+    saveSessions();
+  });
+  if (process.env.STUPID_SELFTEST && windows.size === 1) selfTest(win);
+  return win;
+}
+
+const entryFor = (wc) => {
+  const host = wc && (wc.getType() === 'webview' ? wc.hostWebContents : wc);
+  const win = host && BrowserWindow.fromWebContents(host);
+  return win ? windows.get(win.id) : null;
+};
+const shellFor = (wc) => { const e = entryFor(wc); return e && !e.win.isDestroyed() ? e.win.webContents : null; };
+
+function broadcast(channel, payload) {
+  for (const wc of webContents.getAllWebContents()) {
+    if (wc.isDestroyed()) continue;
+    const t = wc.getType();
+    if (t === 'window' || (t === 'webview' && wc.getURL().startsWith('stupid://'))) wc.send(channel, payload);
+  }
+}
+
+function saveSessions() {
+  if (!sessions.size && !quitting) return;
+  store.write('session.json', [...sessions.values()].filter((s) => s.tabs && s.tabs.length), 200);
+}
+
+/* =========================================================================
+   Session preparation: UA, protocol, permissions, downloads, history, DNT, passwords
+   ========================================================================= */
+function prepareSession(ses, { tabs, incognito }) {
+  if (preparedSessions.has(ses)) return;
+  preparedSessions.add(ses);
+  ses.setUserAgent(UA);
+  ses.setSpellCheckerLanguages(['en-US', 'sv-SE'].filter((l) => ses.availableSpellCheckerLanguages.includes(l)));
+
+  // stupid:// internal pages
+  ses.protocol.handle('stupid', (req) => {
+    const u = new URL(req.url);
+    const host = u.hostname;
+    if (!INTERNAL_PAGES.includes(host)) return new Response('Not found', { status: 404 });
+    let rel = decodeURIComponent(u.pathname);
+    if (rel === '/' || rel === '') rel = `/${host}.html`;
+    const base = rel.startsWith('/fonts/') || rel.startsWith('/assets/') ? __dirname : path.join(__dirname, 'pages');
+    const target = path.normalize(path.join(base, rel));
+    if (!target.startsWith(base + path.sep)) return new Response('Forbidden', { status: 403 });
+    return net.fetch(pathToFileURL(target).toString());
+  });
+
+  // Permissions: camera, microphone, location, notifications -> per-site allow/ask/block
+  ses.setPermissionRequestHandler((wc, permission, callback, details) => handlePermission(wc, permission, callback, details, incognito));
+  ses.setPermissionCheckHandler((wc, permission, origin, details) => {
+    const kinds = permKinds(permission, details && details.mediaType ? { mediaTypes: [details.mediaType] } : {});
+    if (!kinds) return !['openExternal', 'hid', 'serial', 'usb'].includes(permission);
+    const site = (getSitePerms()[origin]) || {};
+    return kinds.every((k) => site[k] === 'allow');
+  });
+
+  ses.on('will-download', (_e, item, wc) => handleDownload(item, wc, incognito));
+
+  // Do Not Track / Global Privacy Control headers
+  ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    if (getSettings().dnt && /^https?:/.test(details.url)) {
+      details.requestHeaders.DNT = '1';
+      details.requestHeaders['Sec-GPC'] = '1';
+    }
+    cb({ requestHeaders: details.requestHeaders });
+  });
+
+  if (tabs && !incognito) {
+    ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
+  }
+  if (tabs) {
+    ses.__stupidTabs = true;
+    ses.__incognito = incognito;
+    if (getSettings().adblock) setAdblock(true, ses);
+  }
+}
+
+/* ---------- permissions ---------- */
+let permReqSeq = 0;
+const pendingPerms = new Map();
+function permKinds(permission, details = {}) {
+  if (permission === 'geolocation') return ['location'];
+  if (permission === 'notifications') return ['notifications'];
+  if (permission === 'media') {
+    const t = details.mediaTypes || [];
+    const k = [];
+    if (t.includes('video')) k.push('camera');
+    if (t.includes('audio')) k.push('microphone');
+    return k.length ? k : ['camera', 'microphone'];
+  }
+  return null;
+}
+function handlePermission(wc, permission, callback, details, incognito) {
+  if (permission === 'openExternal') {
+    const ext = details.externalURL || '';
+    if (/^(mailto|tel|ms-settings|steam|discord|spotify|zoommtg|msteams):/i.test(ext)) return callback(true);
+    return callback(false);
+  }
+  const kinds = permKinds(permission, details);
+  if (!kinds) return callback(['clipboard-sanitized-write', 'clipboard-read', 'fullscreen', 'pointerLock', 'keyboardLock', 'window-management', 'speaker-selection'].includes(permission));
+  let origin;
+  try { origin = new URL(details.requestingUrl || wc.getURL()).origin; } catch { return callback(false); }
+  if (origin.startsWith('stupid://')) return callback(false);
+  const site = getSitePerms()[origin] || {};
+  if (kinds.some((k) => site[k] === 'block')) return callback(false);
+  if (kinds.every((k) => site[k] === 'allow')) return callback(true);
+  const shellWc = shellFor(wc);
+  if (!shellWc) return callback(false);
+  const id = ++permReqSeq;
+  pendingPerms.set(id, { callback, origin, kinds, incognito });
+  wc.once('destroyed', () => resolvePerm(id, false, false));
+  shellWc.send('perm:prompt', { id, origin, kinds, wcId: wc.id });
+}
+function resolvePerm(id, allow, remember) {
+  const p = pendingPerms.get(id);
+  if (!p) return;
+  pendingPerms.delete(id);
+  if (remember && !p.incognito) {
+    const all = getSitePerms();
+    all[p.origin] = all[p.origin] || {};
+    for (const k of p.kinds) all[p.origin][k] = allow ? 'allow' : 'block';
+    store.write('site-permissions.json', all);
+    broadcast('perms:changed', all);
+  }
+  try { p.callback(!!allow); } catch {}
+}
+
+/* ---------- downloads ---------- */
+const liveDownloads = new Map();   // id -> DownloadItem
+let dlSeq = 0;
+const getDownloads = () => store.read('downloads.json', []);
+function dlPublic(d) { return Object.assign({}, d); }
+function uniquePath(dir, name) {
+  const ext = path.extname(name); const base = path.basename(name, ext);
+  let p = path.join(dir, name); let i = 1;
+  while (fs.existsSync(p)) p = path.join(dir, `${base} (${i++})${ext}`);
+  return p;
+}
+function handleDownload(item, wc, incognito) {
+  const s = getSettings();
+  const id = Date.now().toString(36) + '-' + (++dlSeq);
+  if (!s.askWhereToSave) {
+    let dir = s.downloadDir;
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { dir = app.getPath('downloads'); }
+    item.setSavePath(uniquePath(dir, item.getFilename()));
+  }
+  const rec = { id, filename: item.getFilename(), url: item.getURL(), savePath: item.getSavePath(), state: 'progressing', received: 0, total: item.getTotalBytes(), ts: Date.now(), incognito, paused: false };
+  liveDownloads.set(id, item);
+  const list = getDownloads(); list.unshift(rec); store.write('downloads.json', incognito ? list : list.slice(0, 500));
+  const update = (patch) => {
+    Object.assign(rec, patch, { savePath: item.getSavePath() || rec.savePath, filename: path.basename(item.getSavePath() || rec.filename) });
+    store.write('downloads.json', getDownloads(), 1000);
+    broadcast('downloads:update', dlPublic(rec));
+  };
+  const shellWc = shellFor(wc);
+  if (shellWc) shellWc.send('downloads:started', dlPublic(rec));
+  item.on('updated', (_e, state) => update({ state: state === 'interrupted' ? 'interrupted' : 'progressing', received: item.getReceivedBytes(), total: item.getTotalBytes(), paused: item.isPaused() }));
+  item.once('done', (_e, state) => {
+    liveDownloads.delete(id);
+    update({ state, received: item.getReceivedBytes() });
+    if (incognito) { /* keep in memory list only until quit */ rec.incognito = true; }
+  });
+}
+
+/* ---------- history ---------- */
+function addHistory(url, title) {
+  if (!/^https?:\/\//.test(url)) return;
+  const h = getHistory();
+  const last = h[h.length - 1];
+  if (last && last.url === url && Date.now() - last.ts < 30000) { if (title) last.title = title; store.write('history.json', h, 1500); return; }
+  h.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), url, title: title || url, ts: Date.now() });
+  if (h.length > 20000) h.splice(0, h.length - 20000);
+  store.write('history.json', h, 1500);
+}
+function titleHistory(url, title) {
+  const h = getHistory();
+  for (let i = h.length - 1; i >= Math.max(0, h.length - 30); i--) if (h[i].url === url) { h[i].title = title; break; }
+  store.write('history.json', h, 1500);
+}
+function suggest(q, limit = 7) {
+  q = String(q || '').trim().toLowerCase();
+  if (!q) return [];
+  const scores = new Map();
+  const add = (url, title, score, kind) => {
+    const cur = scores.get(url);
+    if (cur) { cur.score += score; if (kind === 'bookmark') cur.kind = 'bookmark'; if (title && cur.title === url) cur.title = title; }
+    else scores.set(url, { url, title: title || url, score, kind });
+  };
+  const now = Date.now();
+  const strip = (u) => u.replace(/^https?:\/\/(www\.)?/, '');
+  for (const b of getBookmarks()) if (b.type === 'bookmark' && ((b.title || '').toLowerCase().includes(q) || strip(b.url).toLowerCase().includes(q))) add(b.url, b.title, strip(b.url).toLowerCase().startsWith(q) ? 30 : 15, 'bookmark');
+  const h = getHistory();
+  for (let i = h.length - 1; i >= 0 && i > h.length - 5000; i--) {
+    const e = h[i];
+    const su = strip(e.url).toLowerCase();
+    const prefix = su.startsWith(q);
+    if (prefix || su.includes(q) || (e.title || '').toLowerCase().includes(q)) {
+      const age = (now - e.ts) / 86400000;
+      add(e.url, e.title, (prefix ? 6 : 2) / (1 + age / 7), 'history');
+    }
+  }
+  return [...scores.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+/* ---------- passwords (encrypted with OS safeStorage) ---------- */
+const enc = (s) => (safeStorage.isEncryptionAvailable() ? 'e:' + safeStorage.encryptString(s).toString('base64') : 'p:' + Buffer.from(s).toString('base64'));
+const dec = (s) => { try { return s.startsWith('e:') ? safeStorage.decryptString(Buffer.from(s.slice(2), 'base64')) : Buffer.from(s.slice(2), 'base64').toString(); } catch { return ''; } };
+const pendingPwSaves = new Map();
+let pwSeq = 0;
+
+/* ---------- ad & tracker blocker ---------- */
+let blocker = null, blockedCount = 0;
+const blockingOn = new WeakSet();
+let blockingCount = 0;
+function loadBlocker() {
+  if (blocker) return blocker;
+  try {
+    const { ElectronBlocker } = require('@ghostery/adblocker-electron');
+    blocker = ElectronBlocker.deserialize(new Uint8Array(fs.readFileSync(path.join(__dirname, 'assets', 'adblock.bin'))));
+    blocker.on('request-blocked', () => { blockedCount++; broadcastCount(); });
+  } catch (e) { console.error('Adblocker failed to load:', e); blocker = null; }
+  return blocker;
+}
+let countTimer = null;
+function broadcastCount() { if (countTimer) return; countTimer = setTimeout(() => { countTimer = null; broadcast('adblock:count', blockedCount); }, 500); }
+function tabSessions() { const out = new Set([session.fromPartition(PERSIST)]); for (const w of windows.values()) out.add(session.fromPartition(w.partition)); return [...out]; }
+function setAdblock(on, only) {
+  const b = loadBlocker();
+  if (!b) return { on: false, count: blockedCount, error: true };
+  // Ghostery registers *global* ipcMain handlers per session (same handler for all), so a second
+  // session would throw. Remove them before enabling another session, and restore them after a
+  // disable if other sessions still block.
+  const AB_CHANNELS = ['@ghostery/adblocker/inject-cosmetic-filters', '@ghostery/adblocker/is-mutation-observer-enabled'];
+  const dropHandlers = () => AB_CHANNELS.forEach((c) => ipcMain.removeHandler(c));
+  for (const s of only ? [only] : tabSessions()) {
+    try {
+      if (on && !blockingOn.has(s)) { dropHandlers(); b.enableBlockingInSession(s); blockingOn.add(s); blockingCount++; }
+      if (!on && blockingOn.has(s)) { b.disableBlockingInSession(s); blockingOn.delete(s); blockingCount--; }
+    } catch (e) { console.error('adblock toggle failed', e); }
+  }
+  if (blockingCount > 0) {
+    dropHandlers();
+    ipcMain.handle(AB_CHANNELS[0], (e, url, msg) => b.onInjectCosmeticFilters(e, url, msg));
+    ipcMain.handle(AB_CHANNELS[1], (e) => b.onIsMutationObserverEnabled(e));
+  }
+  return { on, count: blockedCount };
+}
+
+/* ---------- theme / font size side effects ---------- */
+function applySettingsSideEffects(patch) {
+  if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system';
+  if ('adblock' in patch) setAdblock(!!patch.adblock);
+}
+nativeTheme.on('updated', () => {
+  for (const { win, incognito } of windows.values()) {
+    if (win.isDestroyed()) continue;
+    const c = themeColors(incognito);
+    win.setBackgroundColor(c.bg);
+    if (process.platform !== 'darwin') { try { win.setTitleBarOverlay({ color: c.bar, symbolColor: c.fg, height: 40 }); } catch {} }
+  }
+});
+
+/* =========================================================================
+   IPC (each channel checks who is calling)
+   ========================================================================= */
+const isShell = (e) => e.sender.getType() === 'window' && !!entryFor(e.sender);
+const isInternal = (e) => { try { return e.senderFrame && e.senderFrame.url.startsWith('stupid://'); } catch { return false; } };
+function handle(channel, who, fn) {
+  ipcMain.handle(channel, (e, ...args) => {
+    const ok = (who.includes('shell') && isShell(e)) || (who.includes('internal') && isInternal(e));
+    if (!ok) throw new Error('Not allowed: ' + channel);
+    return fn(e, ...args);
+  });
+}
+const ANY = ['shell', 'internal'];
+
+handle('win:info', ['shell'], (e) => { const w = entryFor(e.sender); const r = w.restore; w.restore = null; const u = w.pendingUrls; w.pendingUrls = null; return { incognito: w.incognito, partition: w.partition, ai: w.aiPartition, apps: w.appsPartition, restore: r, urls: u, version: app.getVersion() }; });
+handle('settings:get', ANY, () => publicSettings());
+handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(patch); return publicSettings(); });
+handle('settings:reset', ['internal'], () => { const keep = { pinned: getSettings().pinned }; store.write('settings.json', keep); applySettingsSideEffects(DEFAULT_SETTINGS()); broadcast('settings:changed', publicSettings()); return publicSettings(); });
+
+handle('bookmarks:get', ANY, () => getBookmarks());
+handle('bookmarks:set', ANY, (_e, list) => { if (Array.isArray(list)) { store.write('bookmarks.json', list); broadcast('bookmarks:changed', list); } return true; });
+handle('bookmarks:folderMenu', ['shell'], (e, folderId, x, y) => {
+  const all = getBookmarks();
+  const build = (pid) => {
+    const items = all.filter((b) => b.parentId === pid).map((b) => b.type === 'folder'
+      ? { label: b.title || 'Folder', submenu: build(b.id) }
+      : { label: (b.title || b.url).slice(0, 60), click: () => e.sender.send('open-url', { url: b.url, where: 'current' }) });
+    return items.length ? items : [{ label: '(empty)', enabled: false }];
+  };
+  Menu.buildFromTemplate(build(folderId)).popup({ window: BrowserWindow.fromWebContents(e.sender), x: Math.round(x), y: Math.round(y) });
+});
+
+handle('bots:get', ANY, () => getBots());
+handle('bots:set', ANY, (_e, list) => { if (Array.isArray(list)) { store.write('ai-bots.json', list); broadcast('bots:changed', list); } return true; });
+handle('bots:defaults', ANY, () => DEFAULT_BOTS);
+handle('sidebar:get', ANY, () => store.read('sidebar.json', DEFAULT_SIDEBAR));
+handle('sidebar:set', ANY, (_e, list) => { if (Array.isArray(list)) { store.write('sidebar.json', list.slice(0, 40)); broadcast('sidebar:changed', list); } return true; });
+handle('sidebar:defaults', ANY, () => DEFAULT_SIDEBAR);
+
+handle('history:suggest', ['shell'], (_e, q) => suggest(q));
+handle('history:query', ['internal'], (_e, q, limit = 300, before = Infinity) => {
+  q = String(q || '').toLowerCase();
+  const h = getHistory(); const out = [];
+  for (let i = h.length - 1; i >= 0 && out.length < limit; i--) {
+    const x = h[i];
+    if (x.ts >= before) continue;
+    if (!q || (x.title || '').toLowerCase().includes(q) || x.url.toLowerCase().includes(q)) out.push(x);
+  }
+  return out;
+});
+handle('history:delete', ['internal'], (_e, ids) => { const set = new Set(ids || []); store.write('history.json', getHistory().filter((x) => !set.has(x.id))); return true; });
+
+handle('downloads:list', ANY, () => getDownloads());
+handle('downloads:action', ANY, async (_e, id, action) => {
+  const rec = getDownloads().find((d) => d.id === id);
+  const item = liveDownloads.get(id);
+  switch (action) {
+    case 'open': if (rec) { const err = await shell.openPath(rec.savePath); return !err; } break;
+    case 'show': if (rec) shell.showItemInFolder(rec.savePath); break;
+    case 'cancel': if (item) item.cancel(); break;
+    case 'pause': if (item) item.pause(); break;
+    case 'resume': if (item && item.canResume()) item.resume(); break;
+    case 'retry': if (rec) session.fromPartition(PERSIST).downloadURL(rec.url); break;
+    case 'remove': store.write('downloads.json', getDownloads().filter((d) => d.id !== id)); broadcast('downloads:removed', id); break;
+  }
+  return true;
+});
+handle('downloads:clear', ANY, () => { const list = getDownloads().filter((d) => d.state === 'progressing'); store.write('downloads.json', list); broadcast('downloads:cleared', true); return true; });
+handle('downloads:chooseDir', ['internal'], async (e) => {
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender.hostWebContents || e.sender), { properties: ['openDirectory', 'createDirectory'], defaultPath: getSettings().downloadDir });
+  if (r.canceled || !r.filePaths[0]) return null;
+  setSettings({ downloadDir: r.filePaths[0] });
+  return r.filePaths[0];
+});
+
+handle('perm:respond', ['shell'], (_e, id, allow, remember) => resolvePerm(id, allow, remember));
+handle('perms:get', ANY, () => getSitePerms());
+handle('perms:set', ANY, (_e, origin, kind, value) => {
+  if (!PERM_KINDS.includes(kind) || typeof origin !== 'string') return false;
+  const all = getSitePerms();
+  all[origin] = all[origin] || {};
+  if (value === 'ask') delete all[origin][kind]; else all[origin][kind] = value === 'allow' ? 'allow' : 'block';
+  if (!Object.keys(all[origin]).length) delete all[origin];
+  store.write('site-permissions.json', all); broadcast('perms:changed', all); return all;
+});
+handle('site:clearData', ['shell'], async (e, origin) => {
+  const w = entryFor(e.sender);
+  await session.fromPartition(w.partition).clearStorageData({ origin });
+  return true;
+});
+
+handle('privacy:clear', ['internal'], async (_e, { range, history, cookies, cache, downloads }) => {
+  const since = range > 0 ? Date.now() - range : 0;
+  if (history) store.write('history.json', getHistory().filter((x) => x.ts < since));
+  if (downloads) store.write('downloads.json', getDownloads().filter((x) => x.state === 'progressing' || x.ts < since));
+  for (const p of [PERSIST, PERSIST_AI]) {
+    const s = session.fromPartition(p);
+    if (cookies) await s.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage', 'filesystem', 'shadercache'] });
+    if (cache) { await s.clearCache(); await s.clearCodeCaches({}); }
+  }
+  return true;
+});
+
+handle('adblock:set', ANY, (_e, on) => { setSettings({ adblock: !!on }); return { on: !!on, count: blockedCount }; });
+handle('adblock:get', ANY, () => ({ on: getSettings().adblock, count: blockedCount }));
+
+handle('session:save', ['shell'], (e, data) => {
+  const w = entryFor(e.sender);
+  if (!w || w.incognito || !data) return;
+  sessions.set(w.win.id, { tabs: (data.tabs || []).slice(0, 200), groups: (data.groups || []).slice(0, 50), active: data.active | 0 });
+  saveSessions();
+});
+
+handle('win:new', ANY, (_e, opts = {}) => { createWindow({ incognito: !!opts.incognito, urls: opts.url ? [opts.url] : null }); });
+handle('win:fullscreen', ['shell'], (e) => { const w = BrowserWindow.fromWebContents(e.sender); w.setFullScreen(!w.isFullScreen()); });
+handle('win:close', ['shell'], (e) => BrowserWindow.fromWebContents(e.sender).close());
+
+handle('pw:respond', ['shell'], (_e, id, action) => {
+  const p = pendingPwSaves.get(id); pendingPwSaves.delete(id);
+  if (!p) return;
+  const list = getPasswords();
+  if (action === 'never') { list.push({ id: 'n' + Date.now(), origin: p.origin, never: true }); store.write('passwords.json', list); return; }
+  if (action !== 'save') return;
+  const existing = list.find((x) => x.origin === p.origin && !x.never && x.username === p.username);
+  if (existing) { existing.password = enc(p.password); existing.updated = Date.now(); }
+  else list.push({ id: 'p' + Date.now().toString(36), origin: p.origin, username: p.username, password: enc(p.password), created: Date.now() });
+  store.write('passwords.json', list); broadcast('passwords:changed', true);
+});
+handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, origin: x.origin, username: x.username || '', never: !!x.never, created: x.created })));
+handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
+handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
+handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
+
+handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
+handle('default:set', ['internal'], async () => {
+  app.setAsDefaultProtocolClient('http'); app.setAsDefaultProtocolClient('https');
+  if (process.platform === 'win32') {
+    try { await shell.openExternal('ms-settings:defaultapps?registeredAppUser=The%20Stupid%20Browser'); }
+    catch { try { await shell.openExternal('ms-settings:defaultapps'); } catch {} }
+  }
+  return true;
+});
+handle('about:info', ['internal'], () => ({ version: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node, platform: `${os.type()} ${os.release()} ${process.arch}`, userData: app.getPath('userData') }));
+
+// Password helper preload (runs inside web pages): origin-checked by the frame that sends.
+ipcMain.handle('pw:query', (e) => {
+  if (e.sender.getType() !== 'webview' || !getSettings().savePasswords) return [];
+  let origin; try { origin = e.senderFrame.origin; } catch { return []; }
+  if (!/^https?:/.test(origin)) return [];
+  return getPasswords().filter((p) => p.origin === origin && !p.never).map((p) => ({ username: p.username, password: dec(p.password) }));
+});
+ipcMain.on('pw:submitted', (e, data) => {
+  if (e.sender.getType() !== 'webview' || !data || !getSettings().savePasswords) return;
+  let origin; try { origin = e.senderFrame.origin; } catch { return; }
+  if (!/^https?:/.test(origin)) return;
+  const username = String(data.username || '').slice(0, 300); const password = String(data.password || '').slice(0, 1000);
+  if (!password) return;
+  const list = getPasswords();
+  if (list.some((p) => p.origin === origin && p.never)) return;
+  const same = list.find((p) => p.origin === origin && !p.never && p.username === username);
+  if (same && dec(same.password) === password) return;
+  const shellWc = shellFor(e.sender); if (!shellWc) return;
+  if (entryFor(e.sender).incognito) return;
+  const id = ++pwSeq;
+  pendingPwSaves.set(id, { origin, username, password });
+  shellWc.send('pw:offer', { id, origin, username, update: !!same });
+});
+
+/* =========================================================================
+   Auto-updates (electron-updater + GitHub Releases, NSIS installer only)
+   ========================================================================= */
+const IS_PORTABLE = !!process.env.PORTABLE_EXECUTABLE_DIR;
+const UPDATE_EVERY = 4 * 60 * 60 * 1000;
+const updateState = { status: 'idle', version: null, progress: 0, error: null, lastCheck: null, current: app.getVersion(), portable: IS_PORTABLE, packaged: app.isPackaged };
+let autoUpdater = null;
+function setUpdate(patch) { Object.assign(updateState, patch); broadcast('update:status', Object.assign({}, updateState)); }
+function initUpdater() {
+  if (!app.isPackaged || IS_PORTABLE || process.platform !== 'win32') {
+    setUpdate({ status: 'unsupported' });
+    return;
+  }
+  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { setUpdate({ status: 'error', error: 'Updater missing' }); return; }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;   // installs on quit if the user doesn't restart
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.logger = { info: (m) => console.log('[updater]', m), warn: (m) => console.warn('[updater]', m), error: (m) => console.error('[updater]', m), debug: () => {} };
+  autoUpdater.on('checking-for-update', () => setUpdate({ status: 'checking', error: null }));
+  autoUpdater.on('update-available', (i) => setUpdate({ status: 'downloading', version: i.version, progress: 0 }));
+  autoUpdater.on('update-not-available', () => setUpdate({ status: 'none', lastCheck: Date.now() }));
+  autoUpdater.on('download-progress', (p) => setUpdate({ status: 'downloading', progress: Math.round(p.percent || 0) }));
+  autoUpdater.on('update-downloaded', (i) => setUpdate({ status: 'ready', version: i.version, progress: 100, lastCheck: Date.now() }));
+  autoUpdater.on('error', (err) => setUpdate({ status: 'error', error: String((err && err.message) || err).split('\n')[0].slice(0, 200), lastCheck: Date.now() }));
+  setTimeout(checkForUpdates, 10000);
+  setInterval(checkForUpdates, UPDATE_EVERY);
+}
+function checkForUpdates() {
+  if (!autoUpdater) return Object.assign({}, updateState);
+  if (['checking', 'downloading', 'ready'].includes(updateState.status)) return Object.assign({}, updateState);
+  autoUpdater.checkForUpdates().catch((err) => setUpdate({ status: 'error', error: String(err && err.message || err).split('\n')[0].slice(0, 200) }));
+  return Object.assign({}, updateState);
+}
+handle('update:status', ANY, () => Object.assign({}, updateState));
+handle('update:check', ANY, () => { if (!autoUpdater) return Object.assign({}, updateState); setUpdate({ status: 'checking' }); return checkForUpdates(); });
+handle('update:install', ANY, () => {
+  if (!autoUpdater || updateState.status !== 'ready') return false;
+  quitting = true; saveSessions(); store.flushAll();
+  setImmediate(() => autoUpdater.quitAndInstall(false, true));   // show installer progress, relaunch after
+  return true;
+});
+
+/* =========================================================================
+   Keyboard shortcuts (Chrome-consistent)
+   ========================================================================= */
+function shortcutFor(input) {
+  if (input.type !== 'keyDown') return null;
+  const k = (input.key || '').toLowerCase();
+  const code = input.code || '';
+  const ctrl = input.control || input.meta;
+  const shift = input.shift, alt = input.alt;
+  if (k === 'f12' || (ctrl && shift && k === 'i')) return 'devtools';
+  if (ctrl && shift && k === 'j') return 'devtools';
+  if (k === 'f11') return 'fullscreen';
+  if (k === 'f5') return shift ? 'hard-reload' : 'reload';
+  if (k === 'f3') return shift ? 'find-prev' : 'find-next';
+  if (k === 'f6' || (alt && !ctrl && k === 'd')) return 'focus-address';
+  if (alt && !ctrl && k === 'arrowleft') return 'back';
+  if (alt && !ctrl && k === 'arrowright') return 'forward';
+  if (alt && !ctrl && k === 'home') return 'home';
+  if (k === 'browserback') return 'back';
+  if (k === 'browserforward') return 'forward';
+  if (!ctrl) return null;
+  if (shift) {
+    if (k === 't') return 'reopen-tab';
+    if (k === 'n') return 'new-incognito';
+    if (k === 'w') return 'close-window';
+    if (k === 'a') return 'toggle-ai';
+    if (k === 'e') return 'toggle-sidebar';
+    if (k === 'b') return 'toggle-bookmarks-bar';
+    if (k === 'o') return 'bookmarks';
+    if (k === 's') return 'split';
+    if (k === 'r') return 'hard-reload';
+    if (k === 'delete') return 'clear-data';
+    if (k === 'tab') return 'prev-tab';
+    if (k === 'g') return 'find-prev';
+    if (k === '+' || k === '=' || code === 'Equal' || code === 'NumpadAdd') return 'zoom-in';
+    return null;
+  }
+  if (k === 'tab' || k === 'pagedown') return k === 'tab' ? 'next-tab' : 'next-tab';
+  if (k === 'pageup') return 'prev-tab';
+  if (k === 't') return 'new-tab';
+  if (k === 'n') return 'new-window';
+  if (k === 'w' || k === 'f4') return 'close-tab';
+  if (k === 'l') return 'focus-address';
+  if (k === 'k') return 'command-bar';
+  if (k === 'd') return 'bookmark';
+  if (k === 'r') return 'reload';
+  if (k === 'h') return 'history';
+  if (k === 'j') return 'downloads';
+  if (k === 'f') return 'find';
+  if (k === 'g') return 'find-next';
+  if (k === 'p') return 'print';
+  if (k === 'u') return 'view-source';
+  if (k === ',') return 'settings';
+  if (k === '+' || k === '=' || code === 'NumpadAdd') return 'zoom-in';
+  if (k === '-' || code === 'NumpadSubtract') return 'zoom-out';
+  if (k === '0' || code === 'Numpad0') return 'zoom-reset';
+  if (/^[1-9]$/.test(k)) return 'tab-' + k;
+  return null;
+}
+function hookShortcuts(wc) {
+  wc.on('before-input-event', (event, input) => {
+    const cmd = shortcutFor(input);
+    if (!cmd) return;
+    const target = shellFor(wc);
+    if (!target) return;
+    // Let normal text editing keys through in the shell itself (only the listed combos are captured).
+    event.preventDefault();
+    if (cmd === 'new-window') return createWindow();
+    if (cmd === 'new-incognito') return createWindow({ incognito: true });
+    if (cmd === 'fullscreen') { const w = BrowserWindow.fromWebContents(target); return w.setFullScreen(!w.isFullScreen()); }
+    target.send('shortcut', cmd);
+  });
+}
+
+/* =========================================================================
+   Web page context menu
+   ========================================================================= */
+function pageContextMenu(wc, p) {
+  const shellWc = shellFor(wc); if (!shellWc) return;
+  const win = BrowserWindow.fromWebContents(shellWc);
+  const s = getSettings();
+  const engine = s.search === 'custom' ? 'the web' : (SEARCH_ENGINES[s.search] || SEARCH_ENGINES.google).name;
+  const openUrl = (url, where) => shellWc.send('open-url', { url, where });
+  const T = [];
+  const sep = () => { if (T.length && T[T.length - 1].type !== 'separator') T.push({ type: 'separator' }); };
+  if (p.linkURL && /^(https?|stupid):/.test(p.linkURL)) {
+    T.push({ label: 'Open link in new tab', click: () => openUrl(p.linkURL, 'background') });
+    T.push({ label: 'Open link in new window', click: () => createWindow({ urls: [p.linkURL] }) });
+    T.push({ label: 'Open link in private window', click: () => createWindow({ incognito: true, urls: [p.linkURL] }) });
+    T.push({ label: 'Save link as…', click: () => wc.downloadURL(p.linkURL) });
+    T.push({ label: 'Copy link address', click: () => clipboard.writeText(p.linkURL) });
+    sep();
+  }
+  if (p.mediaType === 'image' && p.srcURL) {
+    T.push({ label: 'Open image in new tab', click: () => openUrl(p.srcURL, 'background') });
+    T.push({ label: 'Save image as…', click: () => wc.downloadURL(p.srcURL) });
+    T.push({ label: 'Copy image', click: () => wc.copyImageAt(p.x, p.y) });
+    T.push({ label: 'Copy image address', click: () => clipboard.writeText(p.srcURL) });
+    sep();
+  }
+  if ((p.mediaType === 'video' || p.mediaType === 'audio') && p.srcURL && !p.srcURL.startsWith('blob:')) {
+    T.push({ label: `Save ${p.mediaType} as…`, click: () => wc.downloadURL(p.srcURL) });
+    T.push({ label: `Copy ${p.mediaType} address`, click: () => clipboard.writeText(p.srcURL) });
+    sep();
+  }
+  if (p.isEditable) {
+    if (p.misspelledWord && p.dictionarySuggestions) {
+      for (const sug of p.dictionarySuggestions.slice(0, 4)) T.push({ label: sug, click: () => wc.replaceMisspelling(sug) });
+      if (p.dictionarySuggestions.length) sep();
+    }
+    T.push({ label: 'Undo', role: 'undo', enabled: p.editFlags.canUndo });
+    T.push({ label: 'Redo', role: 'redo', enabled: p.editFlags.canRedo });
+    sep();
+    T.push({ label: 'Cut', role: 'cut', enabled: p.editFlags.canCut });
+    T.push({ label: 'Copy', role: 'copy', enabled: p.editFlags.canCopy });
+    T.push({ label: 'Paste', role: 'paste', enabled: p.editFlags.canPaste });
+    T.push({ label: 'Select all', role: 'selectAll' });
+    sep();
+  } else if (p.selectionText && p.selectionText.trim()) {
+    const sel = p.selectionText.trim();
+    T.push({ label: 'Copy', role: 'copy' });
+    const short = sel.length > 28 ? sel.slice(0, 28) + '…' : sel;
+    T.push({ label: `Search ${engine} for “${short}”`, click: () => openUrl(searchUrlFor(s).replace('%s', encodeURIComponent(sel)), 'foreground') });
+    T.push({ label: 'Ask AI about this', click: () => { clipboard.writeText(sel); shellWc.send('shortcut', 'open-ai'); } });
+    sep();
+  }
+  if (!p.linkURL && !p.isEditable && !(p.selectionText && p.selectionText.trim()) && p.mediaType === 'none') {
+    T.push({ label: 'Back', enabled: wc.navigationHistory.canGoBack(), click: () => wc.navigationHistory.goBack() });
+    T.push({ label: 'Forward', enabled: wc.navigationHistory.canGoForward(), click: () => wc.navigationHistory.goForward() });
+    T.push({ label: 'Reload', click: () => wc.reload() });
+    sep();
+    T.push({ label: 'Save page as…', click: () => wc.downloadURL(wc.getURL()) });
+    T.push({ label: 'Print…', click: () => shellWc.send('shortcut', 'print') });
+    T.push({ label: 'View page source', click: () => shellWc.send('shortcut', 'view-source') });
+    sep();
+  }
+  T.push({ label: 'Inspect', click: () => { wc.inspectElement(p.x, p.y); } });
+  Menu.buildFromTemplate(T).popup({ window: win });
+}
+
+/* =========================================================================
+   webview hardening + per-tab hooks
+   ========================================================================= */
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('will-attach-webview', (_ev, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    webPreferences.defaultFontSize = FONT_SIZES[getSettings().fontSize] || 16;
+    const src = params.src || 'about:blank';
+    if (!/^(https?:|stupid:|about:|file:)/.test(src)) params.src = 'about:blank';
+    if (src.startsWith('stupid://')) webPreferences.preload = path.join(__dirname, 'internal-preload.js');
+  });
+
+  if (contents.getType() !== 'webview') return;
+  hookShortcuts(contents);
+  contents.setWindowOpenHandler(({ url, disposition }) => {
+    const shellWc = shellFor(contents);
+    if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
+    else if (/^mailto:/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  contents.on('context-menu', (_ev, params) => pageContextMenu(contents, params));
+  // Internal-page preload only exposes its bridge on stupid:// (and main re-checks every call), so
+  // following a link from an internal page to the web is safe.
+  const record = () => { const s = contents.session; return s.__stupidTabs && !s.__incognito; };
+  contents.on('did-navigate', (_ev, url) => { if (record()) addHistory(url, contents.getTitle()); });
+  contents.on('did-navigate-in-page', (_ev, url, isMainFrame) => { if (isMainFrame && record()) addHistory(url, contents.getTitle()); });
+  contents.on('page-title-updated', (_ev, title) => { if (record()) titleHistory(contents.getURL(), title); });
+});
+
+/* =========================================================================
+   Self-test (dev only): STUPID_SELFTEST=/tmp/shot.png
+   ========================================================================= */
+function selfTest(win) {
+  win.webContents.on('console-message', async (e) => {
+    console.log('[renderer]', e.level, e.message);
+    const m = /^SHOT:(\S+)/.exec(e.message || '');
+    if (m && !win.isDestroyed()) { const img = await win.capturePage(); fs.writeFileSync(process.env.STUPID_SELFTEST.replace('.png', '-' + m[1] + '.png'), img.toPNG()); console.log('[selftest] shot', m[1]); }
+    if (/^QUIT$/.test(e.message || '')) app.quit();
+  });
+  if (process.env.STUPID_SELFTEST_SCRIPT) {
+    win.webContents.once('did-finish-load', () => setTimeout(() => {
+      win.webContents.executeJavaScript(fs.readFileSync(process.env.STUPID_SELFTEST_SCRIPT, 'utf8')).catch((err) => console.log('[selftest] script error', err.message));
+    }, 2500));
+  }
+  const steps = (process.env.STUPID_SELFTEST_STEPS || 'shot:base@6000,quit@8000').split(',');
+  for (const s of steps) {
+    const [what, at] = s.split('@');
+    setTimeout(async () => {
+      if (win.isDestroyed()) return;
+      if (what === 'quit') return app.quit();
+      if (what.startsWith('shot:')) { const img = await win.capturePage(); fs.writeFileSync(process.env.STUPID_SELFTEST.replace('.png', '-' + what.slice(5) + '.png'), img.toPNG()); return; }
+      if (what.startsWith('cmd:')) return win.webContents.send('shortcut', what.slice(4));
+      if (what.startsWith('url:')) return win.webContents.send('open-url', { url: decodeURIComponent(what.slice(4)), where: 'current' });
+      if (what.startsWith('js:')) { try { console.log('[selftest]', JSON.stringify(await win.webContents.executeJavaScript(decodeURIComponent(what.slice(3))))); } catch (err) { console.log('[selftest] js error', err.message); } }
+    }, +at);
+  }
+}
+
+/* =========================================================================
+   App lifecycle
+   ========================================================================= */
+const urlFromArgv = (argv) => argv.slice(1).find((a) => /^(https?:\/\/|file:\/\/)/i.test(a) || /\.(html?|pdf|svg)$/i.test(a));
+function normalizeArgUrl(a) { if (!a) return null; if (/^(https?|file):/i.test(a)) return a; try { return pathToFileURL(path.resolve(a)).toString(); } catch { return null; } }
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    const url = normalizeArgUrl(urlFromArgv(argv));
+    const w = [...windows.values()].reverse().find((x) => !x.incognito && !x.win.isDestroyed());
+    if (w) {
+      if (w.win.isMinimized()) w.win.restore();
+      w.win.focus();
+      if (url) w.win.webContents.send('open-url', { url, where: 'foreground' });
+      else w.win.webContents.send('shortcut', 'new-tab');
+    } else createWindow({ urls: url ? [url] : null });
+  });
+
+  app.whenReady().then(() => {
+    const s = getSettings();
+    nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
+    const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
+    const saved = store.read('session.json', []);
+    if (s.startup === 'continue' && saved.length) {
+      saved.forEach((sess, i) => createWindow({ restore: sess, urls: i === 0 && argUrl ? [argUrl] : null }));
+    } else if (s.startup === 'pages' && s.startupPages && s.startupPages.length) {
+      createWindow({ urls: [...s.startupPages, ...(argUrl ? [argUrl] : [])] });
+    } else {
+      createWindow({ urls: argUrl ? [argUrl] : null });
+    }
+    app.on('activate', () => { if (!windows.size) createWindow(); });
+    initUpdater();
+  });
+}
+
+app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); });
+app.on('window-all-closed', () => { quitting = true; saveSessions(); store.flushAll(); if (process.platform !== 'darwin') app.quit(); });

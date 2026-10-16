@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>New tab</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <main>
+    <div class="logo"></div>
+    <h1 class="wordmark">The Stupid Browser</h1>
+    <p class="greet"><span id="greeting">Hello</span> <span class="dotsep">·</span> <span id="clock"></span></p>
+    <form id="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+      <input name="q" id="q" type="text" placeholder="Search or type a URL" autocomplete="off">
+    </form>
+    <h2>Ask an AI</h2>
+    <div id="tiles" class="tiles"></div>
+    <h2 id="topHead" class="hidden">Your bookmarks</h2>
+    <div id="top" class="tiles"></div>
+    <p class="hint">Ctrl+T new tab · Ctrl+K command bar · Ctrl+Shift+A AI sidebar · Ctrl+H history · Ctrl+, settings</p>
+  </main>
+  <script src="common.js"></script>
+  <script src="newtab.js"></script>
+</body>
+</html>

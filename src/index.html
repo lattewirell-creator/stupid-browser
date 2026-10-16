@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: http: stupid:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>The Stupid Browser</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="titlebar">
+    <div class="brand" title="The Stupid Browser"><span class="logo-mark"></span><span id="privateBadge" class="private-badge hidden">Private</span></div>
+    <div id="pinnedTabs"></div>
+    <div id="tabs"></div>
+    <button id="newTabBtn" class="icon-btn small new-tab" title="New tab (Ctrl+T)"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <div class="drag-fill"></div>
+  </header>
+
+  <nav id="toolbar">
+    <button id="railBtn" class="icon-btn" title="Sidebar (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9 4.5v15"/></svg></button>
+    <button id="backBtn" class="icon-btn" title="Back (Alt+Left)"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button id="fwdBtn" class="icon-btn" title="Forward (Alt+Right)"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    <button id="reloadBtn" class="icon-btn" title="Reload (Ctrl+R)"><svg viewBox="0 0 24 24" class="i-reload"><path d="M19 12a7 7 0 1 1-2.05-4.95M19 4v4h-4"/></svg><svg viewBox="0 0 24 24" class="i-stop"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <button id="homeBtn" class="icon-btn" title="Home (Alt+Home)"><svg viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8h-5v-5H9v5H4z"/></svg></button>
+    <div id="omnibox">
+      <button id="siteBtn" class="site-btn" title="View site information"><svg viewBox="0 0 24 24" class="i-lock"><rect x="6" y="11" width="12" height="9" rx="2"/><path d="M8.5 11V8.5a3.5 3.5 0 0 1 7 0V11"/></svg><svg viewBox="0 0 24 24" class="i-warn"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg><svg viewBox="0 0 24 24" class="i-info"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8v.5"/></svg><svg viewBox="0 0 24 24" class="i-search"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></button>
+      <input id="address" type="text" spellcheck="false" autocomplete="off" placeholder="Search or type a URL">
+      <button id="zoomBtn" class="zoom-pill hidden" title="Reset zoom (Ctrl+0)">100%</button>
+      <button id="starBtn" class="icon-btn small" title="Bookmark this tab (Ctrl+D)"><svg viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.6.6-4.2 3.8 1.2 5.6L12 16.2 7 19l1.2-5.6L4 9.6 9.6 9z"/></svg></button>
+      <div id="suggest" class="hidden"></div>
+    </div>
+    <button id="dlBtn" class="icon-btn hidden" title="Downloads (Ctrl+J)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg><span id="dlRing"></span></button>
+    <button id="adblockBtn" class="pill" title="Ad &amp; tracker blocker"><span class="pill-dot"></span><span>Shield</span><span id="blockedCount" class="count">0</span></button>
+    <button id="pipBtn" class="icon-btn" title="Pop out video (picture-in-picture)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><rect x="12" y="11" width="7" height="6" rx="1.5" class="fill"/></svg></button>
+    <button id="aiBtn" class="icon-btn" title="AI sidebar (Ctrl+Shift+A)"><svg viewBox="0 0 24 24"><path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M6 6l2.8 2.8M15.2 15.2L18 18M6 18l2.8-2.8M15.2 8.8L18 6"/></svg></button>
+    <button id="menuBtn" class="icon-btn" title="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.4" class="fill"/><circle cx="12" cy="12" r="1.4" class="fill"/><circle cx="12" cy="18" r="1.4" class="fill"/></svg></button>
+  </nav>
+
+  <div id="bookmarksBar"></div>
+
+  <div id="body">
+    <aside id="rail"></aside>
+    <section id="appPanel" class="panel left hidden">
+      <div class="panel-head"><span id="appTitle" class="serif panel-title">App</span><div class="grow"></div>
+        <button id="appReload" class="icon-btn small" title="Reload"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.05-4.95M19 4v4h-4"/></svg></button>
+        <button id="appOpenTab" class="icon-btn small" title="Open in a tab"><svg viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/></svg></button>
+        <button id="appClose" class="icon-btn small" title="Close panel"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="appViews" class="panel-views"></div>
+    </section>
+    <div id="appResizer" class="resizer hidden"></div>
+    <div id="content">
+      <section id="views"></section>
+      <div id="findBar" class="hidden">
+        <input id="findInput" type="text" placeholder="Find in page" spellcheck="false">
+        <span id="findCount">0/0</span>
+        <button id="findPrev" class="icon-btn small" title="Previous (Shift+Enter)"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+        <button id="findNext" class="icon-btn small" title="Next (Enter)"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <button id="findClose" class="icon-btn small" title="Close (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+    </div>
+    <div id="aiResizer" class="resizer hidden"></div>
+    <section id="aiPanel" class="panel hidden">
+      <div class="panel-head">
+        <span class="serif panel-title">AI</span>
+        <div id="botPills"></div>
+        <button id="botAddBtn" class="icon-btn small" title="Add a custom AI"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button id="aiClose" class="icon-btn small" title="Close (Ctrl+Shift+A)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <form id="botForm" class="mini-form hidden">
+        <input id="botName" placeholder="Name" maxlength="24" required>
+        <input id="botUrl" placeholder="https://…" required>
+        <button type="submit" class="pill solid">Add</button>
+      </form>
+      <div id="aiViews" class="panel-views"></div>
+    </section>
+  </div>
+
+  <div id="popover" class="pop hidden"></div>
+  <div id="menu" class="pop menu hidden"></div>
+  <div id="ctxMenu" class="pop menu hidden"></div>
+  <div id="hoverCard" class="hidden"><div class="hc-title"></div><div class="hc-url"></div></div>
+
+  <div id="cmdbar" class="hidden">
+    <div class="cmd-card">
+      <div class="cmd-input-row"><span class="rec"></span>
+        <input id="cmdInput" type="text" spellcheck="false" autocomplete="off" placeholder="Search, type a URL, or jump to a tab">
+        <span class="kbd">ESC</span></div>
+      <div id="cmdResults"></div>
+    </div>
+  </div>
+  <div id="toast" class="hidden"></div>
+  <div id="dragShield" class="hidden"></div>
+</div>
+<script src="renderer.js"></script>
+</body>
+</html>

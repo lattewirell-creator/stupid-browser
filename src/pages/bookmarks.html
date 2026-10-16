@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Bookmarks</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="lists.css">
+</head>
+<body>
+<div class="bm-layout">
+  <aside id="tree"><h1>Bookmarks</h1><div id="folders"></div><button id="newFolder" class="btn small">New folder</button></aside>
+  <div class="page wide">
+    <div class="page-head"><h2 id="folderTitle">Bookmarks bar</h2>
+      <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="q" placeholder="Search bookmarks"></div>
+    </div>
+    <form id="addForm" class="bar"><input id="addTitle" class="input" placeholder="Name"><input id="addUrl" class="input grow" placeholder="https://…"><button class="btn small">Add bookmark</button><button type="button" id="renameFolder" class="btn small hidden">Rename folder</button><button type="button" id="deleteFolder" class="btn small danger hidden">Delete folder</button></form>
+    <div id="list"></div>
+  </div>
+</div>
+<script src="common.js"></script>
+<script src="bookmarks.js"></script>
+</body>
+</html>

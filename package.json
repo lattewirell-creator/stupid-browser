@@ -1,0 +1,94 @@
+{
+  "name": "the-stupid-browser",
+  "productName": "The Stupid Browser",
+  "version": "1.1.0",
+  "description": "The Stupid Browser - a calm personal web browser",
+  "author": "lattewirell-creator",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "build:adblock": "node scripts/build-adblock.js",
+    "release": "bash scripts/release.sh",
+    "test": "bash scripts/selftest.sh"
+  },
+  "build": {
+    "appId": "com.emil.stupidbrowser",
+    "productName": "The Stupid Browser",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!src/**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true,
+      "executableName": "StupidBrowser"
+    },
+    "portable": {
+      "artifactName": "StupidBrowser-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "The Stupid Browser",
+      "uninstallDisplayName": "The Stupid Browser",
+      "artifactName": "StupidBrowser-Setup.exe",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    },
+    "compression": "normal",
+    "extraMetadata": {
+      "main": "src/main.js"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "lattewirell-creator",
+        "repo": "stupid-browser",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.20.1",
+    "cross-fetch": "^4.1.0",
+    "electron-updater": "^6.8.9",
+    "imapflow": "^2.5.2",
+    "mailparser": "^3.9.40",
+    "nodemailer": "^10.1.2",
+    "sanitize-html": "^2.17.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lattewirell-creator/stupid-browser.git"
+  },
+  "license": "MIT"
+}

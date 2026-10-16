@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Settings</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+<div class="layout">
+  <nav id="nav">
+    <h1>Settings</h1>
+    <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="filter" placeholder="Search settings"></div>
+    <a href="#appearance">Appearance</a>
+    <a href="#startup">On startup</a>
+    <a href="#search">Search engine</a>
+    <a href="#privacy">Privacy &amp; security</a>
+    <a href="#passwords">Passwords</a>
+    <a href="#downloads">Downloads</a>
+    <a href="#ai">AI sidebar</a>
+    <a href="#sidebar">Sidebar apps</a>
+    <a href="#default">Default browser</a>
+    <a href="#about">About</a>
+  </nav>
+  <main id="main">
+    <section id="appearance"><h2>Appearance</h2><div class="card">
+      <div class="row"><div class="lbl">Theme<small>Follow Windows, or pick one</small></div><div class="seg" id="theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+      <div class="row"><div class="lbl">Accent color</div><div id="accent" class="swatches"></div></div>
+      <div class="row"><div class="lbl">Font size<small>Default text size for web pages (new tabs)</small></div><select id="fontSize" class="input"><option value="small">Small</option><option value="medium">Medium (recommended)</option><option value="large">Large</option><option value="xlarge">Very large</option></select></div>
+      <div class="row"><div class="lbl">Show bookmarks bar<small>Ctrl+Shift+B</small></div><input type="checkbox" class="toggle" id="showBookmarksBar"></div>
+      <div class="row"><div class="lbl">Show home button</div><input type="checkbox" class="toggle" id="showHome"></div>
+      <div class="row"><div class="lbl">Show sidebar<small>App icons on the left (Ctrl+Shift+E)</small></div><input type="checkbox" class="toggle" id="showSidebar"></div>
+      <div class="row"><div class="lbl">Your name<small>Used in the new tab greeting</small></div><input id="name" class="input" maxlength="40"></div>
+    </div></section>
+
+    <section id="startup"><h2>On startup</h2><div class="card">
+      <label class="row radio"><input type="radio" name="startup" value="newtab"><div class="lbl">Open the New tab page</div></label>
+      <label class="row radio"><input type="radio" name="startup" value="continue"><div class="lbl">Continue where you left off<small>Reopens your tabs, groups and windows</small></div></label>
+      <label class="row radio"><input type="radio" name="startup" value="pages"><div class="lbl">Open a specific page or set of pages</div></label>
+      <div id="pagesBox" class="sub">
+        <div id="pages"></div>
+        <form id="pageForm" class="inline"><input id="pageUrl" class="input grow" placeholder="https://…"><button class="btn small">Add page</button></form>
+      </div>
+    </div></section>
+
+    <section id="search"><h2>Search engine</h2><div class="card">
+      <div class="row"><div class="lbl">Search engine used in the address bar</div><select id="engine" class="input"><option value="google">Google</option><option value="bing">Bing</option><option value="duckduckgo">DuckDuckGo</option><option value="ecosia">Ecosia</option><option value="custom">Custom…</option></select></div>
+      <div class="row" id="customRow"><div class="lbl">Custom search URL<small>Use %s where the search words go</small></div><input id="customSearch" class="input wide" placeholder="https://example.com/search?q=%s"></div>
+    </div></section>
+
+    <section id="privacy"><h2>Privacy &amp; security</h2>
+      <div class="card" id="clear">
+        <div class="row"><div class="lbl"><b>Clear browsing data</b><small>Ctrl+Shift+Delete</small></div><select id="range" class="input"><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="2419200000">Last 4 weeks</option><option value="0" selected>All time</option></select></div>
+        <label class="row"><input type="checkbox" id="cHistory" checked> <div class="lbl">Browsing history</div></label>
+        <label class="row"><input type="checkbox" id="cDownloads" checked> <div class="lbl">Download history<small>Files you downloaded stay on your computer</small></div></label>
+        <label class="row"><input type="checkbox" id="cCookies"> <div class="lbl">Cookies and other site data<small>Signs you out of most sites (including the AI sidebar). Always clears all time.</small></div></label>
+        <label class="row"><input type="checkbox" id="cCache" checked> <div class="lbl">Cached images and files<small>Always clears all time</small></div></label>
+        <div class="row end"><button id="clearBtn" class="btn primary">Clear data</button></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="lbl">Shield — block ads and trackers</div><input type="checkbox" class="toggle" id="adblock"></div>
+        <div class="row"><div class="lbl">Send a “Do Not Track” request<small>Also sends Global Privacy Control. Sites may ignore it.</small></div><input type="checkbox" class="toggle" id="dnt"></div>
+      </div>
+      <h3>Site permissions</h3>
+      <div class="card" id="perms"></div>
+    </section>
+
+    <section id="passwords"><h2>Passwords</h2>
+      <div class="card">
+        <div class="row"><div class="lbl">Offer to save passwords<small id="encNote"></small></div><input type="checkbox" class="toggle" id="savePasswords"></div>
+      </div>
+      <div class="card" id="pwList"></div>
+    </section>
+
+    <section id="downloads"><h2>Downloads</h2><div class="card">
+      <div class="row"><div class="lbl">Location<small id="dlDir"></small></div><button id="dlChange" class="btn small">Change</button></div>
+      <div class="row"><div class="lbl">Ask where to save each file before downloading</div><input type="checkbox" class="toggle" id="askWhereToSave"></div>
+    </div></section>
+
+    <section id="ai"><h2>AI sidebar</h2>
+      <div class="card"><div class="row"><div class="lbl">Default AI<small>Opens first when you press Ctrl+Shift+A</small></div><select id="defaultBot" class="input"></select></div></div>
+      <div class="card" id="botList"></div>
+      <form id="botForm" class="inline card-form"><input id="botName" class="input" placeholder="Name" maxlength="24"><input id="botUrl" class="input grow" placeholder="https://…"><button class="btn small">Add AI</button><button type="button" id="botReset" class="btn small">Reset to defaults</button></form>
+    </section>
+
+    <section id="sidebar"><h2>Sidebar apps</h2>
+      <div class="card" id="sideList"></div>
+      <form id="sideForm" class="inline card-form"><input id="sideName" class="input" placeholder="Name" maxlength="30"><input id="sideUrl" class="input grow" placeholder="https://…"><button class="btn small">Add app</button><button type="button" id="sideReset" class="btn small">Reset to defaults</button></form>
+    </section>
+
+    <section id="default"><h2>Default browser</h2><div class="card">
+      <div class="row"><div class="lbl" id="defStatus">Checking…<small>Windows asks you to confirm in Settings → Apps → Default apps. Pick “The Stupid Browser” for HTTP and HTTPS.</small></div><button id="defBtn" class="btn primary">Make default</button></div>
+    </div></section>
+
+    <section id="about"><h2>About The Stupid Browser</h2><div class="card">
+      <div class="row"><div class="about-logo"></div><div class="lbl"><b class="serif big">The Stupid Browser</b><small id="ver"></small></div></div>
+      <div class="row"><div class="lbl">Updates<small id="updNote">Checking…</small><div id="updBar" class="upd-bar hidden"><div></div></div></div><button id="updInstall" class="btn small primary hidden">Restart to update</button><button id="updBtn" class="btn small">Check for updates</button></div>
+      <div class="row"><div class="lbl">Profile folder<small id="udata"></small></div></div>
+      <div class="row end"><button id="resetAll" class="btn small danger">Reset settings to defaults</button></div>
+    </div></section>
+  </main>
+</div>
+<script src="common.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>
