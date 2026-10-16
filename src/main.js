@@ -794,8 +794,21 @@ function macShortcutFor(input, k, code) {
   if (k === 'h' || k === 'q' || k === 'm' || k === 'c' || k === 'v' || k === 'x' || k === 'a' || k === 'z') return null;   // app menu roles
   return undefined;
 }
+// Easter egg: the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) opens the Zelda "secret found" sound.
+const KONAMI = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
+const KONAMI_URL = 'https://www.youtube.com/watch?v=0vngOmw2hcM&autoplay=1';
+const konamiProgress = new Map();   // shell webContents id -> keys matched so far
+function konami(target, input) {
+  if (input.type !== 'keyDown' || input.isAutoRepeat || input.control || input.meta || input.alt) return;
+  const k = (input.key || '').toLowerCase();
+  let n = konamiProgress.get(target.id) || 0;
+  n = k === KONAMI[n] ? n + 1 : (k === KONAMI[0] ? (n === 2 && k === 'arrowup' ? 2 : 1) : 0);
+  if (n === KONAMI.length) { n = 0; target.send('open-url', { url: KONAMI_URL, where: 'foreground' }); }
+  konamiProgress.set(target.id, n);
+}
 function hookShortcuts(wc) {
   wc.on('before-input-event', (event, input) => {
+    { const t = shellFor(wc); if (t) konami(t, input); }
     const cmd = shortcutFor(input);
     if (!cmd) return;
     const target = shellFor(wc);
