@@ -8,7 +8,7 @@ const NEWTAB = 'stupid://newtab/';
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
 const GROUP_COLORS = { clay: '#D97757', sand: '#C9A15A', sage: '#7C9A6E', sky: '#6A8FB5', plum: '#9B6A8E', rose: '#C96A7A', teal: '#5E9A94', slate: '#8A857A', ink: '#3D3929' };
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
-const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source' };
+const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome' };
 
 let info = {};
 let settings = {};

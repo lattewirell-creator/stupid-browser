@@ -237,6 +237,8 @@ $('buddyKeySave').onclick = async () => {
 };
 $('buddyKeyClear').onclick = async () => { await call('buddy:setKey', $('buddyProvider').value, ''); toast('Key removed'); renderBuddy(); call('settings:set', {}); };
 
+$('showWelcome').onclick = () => { location.href = 'stupid://welcome/'; };
+
 async function renderAbout() {
   const a = await call('about:info');
   $('ver').textContent = `Version ${a.version} · Chromium ${a.chrome} · Electron ${a.electron} · ${a.platform}`;

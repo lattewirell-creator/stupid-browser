@@ -87,7 +87,7 @@ const DEFAULT_LAUNCHER = [
   { id: 'news', name: 'News', url: 'https://news.google.com' },
   { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
-const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source'];
+const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -640,6 +640,7 @@ handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
 handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
 handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
 require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
+require('./import-bookmarks')({ handle, store, getBookmarks, broadcast });
 
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
 handle('default:set', ['internal'], async () => {
@@ -1066,12 +1067,15 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', (_e, argv) => openFromOutside(normalizeArgUrl(urlFromArgv(argv))));
 
   app.whenReady().then(() => {
+    // Brand-new install (no settings yet): open the welcome screen once.
+    const firstRun = !fs.existsSync(path.join(app.getPath('userData'), 'settings.json'));
     const s = getSettings();
     nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
     if (IS_MAC) buildMacMenu();
     profiles.sync(s);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
-    openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
+    if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
+    else openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
     app.on('activate', () => {
       if (windows.size) return;
       // Dock click after closing every window (macOS): start fresh like a relaunch.

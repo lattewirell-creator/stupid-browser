@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Welcome</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+  <main id="steps">
+    <!-- 1. hello -->
+    <section class="step" data-step="hello">
+      <div class="hero-logo"><span></span></div>
+      <h1>Welcome to<br><em>The Stupid Browser</em></h1>
+      <p class="lead">A calm little browser that does the smart stuff quietly. Let’s set it up — it takes about a minute.</p>
+      <label class="field"><span>What should we call you?</span>
+        <input id="name" maxlength="40" placeholder="Your name" autocomplete="given-name"></label>
+    </section>
+
+    <!-- 2. import -->
+    <section class="step" data-step="import">
+      <div class="big-icon">📚</div>
+      <h2>Bring your bookmarks</h2>
+      <p class="lead">Coming from another browser? Bring your bookmarks along — nothing is changed in the other browser.</p>
+      <div class="sources" id="sources"></div>
+      <button id="importFile" class="link-btn">Import from a bookmarks file (Safari, Firefox…)</button>
+      <p class="note" id="importNote"></p>
+    </section>
+
+    <!-- 3. look -->
+    <section class="step" data-step="look">
+      <h2>Make it yours</h2>
+      <p class="lead">Pick a look. You can change all of this later in Settings or with the Customize button on a new tab.</p>
+      <div class="look-grid">
+        <div class="look-form">
+          <div class="label">Theme</div>
+          <div class="seg" id="theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div>
+          <div class="label">Color</div>
+          <div class="swatches" id="accent"></div>
+          <div class="label">Logo</div>
+          <div class="logos" id="logos"></div>
+        </div>
+        <div class="preview" id="preview">
+          <div class="pv-bar"><i></i><i></i><i></i><span></span></div>
+          <div class="pv-body"><div class="pv-logo" id="pvLogo"></div><div class="pv-title">The Stupid Browser</div><div class="pv-greet" id="pvGreet">Good evening</div>
+            <div class="pv-widgets"><span></span><span></span><span></span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. default browser -->
+    <section class="step" data-step="default">
+      <div class="big-icon">🌐</div>
+      <h2>Use it for every link?</h2>
+      <p class="lead">Make The Stupid Browser your default, so links from mail, chat and other apps open here.</p>
+      <button id="makeDefault" class="btn primary huge">Make it my default browser</button>
+      <p class="note" id="defaultNote"></p>
+    </section>
+
+    <!-- 4. AI buddy -->
+    <section class="step" data-step="buddy">
+      <div class="buddy-face"><i></i><i></i></div>
+      <h2>Meet Buddy</h2>
+      <p class="lead">Buddy lives in the corner and can look at the page you’re on and answer questions about it. Pick which AI it uses — or skip it.</p>
+      <div class="providers" id="providers"></div>
+      <div class="key-row hidden" id="keyRow">
+        <input id="key" type="password" placeholder="Paste your API key" autocomplete="off">
+        <button id="saveKey" class="btn primary">Save</button>
+      </div>
+      <p class="note" id="buddyNote"></p>
+    </section>
+
+    <!-- 5. done -->
+    <section class="step" data-step="done">
+      <div class="big-icon">🎉</div>
+      <h2 id="doneTitle">You’re all set</h2>
+      <p class="lead">A few things worth knowing:</p>
+      <ul class="tips">
+        <li><b>Ctrl+K</b><span>Command bar — search, jump to tabs, run anything</span></li>
+        <li><b>✳</b><span>The AI button opens Buddy in the corner</span></li>
+        <li><b>✎</b><span>“Customize” on a new tab: widgets, backgrounds, logo</span></li>
+        <li><b>♫</b><span>Music on another tab? A little island shows what’s playing</span></li>
+        <li><b>⇅</b><span>Drag the sidebar icons to reorder them</span></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="nav">
+    <button id="skipAll" class="link">Skip setup</button>
+    <div class="dots" id="dots"></div>
+    <div class="nav-right"><button id="back" class="btn">Back</button><button id="next" class="btn primary">Next</button></div>
+  </footer>
+
+  <script src="keys.js"></script>
+  <script src="common.js"></script>
+  <script src="welcome.js"></script>
+</body>
+</html>
