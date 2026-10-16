@@ -876,12 +876,13 @@ function renderRail() {
   document.body.classList.toggle('no-rail', settings.showSidebar === false);
   $('railBtn').classList.toggle('on', settings.showSidebar !== false);
   for (const it of sideItems) {
-    const b = el('button', 'rail-item' + (activeApp === it.id ? ' on' : ''));
-    b.title = it.name;
+    const b = el('button', 'rail-item app' + (activeApp === it.id ? ' on' : ''));
+    b.title = it.name; b.dataset.id = it.id;
     const img = el('img'); img.draggable = false; img.src = faviconFor(it.url);
     img.onerror = () => img.replaceWith(el('span', 'rail-letter', (it.name || '?')[0].toUpperCase()));
     b.appendChild(img);
-    b.addEventListener('click', () => toggleApp(it.id));
+    b.addEventListener('click', () => { if (!railJustDragged) toggleApp(it.id); });
+    b.addEventListener('pointerdown', (e) => railDragStart(e, b));
     b.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       showMenu('ctxMenu', [
@@ -904,6 +905,46 @@ function renderRail() {
   const gear = el('button', 'rail-item'); gear.title = keyLabel('Settings (Ctrl+,)'); gear.appendChild(svg(ICON.gear));
   gear.addEventListener('click', () => openInternal('settings'));
   rail.appendChild(gear);
+}
+// Drag sidebar icons to reorder (Dock-style): the dragged icon follows the pointer and the
+// others slide out of the way; the new order is saved on release. A plain click still opens the app.
+let railDrag = null, railJustDragged = false;
+function railDragStart(e, b) {
+  if (e.button !== 0) return;
+  const rail = $('rail');
+  railDrag = { b, rail, sy: e.clientY, moved: false, grab: e.clientY - rail.getBoundingClientRect().top + rail.scrollTop - b.offsetTop };
+  const move = (ev) => {
+    const d = railDrag; if (!d) return;
+    if (!d.moved) {
+      if (Math.abs(ev.clientY - d.sy) < 5) return;
+      d.moved = true; b.classList.add('dragging'); document.body.classList.add('rail-dragging'); hideHoverCard();
+    }
+    const y = ev.clientY - rail.getBoundingClientRect().top + rail.scrollTop;   // pointer within the rail
+    const items = [...rail.querySelectorAll('.rail-item.app')];
+    // Where should the dragged icon sit? Before the first other icon whose middle is below the pointer.
+    const center = y - d.grab + b.offsetHeight / 2;
+    const others = items.filter((x) => x !== b);
+    const before = others.find((x) => center < x.offsetTop + x.offsetHeight / 2) || null;
+    const target = before || others[others.length - 1].nextSibling;
+    if (target !== b && b.nextSibling !== target) {
+      const first = new Map(others.map((x) => [x, x.offsetTop]));
+      rail.insertBefore(b, target);
+      for (const x of others) { const dy = first.get(x) - x.offsetTop; if (dy) x.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)' }); }
+    }
+    b.style.transform = `translateY(${y - d.grab - b.offsetTop}px) scale(1.12)`;
+  };
+  const up = () => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+    const d = railDrag; railDrag = null; if (!d || !d.moved) return;
+    railJustDragged = true; setTimeout(() => { railJustDragged = false; }, 0);
+    document.body.classList.remove('rail-dragging');
+    const order = [...d.rail.querySelectorAll('.rail-item.app')].map((x) => x.dataset.id);
+    b.style.transform = ''; b.classList.remove('dragging');
+    const next = order.map((id) => sideItems.find((x) => x.id === id)).filter(Boolean);
+    if (next.length === sideItems.length && next.some((x, i) => x !== sideItems[i])) { sideItems = next; call('sidebar:set', sideItems); }
+    renderRail();
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
 }
 function moveSide(it, d) { const i = sideItems.indexOf(it); sideItems.splice(i, 1); sideItems.splice(i + d, 0, it); call('sidebar:set', sideItems); renderRail(); }
 function railAddForm() {

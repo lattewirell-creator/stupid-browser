@@ -467,3 +467,8 @@ body.htmlfs .buddy { display: none; }
 .pf-plus svg { stroke: var(--muted); }
 .pf-del { opacity: .5; } .pf-del:hover { opacity: 1; } .pf-del.confirm { opacity: 1; color: #C8606F; background: rgba(200,96,111,.12); }
 .pf-addtitle { margin: 16px 6px 4px; } .pf-addnote { margin: 0 6px 10px; }
+/* sidebar drag-to-reorder */
+.rail-item.app { touch-action: none; }
+.rail-item.dragging { z-index: 3; transition: none; background: var(--surface); box-shadow: 0 8px 20px rgba(0,0,0,.25); cursor: grabbing; }
+body.rail-dragging, body.rail-dragging * { cursor: grabbing !important; }
+body.rail-dragging webview { pointer-events: none; }
