@@ -63,35 +63,38 @@
   }
   function renderChips() {
     chips.replaceChildren();
-    if (!status.hasKey || log.querySelector('.bd-msg')) return;
+    if (!status.ready || log.querySelector('.bd-msg')) return;
     for (const q of ['What’s on my screen?', 'Summarize this page', 'Explain it like I’m 10', 'Is this site legit?']) {
       const c = el('button', 'bd-chip', q); c.addEventListener('click', () => ask(q, true)); chips.appendChild(c);
     }
   }
   function greet() {
     log.replaceChildren();
-    if (!status.hasKey) {
-      bubble('bot', 'Hi! I’m **Buddy**. I can look at the page you’re on and answer questions about it.\n\nTo wake me up, add an Anthropic API key in Settings.');
+    if (!status.ready) {
+      bubble('bot', 'Hi! I’m **Buddy**. I can look at the page you’re on and answer questions about it.\n\nTo wake me up, pick an AI (Claude, ChatGPT, Gemini, Grok, a free local one with Ollama…) in Settings.');
       note('Settings → AI buddy', { label: 'Open settings', fn: () => openUrlInternal('settings', '#buddy') });
     } else bubble('bot', 'Hi! Ask me anything — I can see the tab you’re on when the 👁 is lit.');
     renderChips();
   }
   async function refreshStatus() {
-    try { status = await call('buddy:status'); } catch { status = { hasKey: false }; }
-    const m = status.models && status.models[status.model];
-    modelLine.textContent = status.hasKey ? (m || '').replace(/ \(.*\)/, '') : 'Not set up';
-    root.classList.toggle('nokey', !status.hasKey);
+    try { status = await call('buddy:status'); } catch { status = { ready: false }; }
+    modelLine.textContent = status.ready ? `${status.providerName.replace(/ \(.*\)/, '')} · ${status.modelName}` : 'Not set up';
+    modelLine.title = modelLine.textContent;
+    root.classList.toggle('nokey', !status.ready);
   }
 
   const ERRORS = {
     nokey: 'Add your API key in Settings → AI buddy first.', badkey: 'That API key didn’t work. Check it in Settings → AI buddy.',
     ratelimit: 'Too many requests right now. Try again in a moment.', offline: 'I can’t reach the internet right now.',
-    refusal: 'I can’t help with that one.', stopped: '', busy: '', empty: ''
+    refusal: 'I can’t help with that one.', stopped: '', busy: '', empty: '',
+    nomodel: 'Pick a model in Settings → AI buddy first.', disabled: 'Buddy is turned off in Settings.',
+    ollama: 'Ollama isn’t running on this computer — start the Ollama app and try again.'
   };
   async function ask(text, forceLook) {
     text = String(text || input.value).trim();
     if (!text || busy) return;
-    if (!status.hasKey) { greet(); return; }
+    if (!status.ready) await refreshStatus();   // a key may have been added since Buddy last looked
+    if (!status.ready) { greet(); return; }
     input.value = ''; autoGrow(); chips.replaceChildren();
     bubble('me', text);
     const t = activeTab();
@@ -106,9 +109,12 @@
     current.classList.remove('typing');
     if (!res.ok) {
       if (!current.__text) current.remove();
-      const msg = res.error in ERRORS ? ERRORS[res.error] : `Something went wrong${res.detail ? ': ' + res.detail : ''}.`;
-      if (msg) note(msg, res.error === 'badkey' || res.error === 'nokey' ? { label: 'Open settings', fn: () => openUrlInternal('settings', '#buddy') } : null);
-    } else if (res.truncated) note('(That answer was cut short.)');
+      const msg = res.error === 'model' ? `This AI doesn’t offer the model “${res.detail}”. Pick another in Settings.` : res.error in ERRORS ? ERRORS[res.error] : `Something went wrong${res.detail ? ': ' + res.detail : ''}.`;
+      if (msg) note(msg, ['badkey', 'nokey', 'nomodel', 'model'].includes(res.error) ? { label: 'Open settings', fn: () => openUrlInternal('settings', '#buddy') } : null);
+    } else {
+      if (res.note === 'textonly') note('(This model can’t see images, so I read the page text instead.)');
+      if (res.truncated) note('(That answer was cut short.)');
+    }
     current = null;
   }
   api.on('buddy:delta', (d) => {
@@ -140,8 +146,21 @@
   }
   function hideBuddy() { root.classList.add('hidden'); root.classList.remove('open'); $('aiBtn').classList.remove('on'); }
   window.toggleBuddy = () => (root.classList.contains('hidden') ? showBuddy() : hideBuddy());
-  // The AI button does what Settings → AI button says (buddy by default).
-  window.aiButtonAction = () => (settings.aiButton === 'sidebar' ? toggleAI() : window.toggleBuddy());
-  api.on('settings:changed', () => { if (!root.classList.contains('hidden')) refreshStatus().then(() => { if (!log.querySelector('.bd-msg.me')) greet(); }); });
+  // The AI button does what Settings → AI button says (buddy by default); "off" hides the button.
+  const buddyOn = () => !(settings.buddy && settings.buddy.enabled === false);
+  window.aiButtonAction = () => {
+    if (settings.aiButton === 'off') return;
+    if (settings.aiButton === 'sidebar' || !buddyOn()) toggleAI(); else window.toggleBuddy();
+  };
+  function applyAiPrefs() {
+    $('aiBtn').classList.toggle('hidden', settings.aiButton === 'off');
+    $('aiBtn').title = keyLabel(settings.aiButton === 'sidebar' || !buddyOn() ? 'AI sidebar (Ctrl+Shift+A)' : 'AI buddy (Ctrl+Shift+A)');
+    if (!buddyOn() && !root.classList.contains('hidden')) hideBuddy();
+  }
+  api.on('settings:changed', () => setTimeout(() => {
+    applyAiPrefs();
+    if (!root.classList.contains('hidden')) refreshStatus().then(() => { if (!log.querySelector('.bd-msg.me')) greet(); });
+  }, 0));
+  call('settings:get').then((s) => { if (s) { settings = Object.assign({}, settings, s); applyAiPrefs(); } }).catch(() => {});
   window.buddy = { el: root, ask, show: showBuddy, hide: hideBuddy };   // for self-tests
 })();

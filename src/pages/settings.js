@@ -177,21 +177,65 @@ $('defBtn').onclick = async () => { await call('default:set'); toast(IS_MAC ? 'C
 
 async function renderBuddy() {
   const s = await call('settings:get'); const st = await call('buddy:status');
+  $('buddyOn').checked = st.enabled;
   $('aiButton').value = s.aiButton || 'buddy';
-  if ($('buddyModel').options.length !== Object.keys(st.models).length) $('buddyModel').replaceChildren(...Object.entries(st.models).map(([k, v]) => { const o = el('option', null, v); o.value = k; return o; }));
-  $('buddyModel').value = st.model;
-  $('buddyKey').placeholder = st.hasKey ? '•••••••••• saved — paste a new key to replace' : 'sk-ant-…';
-  $('buddyKeyClear').classList.toggle('hidden', !st.hasKey);
+  $('aiButton').querySelector('[value="buddy"]').disabled = !st.enabled;
+  $('buddySetup').classList.toggle('dim', !st.enabled);
+  if ($('buddyProvider').options.length !== Object.keys(st.providers).length) $('buddyProvider').replaceChildren(...Object.entries(st.providers).map(([k, v]) => { const o = el('option', null, v.name); o.value = k; return o; }));
+  $('buddyProvider').value = st.provider;
+  const P = st.providers[st.provider];
+  $('buddyBaseRow').classList.toggle('hidden', !['custom', 'ollama'].includes(st.provider));
+  if (document.activeElement !== $('buddyBase')) $('buddyBase').value = st.base || '';
+  $('buddyBaseHint').textContent = st.provider === 'ollama' ? 'Usually http://localhost:11434/v1' : 'The service’s OpenAI-compatible API address';
+  $('buddyKeyRow').classList.toggle('hidden', P.key === false);
+  $('buddyKeyName').textContent = P.key === 'optional' ? 'API key (if needed)' : 'API key';
+  $('buddyKeyHint').textContent = `Get one at ${P.keyUrl}. Stored encrypted on this computer and only sent to this AI.`;
+  $('buddyKey').placeholder = P.hasKey ? '•••••••••• saved — paste a new key to replace' : 'Paste your API key';
+  $('buddyKeyClear').classList.toggle('hidden', !P.hasKey);
+  if (P.key === false) $('buddyKeyHint').textContent = P.keyUrl;
+  $('buddyModelHint').textContent = st.provider === 'anthropic' ? 'Smarter models answer better; faster ones cost less' : 'Pick one of the models this AI offers (models that can see images work best)';
+  if (document.activeElement !== $('buddyModel')) $('buddyModel').value = st.model || '';
+  $('buddyModelLoad').classList.toggle('hidden', st.provider === 'anthropic');
+  const list = $('buddyModelList');
+  if (st.provider === 'anthropic') list.replaceChildren(...Object.entries(st.claudeModels).map(([k, v]) => { const o = el('option', null, v); o.value = k; return o; }));
+  else if (list.dataset.for !== st.provider) { list.replaceChildren(); list.dataset.for = ''; if (P.key !== true || P.hasKey) loadModels(true); }
+  $('buddyState').textContent = !st.enabled ? 'Buddy is off.' : st.ready ? `✓ Ready — Buddy uses ${st.providerName} · ${st.modelName}` : (P.key === true && !P.hasKey ? 'Add an API key to wake Buddy up.' : !st.model ? 'Pick a model to finish setting up.' : 'Almost there…');
 }
-$('aiButton').onchange = () => call('settings:set', { aiButton: $('aiButton').value });
-$('buddyModel').onchange = async () => { const s = await call('settings:get'); call('settings:set', { buddy: Object.assign({}, s.buddy, { model: $('buddyModel').value }) }); };
-$('buddyKeySave').onclick = async () => {
-  const r = await call('buddy:setKey', $('buddyKey').value);
-  if (!r.ok) { toast(r.error); return; }
-  $('buddyKey').value = ''; toast('Saved — press the AI button to talk to Buddy'); renderBuddy();
-  call('settings:set', {});   // nudges open windows to refresh Buddy
+async function saveBuddy(patch) {
+  const s = await call('settings:get'); const b = Object.assign({}, s.buddy);
+  if (patch.model !== undefined) { b.models = Object.assign({}, b.models, { [b.provider || 'anthropic']: patch.model }); delete patch.model; }
+  if (patch.base !== undefined) { b.bases = Object.assign({}, b.bases, { [b.provider]: patch.base }); delete patch.base; }
+  await call('settings:set', { buddy: Object.assign(b, patch) });
+  renderBuddy();
+}
+async function loadModels(quiet) {
+  const prov = $('buddyProvider').value; const list = $('buddyModelList');
+  $('buddyModelLoad').disabled = true;
+  const r = await call('buddy:models', prov).catch(() => ({ ok: false, error: 'Couldn’t load models.' }));
+  $('buddyModelLoad').disabled = false;
+  if (!r.ok) { if (!quiet) toast(r.error); return; }
+  list.replaceChildren(...r.models.map((m) => { const o = el('option'); o.value = m; return o; })); list.dataset.for = prov;
+  if (!quiet) toast(`${r.models.length} models available — click the Model box to pick`);
+  if (!$('buddyModel').value && r.models.length) { $('buddyModel').value = r.models[0]; saveBuddy({ model: r.models[0] }); }
+}
+$('buddyOn').onchange = async () => {
+  const on = $('buddyOn').checked; const s = await call('settings:get');
+  if (!on && s.aiButton === 'buddy') await call('settings:set', { aiButton: 'sidebar' });
+  if (on && s.aiButton === 'sidebar') await call('settings:set', { aiButton: 'buddy' });
+  saveBuddy({ enabled: on }); toast(on ? 'AI buddy is on' : 'AI buddy is off');
 };
-$('buddyKeyClear').onclick = async () => { await call('buddy:setKey', ''); toast('Key removed'); renderBuddy(); call('settings:set', {}); };
+$('aiButton').onchange = () => call('settings:set', { aiButton: $('aiButton').value });
+$('buddyProvider').onchange = () => { $('buddyModelList').dataset.for = ''; $('buddyModel').value = ''; saveBuddy({ provider: $('buddyProvider').value }); };
+$('buddyBase').onchange = () => { const v = $('buddyBase').value.trim(); if (v && !/^https?:\/\//i.test(v)) { toast('The address should start with http:// or https://'); return; } saveBuddy({ base: v }); };
+$('buddyModel').onchange = () => { const v = $('buddyModel').value.trim(); if (v && !/^[\w.:\/@+-]{1,120}$/.test(v)) { toast('That model name has odd characters'); return; } saveBuddy({ model: v }); };
+$('buddyModelLoad').onclick = () => loadModels(false);
+$('buddyKeySave').onclick = async () => {
+  const r = await call('buddy:setKey', $('buddyProvider').value, $('buddyKey').value);
+  if (!r.ok) { toast(r.error); return; }
+  $('buddyKey').value = ''; $('buddyModelList').dataset.for = ''; toast('Saved — press the AI button to talk to Buddy');
+  await renderBuddy(); call('settings:set', {});   // nudges open windows to refresh Buddy
+};
+$('buddyKeyClear').onclick = async () => { await call('buddy:setKey', $('buddyProvider').value, ''); toast('Key removed'); renderBuddy(); call('settings:set', {}); };
 
 async function renderAbout() {
   const a = await call('about:info');

@@ -53,7 +53,7 @@ const DEFAULT_SETTINGS = () => ({
   name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true,
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
-  aiButton: 'buddy', buddy: { model: 'claude-opus-5-5', look: true },
+  aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
   bg: 'none', bgDim: 25,
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
@@ -475,10 +475,21 @@ function cleanPatch(patch) {
   if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
   if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
   if ('eq' in p) p.eq = cleanEq(p.eq);
-  if ('aiButton' in p && !['buddy', 'sidebar'].includes(p.aiButton)) delete p.aiButton;
+  if ('aiButton' in p && !['buddy', 'sidebar', 'off'].includes(p.aiButton)) delete p.aiButton;
   if ('bg' in p && !/^(none|image|preset:[a-z]{2,16})$/.test(String(p.bg))) delete p.bg;
   if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
-  if ('buddy' in p) p.buddy = { model: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(p.buddy && p.buddy.model) ? p.buddy.model : 'claude-opus-5-5', look: !(p.buddy && p.buddy.look === false) };
+  if ('buddy' in p) {
+    const b = p.buddy && typeof p.buddy === 'object' ? p.buddy : {};
+    const PROV = ['anthropic', 'openai', 'gemini', 'xai', 'mistral', 'openrouter', 'ollama', 'custom'];
+    const models = {}, bases = {};
+    for (const k of PROV) {
+      const m = b.models && b.models[k]; if (typeof m === 'string' && /^[\w.:\/@+-]{1,120}$/.test(m)) models[k] = m;
+      const u = b.bases && b.bases[k]; if (typeof u === 'string' && /^https?:\/\/[^\s]{1,300}$/.test(u)) bases[k] = u;
+    }
+    if (!models.anthropic) models.anthropic = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(b.model) ? b.model : 'claude-opus-5-5';
+    if (!['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(models.anthropic)) models.anthropic = 'claude-opus-5-5';
+    p.buddy = { enabled: b.enabled !== false, provider: PROV.includes(b.provider) ? b.provider : 'anthropic', models, bases, look: b.look !== false };
+  }
   return p;
 }
 const cleanEq = (eq) => {

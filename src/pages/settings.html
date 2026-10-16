@@ -82,10 +82,17 @@
 
     <section id="buddy"><h2>AI buddy</h2>
       <div class="card">
-        <div class="row"><div class="lbl">AI button<small>What the ✳ button and Ctrl+Shift+A open</small></div><select id="aiButton" class="input"><option value="buddy">AI buddy (corner helper)</option><option value="sidebar">AI sidebar (chat websites)</option></select></div>
-        <div class="row"><div class="lbl" id="buddyKeyLbl">Anthropic API key<small>Buddy runs on Claude. Get a key at console.anthropic.com → API keys. It’s stored encrypted on this computer and only sent to Anthropic.</small></div>
-          <div class="inline"><input id="buddyKey" class="input wide" type="password" placeholder="sk-ant-…" autocomplete="off"><button id="buddyKeySave" class="btn small primary">Save</button><button id="buddyKeyClear" class="btn small hidden">Remove</button></div></div>
-        <div class="row"><div class="lbl">Model<small>Smarter models answer better; faster ones cost less</small></div><select id="buddyModel" class="input"></select></div>
+        <div class="row"><div class="lbl">AI buddy<small>The little helper in the corner. Turn off to never show it.</small></div><input type="checkbox" class="toggle" id="buddyOn"></div>
+        <div class="row"><div class="lbl">AI button<small>What the ✳ button and Ctrl+Shift+A do</small></div><select id="aiButton" class="input"><option value="buddy">Open AI buddy</option><option value="sidebar">Open AI sidebar (chat websites)</option><option value="off">Nothing — hide the AI button</option></select></div>
+      </div>
+      <div class="card" id="buddySetup">
+        <div class="row"><div class="lbl">AI<small>Which AI Buddy talks to</small></div><select id="buddyProvider" class="input"></select></div>
+        <div class="row" id="buddyBaseRow"><div class="lbl">Address<small id="buddyBaseHint">The service’s OpenAI-compatible API address</small></div><input id="buddyBase" class="input wide" placeholder="https://…/v1" spellcheck="false"></div>
+        <div class="row" id="buddyKeyRow"><div class="lbl"><span id="buddyKeyName">API key</span><small id="buddyKeyHint"></small></div>
+          <div class="inline"><input id="buddyKey" class="input wide" type="password" placeholder="Paste your API key" autocomplete="off"><button id="buddyKeySave" class="btn small primary">Save</button><button id="buddyKeyClear" class="btn small hidden">Remove</button></div></div>
+        <div class="row"><div class="lbl">Model<small id="buddyModelHint">Pick one of the models this AI offers</small></div>
+          <div class="inline"><input id="buddyModel" class="input wide" list="buddyModelList" placeholder="Model name" spellcheck="false"><datalist id="buddyModelList"></datalist><button id="buddyModelLoad" class="btn small">Refresh list</button></div></div>
+        <div class="row"><div class="lbl" id="buddyState">…</div></div>
       </div>
     </section>
 
