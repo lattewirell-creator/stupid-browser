@@ -12,6 +12,7 @@ function render() {
   const acc = $('accent'); acc.innerHTML = '';
   for (const [k, c] of Object.entries(ACCENTS)) { const b = el('button', 'swatch' + ((s.accent || 'clay') === k ? ' on' : '')); b.style.background = c; b.title = k; b.onclick = () => set({ accent: k }).then(render); acc.appendChild(b); }
   bindValue('fontSize');
+  $('musicIsland').checked = s.musicIsland !== false; $('musicIsland').onchange = (e) => set({ musicIsland: e.target.checked });
   $('showBookmarksBar').checked = s.showBookmarksBar !== false; $('showBookmarksBar').onchange = (e) => set({ showBookmarksBar: e.target.checked });
   $('showHome').checked = s.showHome !== false; $('showHome').onchange = (e) => set({ showHome: e.target.checked });
   $('showSidebar').checked = s.showSidebar !== false; $('showSidebar').onchange = (e) => set({ showSidebar: e.target.checked });

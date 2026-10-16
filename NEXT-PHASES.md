@@ -42,3 +42,13 @@ Self-test: STUPID_SELFTEST=/tmp/s.png STUPID_SELFTEST_STEPS="quit@170000" STUPID
 
 ## Shipped in 1.1.0
 - Auto-updates via GitHub Releases (electron-updater): checks on startup + every 4 h, background download, "Restart to update" banner, Settings → About status/check button, installs on quit. Portable exe shows a note instead. See RELEASING.md.
+
+## Unreleased (macos-support branch)
+- macOS support: Mac title bar + menu bar, Chrome-for-Mac shortcuts (⌘ labels), dmg/zip builds (`npm run dist:mac`).
+- Music island (src/island.js + src/media-preload.js): floating "now playing" pill when music plays in a tab/sidebar app
+  you're not looking at. Hover for controls, click to jump there, drag to move (double-click resets position),
+  playlist panel for YouTube playlists, YouTube Music queue and Spotify track lists. Toggle in Settings → Appearance.
+- Profile button + app grid (src/workspace.js), top-right like Chrome: name/email/color, pick any webmail
+  (Gmail, Proton, Outlook, iCloud, Yahoo, Tuta, custom); customizable 9-dot app grid (add, rename, remove, drag to reorder).
+  Profiles are a card only for now: not separate data per profile yet.
+- DuckDuckGo is the default search engine for new installs.

@@ -39,10 +39,10 @@ const SEARCH_ENGINES = {
   ecosia: { name: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' }
 };
 const DEFAULT_SETTINGS = () => ({
-  name: '',
-  theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true,
+  name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
+  theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
-  search: 'google', customSearch: '',
+  search: 'duckduckgo', customSearch: '',
   adblock: true, dnt: false, savePasswords: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
@@ -56,6 +56,21 @@ const DEFAULT_SIDEBAR = [
   { id: 'spotify', name: 'Spotify', url: 'https://open.spotify.com' },
   { id: 'ytmusic', name: 'YouTube Music', url: 'https://music.youtube.com' },
   { id: 'twitch', name: 'Twitch', url: 'https://www.twitch.tv' }
+];
+// App grid (9-dot launcher). 'mail' opens whichever mail service the profile picked.
+const DEFAULT_LAUNCHER = [
+  { id: 'mail', name: 'Mail', url: 'mail' },
+  { id: 'search', name: 'Search', url: 'https://duckduckgo.com' },
+  { id: 'youtube', name: 'YouTube', url: 'https://www.youtube.com' },
+  { id: 'maps', name: 'Maps', url: 'https://maps.google.com' },
+  { id: 'drive', name: 'Drive', url: 'https://drive.google.com' },
+  { id: 'docs', name: 'Docs', url: 'https://docs.google.com/document' },
+  { id: 'sheets', name: 'Sheets', url: 'https://docs.google.com/spreadsheets' },
+  { id: 'calendar', name: 'Calendar', url: 'https://calendar.google.com' },
+  { id: 'photos', name: 'Photos', url: 'https://photos.google.com' },
+  { id: 'translate', name: 'Translate', url: 'https://translate.google.com' },
+  { id: 'news', name: 'News', url: 'https://news.google.com' },
+  { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
 const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
@@ -219,6 +234,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Music island: lets the browser UI read "now playing" and press play/pause/next (all web sessions).
+  ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'media-preload.js') });
   if (tabs) {
     ses.__stupidTabs = true;
     ses.__incognito = incognito;
@@ -449,6 +466,11 @@ handle('bots:defaults', ANY, () => DEFAULT_BOTS);
 handle('sidebar:get', ANY, () => store.read('sidebar.json', DEFAULT_SIDEBAR));
 handle('sidebar:set', ANY, (_e, list) => { if (Array.isArray(list)) { store.write('sidebar.json', list.slice(0, 40)); broadcast('sidebar:changed', list); } return true; });
 handle('sidebar:defaults', ANY, () => DEFAULT_SIDEBAR);
+const cleanLauncher = (list) => list.filter((x) => x && typeof x.name === 'string' && (x.url === 'mail' || /^https?:\/\//i.test(String(x.url))))
+  .slice(0, 60).map((x) => ({ id: String(x.id || 'l' + Date.now().toString(36)).slice(0, 40), name: x.name.slice(0, 40), url: String(x.url).slice(0, 2000) }));
+handle('launcher:get', ANY, () => store.read('launcher.json', DEFAULT_LAUNCHER));
+handle('launcher:set', ANY, (_e, list) => { if (Array.isArray(list)) { const l = cleanLauncher(list); store.write('launcher.json', l); broadcast('launcher:changed', l); } return true; });
+handle('launcher:defaults', ANY, () => DEFAULT_LAUNCHER);
 
 handle('history:suggest', ['shell'], (_e, q) => suggest(q));
 handle('history:query', ['internal'], (_e, q, limit = 300, before = Infinity) => {

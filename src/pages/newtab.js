@@ -1,5 +1,5 @@
 'use strict';
-let settings = { name: '', searchUrl: 'https://www.google.com/search?q=%s' };
+let settings = { name: '', searchUrl: 'https://duckduckgo.com/?q=%s' };
 function tick() {
   const d = new Date(); const h = d.getHours();
   const part = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
@@ -37,5 +37,5 @@ $('search').addEventListener('submit', (e) => {
   const t = $('q').value.trim(); if (!t) return;
   if (/^https?:\/\//i.test(t)) location.href = t;
   else if (!/\s/.test(t) && /^[^\s/]+\.[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(t)) location.href = 'https://' + t;
-  else location.href = (settings.searchUrl || 'https://www.google.com/search?q=%s').replace('%s', encodeURIComponent(t));
+  else location.href = (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(t));
 });
