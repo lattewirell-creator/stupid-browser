@@ -38,3 +38,4 @@ section h3 { font-size: 18px; margin: 22px 0 10px; color: var(--text-2); }
 section.dim { opacity: .3; }
 .upd-bar { height: 4px; border-radius: 4px; background: var(--line); margin-top: 8px; overflow: hidden; max-width: 320px; }
 .upd-bar div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.card.dim { opacity: .5; pointer-events: none; }

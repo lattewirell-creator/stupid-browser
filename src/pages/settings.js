@@ -12,6 +12,7 @@ function render() {
   const acc = $('accent'); acc.innerHTML = '';
   for (const [k, c] of Object.entries(ACCENTS)) { const b = el('button', 'swatch' + ((s.accent || 'clay') === k ? ' on' : '')); b.style.background = c; b.title = k; b.onclick = () => set({ accent: k }).then(render); acc.appendChild(b); }
   bindValue('fontSize');
+  $('musicIsland').checked = s.musicIsland !== false; $('musicIsland').onchange = (e) => set({ musicIsland: e.target.checked });
   $('showBookmarksBar').checked = s.showBookmarksBar !== false; $('showBookmarksBar').onchange = (e) => set({ showBookmarksBar: e.target.checked });
   $('showHome').checked = s.showHome !== false; $('showHome').onchange = (e) => set({ showHome: e.target.checked });
   $('showSidebar').checked = s.showSidebar !== false; $('showSidebar').onchange = (e) => set({ showSidebar: e.target.checked });
@@ -26,7 +27,11 @@ function render() {
     r.appendChild(x); pages.appendChild(r);
   });
   // search
-  $('engine').value = s.search || 'google'; $('engine').onchange = () => set({ search: $('engine').value }).then(render);
+  if ($('engine').options.length < Object.keys(s.engines || {}).length + 1) {
+    $('engine').replaceChildren(...Object.entries(s.engines || {}).map(([k, v]) => { const o = el('option', null, v.name); o.value = k; return o; }));
+    const c = el('option', null, 'Custom…'); c.value = 'custom'; $('engine').appendChild(c);
+  }
+  $('engine').value = s.search || 'duckduckgo'; $('engine').onchange = () => set({ search: $('engine').value }).then(render);
   $('customRow').classList.toggle('hidden', s.search !== 'custom');
   $('customSearch').value = s.customSearch || '';
   $('customSearch').onchange = () => { const v = $('customSearch').value.trim(); if (v && (!/^https?:\/\//.test(v) || !v.includes('%s'))) { toast('Use a full https:// address with %s in it'); return; } set({ customSearch: v }).then(() => toast('Saved')); };
@@ -76,9 +81,12 @@ async function renderPerms() {
   }
 }
 
+const IS_MAC = S.platform === 'darwin';
+if (IS_MAC) $('defHint').textContent = 'macOS asks you to confirm. Choose “Use The Stupid Browser”.';
+
 async function renderPasswords() {
   const enc = await call('pw:encryption');
-  $('encNote').textContent = enc ? 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.' : 'Warning: system encryption is not available, passwords are only obfuscated.';
+  $('encNote').textContent = enc ? (IS_MAC ? 'Passwords are encrypted with a key kept in your macOS Keychain and stay on this computer.' : 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.') : 'Warning: system encryption is not available, passwords are only obfuscated.';
   const list = await call('pw:list');
   const box = $('pwList'); box.innerHTML = '';
   if (!list.length) { box.appendChild(el('div', 'row muted', 'No saved passwords. When you sign in to a site, The Stupid Browser offers to save it.')); return; }
@@ -165,7 +173,71 @@ async function renderDefault() {
   const isDef = st.http && st.https;
   $('defStatus').firstChild.textContent = isDef ? 'The Stupid Browser is registered for web links. ' : 'The Stupid Browser is not your default browser. ';
 }
-$('defBtn').onclick = async () => { await call('default:set'); toast('Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
+$('defBtn').onclick = async () => { await call('default:set'); toast(IS_MAC ? 'Confirm in the macOS dialog that opened' : 'Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
+
+async function renderBuddy() {
+  const s = await call('settings:get'); const st = await call('buddy:status');
+  $('buddyOn').checked = st.enabled;
+  $('aiButton').value = s.aiButton || 'buddy';
+  $('aiButton').querySelector('[value="buddy"]').disabled = !st.enabled;
+  $('buddySetup').classList.toggle('dim', !st.enabled);
+  if ($('buddyProvider').options.length !== Object.keys(st.providers).length) $('buddyProvider').replaceChildren(...Object.entries(st.providers).map(([k, v]) => { const o = el('option', null, v.name); o.value = k; return o; }));
+  $('buddyProvider').value = st.provider;
+  const P = st.providers[st.provider];
+  $('buddyBaseRow').classList.toggle('hidden', !['custom', 'ollama'].includes(st.provider));
+  if (document.activeElement !== $('buddyBase')) $('buddyBase').value = st.base || '';
+  $('buddyBaseHint').textContent = st.provider === 'ollama' ? 'Usually http://localhost:11434/v1' : 'The service’s OpenAI-compatible API address';
+  $('buddyKeyRow').classList.toggle('hidden', P.key === false);
+  $('buddyKeyName').textContent = P.key === 'optional' ? 'API key (if needed)' : 'API key';
+  $('buddyKeyHint').textContent = `Get one at ${P.keyUrl}. Stored encrypted on this computer and only sent to this AI.`;
+  $('buddyKey').placeholder = P.hasKey ? '•••••••••• saved — paste a new key to replace' : 'Paste your API key';
+  $('buddyKeyClear').classList.toggle('hidden', !P.hasKey);
+  if (P.key === false) $('buddyKeyHint').textContent = P.keyUrl;
+  $('buddyModelHint').textContent = st.provider === 'anthropic' ? 'Smarter models answer better; faster ones cost less' : 'Pick one of the models this AI offers (models that can see images work best)';
+  if (document.activeElement !== $('buddyModel')) $('buddyModel').value = st.model || '';
+  $('buddyModelLoad').classList.toggle('hidden', st.provider === 'anthropic');
+  const list = $('buddyModelList');
+  if (st.provider === 'anthropic') list.replaceChildren(...Object.entries(st.claudeModels).map(([k, v]) => { const o = el('option', null, v); o.value = k; return o; }));
+  else if (list.dataset.for !== st.provider) { list.replaceChildren(); list.dataset.for = ''; if (P.key !== true || P.hasKey) loadModels(true); }
+  $('buddyState').textContent = !st.enabled ? 'Buddy is off.' : st.ready ? `✓ Ready — Buddy uses ${st.providerName} · ${st.modelName}` : (P.key === true && !P.hasKey ? 'Add an API key to wake Buddy up.' : !st.model ? 'Pick a model to finish setting up.' : 'Almost there…');
+}
+async function saveBuddy(patch) {
+  const s = await call('settings:get'); const b = Object.assign({}, s.buddy);
+  if (patch.model !== undefined) { b.models = Object.assign({}, b.models, { [b.provider || 'anthropic']: patch.model }); delete patch.model; }
+  if (patch.base !== undefined) { b.bases = Object.assign({}, b.bases, { [b.provider]: patch.base }); delete patch.base; }
+  await call('settings:set', { buddy: Object.assign(b, patch) });
+  renderBuddy();
+}
+async function loadModels(quiet) {
+  const prov = $('buddyProvider').value; const list = $('buddyModelList');
+  $('buddyModelLoad').disabled = true;
+  const r = await call('buddy:models', prov).catch(() => ({ ok: false, error: 'Couldn’t load models.' }));
+  $('buddyModelLoad').disabled = false;
+  if (!r.ok) { if (!quiet) toast(r.error); return; }
+  list.replaceChildren(...r.models.map((m) => { const o = el('option'); o.value = m; return o; })); list.dataset.for = prov;
+  if (!quiet) toast(`${r.models.length} models available — click the Model box to pick`);
+  if (!$('buddyModel').value && r.models.length) { $('buddyModel').value = r.models[0]; saveBuddy({ model: r.models[0] }); }
+}
+$('buddyOn').onchange = async () => {
+  const on = $('buddyOn').checked; const s = await call('settings:get');
+  if (!on && s.aiButton === 'buddy') await call('settings:set', { aiButton: 'sidebar' });
+  if (on && s.aiButton === 'sidebar') await call('settings:set', { aiButton: 'buddy' });
+  saveBuddy({ enabled: on }); toast(on ? 'AI buddy is on' : 'AI buddy is off');
+};
+$('aiButton').onchange = () => call('settings:set', { aiButton: $('aiButton').value });
+$('buddyProvider').onchange = () => { $('buddyModelList').dataset.for = ''; $('buddyModel').value = ''; saveBuddy({ provider: $('buddyProvider').value }); };
+$('buddyBase').onchange = () => { const v = $('buddyBase').value.trim(); if (v && !/^https?:\/\//i.test(v)) { toast('The address should start with http:// or https://'); return; } saveBuddy({ base: v }); };
+$('buddyModel').onchange = () => { const v = $('buddyModel').value.trim(); if (v && !/^[\w.:\/@+-]{1,120}$/.test(v)) { toast('That model name has odd characters'); return; } saveBuddy({ model: v }); };
+$('buddyModelLoad').onclick = () => loadModels(false);
+$('buddyKeySave').onclick = async () => {
+  const r = await call('buddy:setKey', $('buddyProvider').value, $('buddyKey').value);
+  if (!r.ok) { toast(r.error); return; }
+  $('buddyKey').value = ''; $('buddyModelList').dataset.for = ''; toast('Saved — press the AI button to talk to Buddy');
+  await renderBuddy(); call('settings:set', {});   // nudges open windows to refresh Buddy
+};
+$('buddyKeyClear').onclick = async () => { await call('buddy:setKey', $('buddyProvider').value, ''); toast('Key removed'); renderBuddy(); call('settings:set', {}); };
+
+$('showWelcome').onclick = () => { location.href = 'stupid://welcome/'; };
 
 async function renderAbout() {
   const a = await call('about:info');
@@ -176,7 +248,7 @@ function renderUpdate(u) {
   if (!u) return;
   const when = u.lastCheck ? ' · checked ' + new Date(u.lastCheck).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const msg = {
-    unsupported: u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
+    unsupported: IS_MAC ? 'Automatic updates aren’t available on macOS yet. Download the latest .dmg from GitHub Releases to update.' : u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
     idle: `Version ${u.current}. Updates are checked automatically every few hours.`,
     checking: 'Checking for updates…',
     none: `You’re up to date (version ${u.current})${when}.`,
@@ -211,7 +283,7 @@ $('filter').oninput = () => {
 
 (async () => {
   s = await call('settings:get');
-  render(); renderPerms(); renderPasswords(); renderBots(); renderSide(); renderDefault(); renderAbout();
+  render(); renderPerms(); renderPasswords(); renderBots(); renderSide(); renderDefault(); renderAbout(); renderBuddy();
   highlightNav();
   if (location.hash) { const t = document.querySelector(location.hash); if (t) setTimeout(() => t.scrollIntoView(), 50); }
 })();

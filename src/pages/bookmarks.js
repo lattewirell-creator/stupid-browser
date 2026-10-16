@@ -92,3 +92,14 @@ $('deleteFolder').onclick = () => { const f = all.find((b) => b.id === folder); 
 $('q').oninput = render;
 S.on('bookmarks:changed', (b) => { all = b; if (folder && !all.some((x) => x.id === folder)) folder = null; if (!editing) render(); });
 call('bookmarks:get').then((b) => { all = b; render(); });
+
+/* import from other browsers or a bookmarks file */
+$('importBtn').onclick = async () => {
+  const box = $('importList');
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  let list = []; try { list = await call('import:sources'); } catch {}
+  const done = (r) => { if (r.ok) toast(`Added ${r.added} bookmarks`); else if (r.error !== 'canceled') toast(r.error); box.classList.add('hidden'); };
+  box.replaceChildren(...list.map((src) => { const b = el('button', 'btn small', `${src.name} (${src.count})`); b.onclick = async () => done(await call('import:browser', src.id)); return b; }));
+  const f = el('button', 'btn small', 'From a file (Safari, Firefox…)'); f.onclick = async () => done(await call('import:file'));
+  box.appendChild(f); box.classList.remove('hidden');
+};

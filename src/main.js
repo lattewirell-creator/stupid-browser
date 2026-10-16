@@ -9,11 +9,14 @@ const os = require('os');
 const { pathToFileURL } = require('url');
 const store = require('./store');
 
+const IS_MAC = process.platform === 'darwin';
 app.setName('The Stupid Browser');
-app.setAppUserModelId('com.emil.stupidbrowser');
+const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
+if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
 
 // Plain Chrome user agent so sites (Google, AI chats) treat us like a normal browser.
-const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; Win64; x64';
+const UA = `Mozilla/5.0 (${UA_OS}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
 app.userAgentFallback = UA;
 
 protocol.registerSchemesAsPrivileged([
@@ -34,13 +37,27 @@ const SEARCH_ENGINES = {
   google: { name: 'Google', url: 'https://www.google.com/search?q=%s' },
   bing: { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
   duckduckgo: { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
-  ecosia: { name: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' }
+  ecosia: { name: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' },
+  brave: { name: 'Brave Search', url: 'https://search.brave.com/search?q=%s' },
+  startpage: { name: 'Startpage', url: 'https://www.startpage.com/do/search?q=%s' },
+  qwant: { name: 'Qwant', url: 'https://www.qwant.com/?q=%s' },
+  kagi: { name: 'Kagi', url: 'https://kagi.com/search?q=%s' },
+  mojeek: { name: 'Mojeek', url: 'https://www.mojeek.com/search?q=%s' },
+  perplexity: { name: 'Perplexity (AI)', url: 'https://www.perplexity.ai/search?q=%s' },
+  yahoo: { name: 'Yahoo', url: 'https://search.yahoo.com/search?p=%s' },
+  yandex: { name: 'Yandex', url: 'https://yandex.com/search/?text=%s' },
+  wikipedia: { name: 'Wikipedia', url: 'https://en.wikipedia.org/w/index.php?search=%s' },
+  youtube: { name: 'YouTube', url: 'https://www.youtube.com/results?search_query=%s' }
 };
 const DEFAULT_SETTINGS = () => ({
-  name: '',
-  theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true,
+  name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
+  logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true,
+  eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
+  aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
+  bg: 'none', bgDim: 25,
+  theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
-  search: 'google', customSearch: '',
+  search: 'duckduckgo', customSearch: '',
   adblock: true, dnt: false, savePasswords: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
@@ -55,7 +72,22 @@ const DEFAULT_SIDEBAR = [
   { id: 'ytmusic', name: 'YouTube Music', url: 'https://music.youtube.com' },
   { id: 'twitch', name: 'Twitch', url: 'https://www.twitch.tv' }
 ];
-const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source'];
+// App grid (9-dot launcher). 'mail' opens whichever mail service the profile picked.
+const DEFAULT_LAUNCHER = [
+  { id: 'mail', name: 'Mail', url: 'mail' },
+  { id: 'search', name: 'Search', url: 'https://duckduckgo.com' },
+  { id: 'youtube', name: 'YouTube', url: 'https://www.youtube.com' },
+  { id: 'maps', name: 'Maps', url: 'https://maps.google.com' },
+  { id: 'drive', name: 'Drive', url: 'https://drive.google.com' },
+  { id: 'docs', name: 'Docs', url: 'https://docs.google.com/document' },
+  { id: 'sheets', name: 'Sheets', url: 'https://docs.google.com/spreadsheets' },
+  { id: 'calendar', name: 'Calendar', url: 'https://calendar.google.com' },
+  { id: 'photos', name: 'Photos', url: 'https://photos.google.com' },
+  { id: 'translate', name: 'Translate', url: 'https://translate.google.com' },
+  { id: 'news', name: 'News', url: 'https://news.google.com' },
+  { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
+];
+const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -66,6 +98,7 @@ function setSettings(patch) {
   store.write('settings.json', next);
   applySettingsSideEffects(patch);
   broadcast('settings:changed', publicSettings());
+  if ('name' in patch || 'profileColor' in patch || 'email' in patch) profiles.sync(next);
   return next;
 }
 function publicSettings() {
@@ -123,8 +156,10 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
     title: incognito ? 'Private — The Stupid Browser' : 'The Stupid Browser',
     backgroundColor: c.bg,
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: c.bar, symbolColor: c.fg, height: 40 },
+    // Windows: custom-drawn caption buttons on the right. macOS: traffic lights inset on the left.
+    ...(IS_MAC
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 } }
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: c.bar, symbolColor: c.fg, height: 40 } }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -132,7 +167,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
       spellcheck: true
     }
   });
-  win.removeMenu();
+  if (!IS_MAC) win.removeMenu();   // macOS uses the app menu bar (see buildMacMenu)
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
@@ -215,6 +250,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Music island: lets the browser UI read "now playing" and press play/pause/next (all web sessions).
+  ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'media-preload.js') });
   if (tabs) {
     ses.__stupidTabs = true;
     ses.__incognito = incognito;
@@ -397,13 +434,19 @@ function setAdblock(on, only) {
 function applySettingsSideEffects(patch) {
   if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system';
   if ('adblock' in patch) setAdblock(!!patch.adblock);
+  if ('eq' in patch) {
+    // Equalizer runs inside web pages (media-preload.js); push the new curve to every page.
+    for (const wc of webContents.getAllWebContents()) {
+      if (!wc.isDestroyed() && wc.getType() === 'webview' && /^https?:/.test(wc.getURL())) wc.send('eq:update', getSettings().eq);
+    }
+  }
 }
 nativeTheme.on('updated', () => {
   for (const { win, incognito } of windows.values()) {
     if (win.isDestroyed()) continue;
     const c = themeColors(incognito);
     win.setBackgroundColor(c.bg);
-    if (process.platform !== 'darwin') { try { win.setTitleBarOverlay({ color: c.bar, symbolColor: c.fg, height: 40 }); } catch {} }
+    if (!IS_MAC) { try { win.setTitleBarOverlay({ color: c.bar, symbolColor: c.fg, height: 40 }); } catch {} }
   }
 });
 
@@ -423,7 +466,36 @@ const ANY = ['shell', 'internal'];
 
 handle('win:info', ['shell'], (e) => { const w = entryFor(e.sender); const r = w.restore; w.restore = null; const u = w.pendingUrls; w.pendingUrls = null; return { incognito: w.incognito, partition: w.partition, ai: w.aiPartition, apps: w.appsPartition, restore: r, urls: u, version: app.getVersion() }; });
 handle('settings:get', ANY, () => publicSettings());
-handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(patch); return publicSettings(); });
+handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(cleanPatch(patch)); return publicSettings(); });
+// Values that end up in pages or audio graphs get checked here.
+function cleanPatch(patch) {
+  const p = Object.assign({}, patch);
+  if ('logo' in p && !['ring', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
+  if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
+  if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
+  if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
+  if ('eq' in p) p.eq = cleanEq(p.eq);
+  if ('aiButton' in p && !['buddy', 'sidebar', 'off'].includes(p.aiButton)) delete p.aiButton;
+  if ('bg' in p && !/^(none|image|preset:[a-z]{2,16})$/.test(String(p.bg))) delete p.bg;
+  if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
+  if ('buddy' in p) {
+    const b = p.buddy && typeof p.buddy === 'object' ? p.buddy : {};
+    const PROV = ['anthropic', 'openai', 'gemini', 'xai', 'mistral', 'openrouter', 'ollama', 'custom'];
+    const models = {}, bases = {};
+    for (const k of PROV) {
+      const m = b.models && b.models[k]; if (typeof m === 'string' && /^[\w.:\/@+-]{1,120}$/.test(m)) models[k] = m;
+      const u = b.bases && b.bases[k]; if (typeof u === 'string' && /^https?:\/\/[^\s]{1,300}$/.test(u)) bases[k] = u;
+    }
+    if (!models.anthropic) models.anthropic = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(b.model) ? b.model : 'claude-opus-5-5';
+    if (!['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(models.anthropic)) models.anthropic = 'claude-opus-5-5';
+    p.buddy = { enabled: b.enabled !== false, provider: PROV.includes(b.provider) ? b.provider : 'anthropic', models, bases, look: b.look !== false };
+  }
+  return p;
+}
+const cleanEq = (eq) => {
+  const g = Array.isArray(eq && eq.gains) ? eq.gains : [];
+  return { on: !!(eq && eq.on), preset: String((eq && eq.preset) || 'custom').slice(0, 20), gains: Array.from({ length: 8 }, (_, i) => Math.max(-12, Math.min(12, Math.round((+g[i] || 0) * 2) / 2))) };
+};
 handle('settings:reset', ['internal'], () => { const keep = { pinned: getSettings().pinned }; store.write('settings.json', keep); applySettingsSideEffects(DEFAULT_SETTINGS()); broadcast('settings:changed', publicSettings()); return publicSettings(); });
 
 handle('bookmarks:get', ANY, () => getBookmarks());
@@ -445,6 +517,30 @@ handle('bots:defaults', ANY, () => DEFAULT_BOTS);
 handle('sidebar:get', ANY, () => store.read('sidebar.json', DEFAULT_SIDEBAR));
 handle('sidebar:set', ANY, (_e, list) => { if (Array.isArray(list)) { store.write('sidebar.json', list.slice(0, 40)); broadcast('sidebar:changed', list); } return true; });
 handle('sidebar:defaults', ANY, () => DEFAULT_SIDEBAR);
+const cleanLauncher = (list) => list.filter((x) => x && typeof x.name === 'string' && (x.url === 'mail' || /^https?:\/\//i.test(String(x.url))))
+  .slice(0, 60).map((x) => ({ id: String(x.id || 'l' + Date.now().toString(36)).slice(0, 40), name: x.name.slice(0, 40), url: String(x.url).slice(0, 2000) }));
+handle('launcher:get', ANY, () => store.read('launcher.json', DEFAULT_LAUNCHER));
+handle('launcher:set', ANY, (_e, list) => { if (Array.isArray(list)) { const l = cleanLauncher(list); store.write('launcher.json', l); broadcast('launcher:changed', l); } return true; });
+handle('launcher:defaults', ANY, () => DEFAULT_LAUNCHER);
+// New-tab widgets (src/pages/widgets.js). Each: { id, type, config }.
+const WIDGET_TYPES = ['weather', 'notes', 'todo', 'clock', 'calendar', 'countdown', 'custom'];
+const num = (v, lo, hi) => Math.max(lo, Math.min(hi, +v || 0));
+const cleanWidgets = (list) => list.filter((w) => w && WIDGET_TYPES.includes(w.type)).slice(0, 20).map((w) => {
+  let config = w.config && typeof w.config === 'object' ? w.config : {};
+  if (JSON.stringify(config).length > (w.type === 'custom' ? 600000 : 20000)) config = {};   // custom widgets may hold a photo
+  const out = { id: String(w.id || 'w' + Date.now().toString(36)).slice(0, 40), type: w.type, config };
+  if (w.pos && typeof w.pos === 'object') out.pos = { x: num(w.pos.x, 0, 1), y: num(w.pos.y, 0, 1), w: num(w.pos.w, 160, 900) };
+  return out;
+});
+// New-tab background photo, kept out of settings.json so settings broadcasts stay small.
+handle('background:get', ['internal'], () => store.read('background.json', { image: '' }).image || '');
+handle('background:set', ['internal'], (_e, image) => {
+  image = String(image || '');
+  if (image && !(image.length < 6e6 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image))) return false;
+  store.write('background.json', { image }); broadcast('background:changed', true); return true;
+});
+handle('widgets:get', ['internal'], () => store.read('widgets.json', [{ id: 'w-weather', type: 'weather', config: {} }, { id: 'w-todo', type: 'todo', config: { items: [] } }, { id: 'w-notes', type: 'notes', config: { text: '' } }]));
+handle('widgets:set', ['internal'], (_e, list) => { if (Array.isArray(list)) { const l = cleanWidgets(list); store.write('widgets.json', l); broadcast('widgets:changed', l); } return true; });
 
 handle('history:suggest', ['shell'], (_e, q) => suggest(q));
 handle('history:query', ['internal'], (_e, q, limit = 300, before = Infinity) => {
@@ -539,10 +635,17 @@ handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, ori
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
 handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
+handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
+handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
+handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
+handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
+require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
+require('./import-bookmarks')({ handle, store, getBookmarks, broadcast });
 
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
 handle('default:set', ['internal'], async () => {
   app.setAsDefaultProtocolClient('http'); app.setAsDefaultProtocolClient('https');
+  // macOS shows its own "change default browser?" confirmation for the call above.
   if (process.platform === 'win32') {
     try { await shell.openExternal('ms-settings:defaultapps?registeredAppUser=The%20Stupid%20Browser'); }
     catch { try { await shell.openExternal('ms-settings:defaultapps'); } catch {} }
@@ -552,6 +655,7 @@ handle('default:set', ['internal'], async () => {
 handle('about:info', ['internal'], () => ({ version: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node, platform: `${os.type()} ${os.release()} ${process.arch}`, userData: app.getPath('userData') }));
 
 // Password helper preload (runs inside web pages): origin-checked by the frame that sends.
+ipcMain.handle('eq:get', (e) => (e.sender.getType() === 'webview' ? cleanEq(getSettings().eq) : null));
 ipcMain.handle('pw:query', (e) => {
   if (e.sender.getType() !== 'webview' || !getSettings().savePasswords) return [];
   let origin; try { origin = e.senderFrame.origin; } catch { return []; }
@@ -624,7 +728,9 @@ function shortcutFor(input) {
   if (input.type !== 'keyDown') return null;
   const k = (input.key || '').toLowerCase();
   const code = input.code || '';
-  const ctrl = input.control || input.meta;
+  if (IS_MAC) { const m = macShortcutFor(input, k, code); if (m !== undefined) return m; }
+  // On macOS Ctrl+letter is text editing (Ctrl+A/E/K…), so only Cmd counts there.
+  const ctrl = IS_MAC ? input.meta : (input.control || input.meta);
   const shift = input.shift, alt = input.alt;
   if (k === 'f12' || (ctrl && shift && k === 'i')) return 'devtools';
   if (ctrl && shift && k === 'j') return 'devtools';
@@ -676,8 +782,51 @@ function shortcutFor(input) {
   if (/^[1-9]$/.test(k)) return 'tab-' + k;
   return null;
 }
+// macOS (Chrome for Mac) bindings. Returns undefined to fall through to the shared table.
+function macShortcutFor(input, k, code) {
+  const cmd = input.meta, shift = input.shift, alt = input.alt, ctl = input.control;
+  if (ctl && !cmd && k === 'tab') return shift ? 'prev-tab' : 'next-tab';
+  if (ctl && cmd && k === 'f') return 'fullscreen';
+  if (ctl) return null;
+  if (!cmd) return (k === 'f12' || k === 'f5' || k === 'f3' || k === 'f6') ? undefined : null;
+  if (alt) {
+    if (k === 'i' || code === 'KeyI' || k === 'j' || code === 'KeyJ') return 'devtools';
+    if (k === 'u' || code === 'KeyU') return 'view-source';
+    if (k === 'b' || code === 'KeyB') return 'bookmarks';
+    if (k === 'arrowright') return 'next-tab';
+    if (k === 'arrowleft') return 'prev-tab';
+    return null;
+  }
+  if (shift) {
+    if (code === 'BracketRight' || k === '}') return 'next-tab';
+    if (code === 'BracketLeft' || k === '{') return 'prev-tab';
+    if (k === 'h') return 'home';
+    if (k === 'j') return 'downloads';
+    if (k === 'backspace' || k === 'delete') return 'clear-data';
+    if (k === 'w') return 'close-window';
+    return undefined;
+  }
+  if (k === '[' || code === 'BracketLeft') return 'back';      // not Cmd+Arrow: that's line start/end in text fields
+  if (k === ']' || code === 'BracketRight') return 'forward';
+  if (k === 'y') return 'history';
+  if (k === 'h' || k === 'q' || k === 'm' || k === 'c' || k === 'v' || k === 'x' || k === 'a' || k === 'z') return null;   // app menu roles
+  return undefined;
+}
+// Easter egg: the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) opens the Zelda "secret found" sound.
+const KONAMI = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
+const KONAMI_URL = 'https://www.youtube.com/watch?v=0vngOmw2hcM&autoplay=1';
+const konamiProgress = new Map();   // shell webContents id -> keys matched so far
+function konami(target, input) {
+  if (input.type !== 'keyDown' || input.isAutoRepeat || input.control || input.meta || input.alt) return;
+  const k = (input.key || '').toLowerCase();
+  let n = konamiProgress.get(target.id) || 0;
+  n = k === KONAMI[n] ? n + 1 : (k === KONAMI[0] ? (n === 2 && k === 'arrowup' ? 2 : 1) : 0);
+  if (n === KONAMI.length) { n = 0; target.send('open-url', { url: KONAMI_URL, where: 'foreground' }); }
+  konamiProgress.set(target.id, n);
+}
 function hookShortcuts(wc) {
   wc.on('before-input-event', (event, input) => {
+    { const t = shellFor(wc); if (t) konami(t, input); }
     const cmd = shortcutFor(input);
     if (!cmd) return;
     const target = shellFor(wc);
@@ -825,36 +974,121 @@ function selfTest(win) {
 const urlFromArgv = (argv) => argv.slice(1).find((a) => /^(https?:\/\/|file:\/\/)/i.test(a) || /\.(html?|pdf|svg)$/i.test(a));
 function normalizeArgUrl(a) { if (!a) return null; if (/^(https?|file):/i.test(a)) return a; try { return pathToFileURL(path.resolve(a)).toString(); } catch { return null; } }
 
+function openFromOutside(url) {
+  const w = [...windows.values()].reverse().find((x) => !x.incognito && !x.win.isDestroyed());
+  if (w) {
+    if (w.win.isMinimized()) w.win.restore();
+    w.win.focus();
+    if (url) w.win.webContents.send('open-url', { url, where: 'foreground' });
+    else w.win.webContents.send('shortcut', 'new-tab');
+  } else createWindow({ urls: url ? [url] : null });
+}
+
+function openStartupWindows(extraUrls) {
+  const s = getSettings();
+  const saved = store.read('session.json', []);
+  if (s.startup === 'continue' && saved.length) {
+    saved.forEach((sess, i) => createWindow({ restore: sess, urls: i === 0 && extraUrls.length ? extraUrls : null }));
+  } else if (s.startup === 'pages' && s.startupPages && s.startupPages.length) {
+    createWindow({ urls: [...s.startupPages, ...extraUrls] });
+  } else {
+    createWindow({ urls: extraUrls.length ? extraUrls : null });
+  }
+}
+
+// macOS application menu. Without it Cmd+C/V/X/A/Z don't work and there's no Quit/Hide.
+// Browser shortcuts are handled in hookShortcuts; menu items just send the same commands.
+function buildMacMenu() {
+  const send = (cmd) => () => {
+    const w = BrowserWindow.getFocusedWindow();
+    if (w && windows.has(w.id)) w.webContents.send('shortcut', cmd); else if (cmd === 'new-tab') createWindow();
+  };
+  const T = [
+    { label: app.name, submenu: [
+      { role: 'about' }, { type: 'separator' },
+      { label: 'Settings…', accelerator: 'Cmd+,', registerAccelerator: false, click: send('settings') },
+      { type: 'separator' }, { role: 'services' }, { type: 'separator' },
+      { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }
+    ] },
+    { label: 'File', submenu: [
+      { label: 'New Tab', accelerator: 'Cmd+T', registerAccelerator: false, click: send('new-tab') },
+      { label: 'New Window', accelerator: 'Cmd+N', registerAccelerator: false, click: () => createWindow() },
+      { label: 'New Private Window', accelerator: 'Cmd+Shift+N', registerAccelerator: false, click: () => createWindow({ incognito: true }) },
+      { label: 'Reopen Closed Tab', accelerator: 'Cmd+Shift+T', registerAccelerator: false, click: send('reopen-tab') },
+      { type: 'separator' },
+      { label: 'Open Location…', accelerator: 'Cmd+L', registerAccelerator: false, click: send('focus-address') },
+      { label: 'Close Tab', accelerator: 'Cmd+W', registerAccelerator: false, click: send('close-tab') },
+      { label: 'Close Window', accelerator: 'Cmd+Shift+W', registerAccelerator: false, click: send('close-window') },
+      { type: 'separator' },
+      { label: 'Print…', accelerator: 'Cmd+P', registerAccelerator: false, click: send('print') }
+    ] },
+    { role: 'editMenu' },
+    { label: 'View', submenu: [
+      { label: 'Reload', accelerator: 'Cmd+R', registerAccelerator: false, click: send('reload') },
+      { label: 'Toggle Sidebar', accelerator: 'Cmd+Shift+E', registerAccelerator: false, click: send('toggle-sidebar') },
+      { label: 'Toggle AI Sidebar', accelerator: 'Cmd+Shift+A', registerAccelerator: false, click: send('toggle-ai') },
+      { label: 'Toggle Bookmarks Bar', accelerator: 'Cmd+Shift+B', registerAccelerator: false, click: send('toggle-bookmarks-bar') },
+      { type: 'separator' },
+      { label: 'Actual Size', accelerator: 'Cmd+0', registerAccelerator: false, click: send('zoom-reset') },
+      { label: 'Zoom In', accelerator: 'Cmd+Plus', registerAccelerator: false, click: send('zoom-in') },
+      { label: 'Zoom Out', accelerator: 'Cmd+-', registerAccelerator: false, click: send('zoom-out') },
+      { type: 'separator' },
+      { label: 'Developer Tools', accelerator: 'Cmd+Alt+I', registerAccelerator: false, click: send('devtools') },
+      { role: 'togglefullscreen' }
+    ] },
+    { label: 'History', submenu: [
+      { label: 'Back', accelerator: 'Cmd+[', registerAccelerator: false, click: send('back') },
+      { label: 'Forward', accelerator: 'Cmd+]', registerAccelerator: false, click: send('forward') },
+      { label: 'Home', accelerator: 'Cmd+Shift+H', registerAccelerator: false, click: send('home') },
+      { type: 'separator' },
+      { label: 'Show All History', accelerator: 'Cmd+Y', registerAccelerator: false, click: send('history') }
+    ] },
+    { label: 'Bookmarks', submenu: [
+      { label: 'Bookmark This Tab', accelerator: 'Cmd+D', registerAccelerator: false, click: send('bookmark') },
+      { label: 'Bookmark Manager', accelerator: 'Cmd+Alt+B', registerAccelerator: false, click: send('bookmarks') }
+    ] },
+    { role: 'windowMenu' },
+    { role: 'help', submenu: [{ label: 'The Stupid Browser on GitHub', click: () => shell.openExternal('https://github.com/lattewirell-creator/stupid-browser') }] }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(T));
+}
+
+// macOS delivers links and files through events instead of argv (and may do so before "ready").
+const pendingOpen = [];
+if (IS_MAC) {
+  const queueOrOpen = (url) => { if (!url) return; if (app.isReady() && windows.size) openFromOutside(url); else pendingOpen.push(url); };
+  app.on('open-url', (e, url) => { e.preventDefault(); if (/^https?:/i.test(url)) queueOrOpen(url); });
+  app.on('open-file', (e, file) => { e.preventDefault(); queueOrOpen(normalizeArgUrl(file)); });
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', (_e, argv) => {
-    const url = normalizeArgUrl(urlFromArgv(argv));
-    const w = [...windows.values()].reverse().find((x) => !x.incognito && !x.win.isDestroyed());
-    if (w) {
-      if (w.win.isMinimized()) w.win.restore();
-      w.win.focus();
-      if (url) w.win.webContents.send('open-url', { url, where: 'foreground' });
-      else w.win.webContents.send('shortcut', 'new-tab');
-    } else createWindow({ urls: url ? [url] : null });
-  });
+  app.on('second-instance', (_e, argv) => openFromOutside(normalizeArgUrl(urlFromArgv(argv))));
 
   app.whenReady().then(() => {
+    // Brand-new install (no settings yet): open the welcome screen once.
+    const firstRun = !fs.existsSync(path.join(app.getPath('userData'), 'settings.json'));
     const s = getSettings();
     nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
+    if (IS_MAC) buildMacMenu();
+    profiles.sync(s);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
-    const saved = store.read('session.json', []);
-    if (s.startup === 'continue' && saved.length) {
-      saved.forEach((sess, i) => createWindow({ restore: sess, urls: i === 0 && argUrl ? [argUrl] : null }));
-    } else if (s.startup === 'pages' && s.startupPages && s.startupPages.length) {
-      createWindow({ urls: [...s.startupPages, ...(argUrl ? [argUrl] : [])] });
-    } else {
-      createWindow({ urls: argUrl ? [argUrl] : null });
-    }
-    app.on('activate', () => { if (!windows.size) createWindow(); });
+    if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
+    else openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
+    app.on('activate', () => {
+      if (windows.size) return;
+      // Dock click after closing every window (macOS): start fresh like a relaunch.
+      sessions.clear();
+      openStartupWindows(pendingOpen.splice(0));
+    });
     initUpdater();
   });
 }
 
 app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); });
-app.on('window-all-closed', () => { quitting = true; saveSessions(); store.flushAll(); if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  // macOS keeps the app alive in the Dock; the last window's tabs are already in session.json.
+  if (IS_MAC) { saveSessions(); store.flushAll(); return; }
+  quitting = true; saveSessions(); store.flushAll(); app.quit();
+});

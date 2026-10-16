@@ -8,6 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
     "build:adblock": "node scripts/build-adblock.js",
     "release": "bash scripts/release.sh",
     "test": "bash scripts/selftest.sh"
@@ -41,6 +42,57 @@
       "icon": "build/icon.ico",
       "signAndEditExecutable": true,
       "executableName": "StupidBrowser"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "artifactName": "StupidBrowser-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "protocols": [
+        {
+          "name": "Web URL",
+          "schemes": [
+            "http",
+            "https"
+          ]
+        }
+      ],
+      "fileAssociations": [
+        {
+          "ext": [
+            "html",
+            "htm"
+          ],
+          "name": "HTML Document",
+          "role": "Viewer"
+        }
+      ],
+      "extendInfo": {
+        "NSCameraUsageDescription": "Websites you allow can use the camera (video calls).",
+        "NSMicrophoneUsageDescription": "Websites you allow can use the microphone (calls, voice chat).",
+        "NSLocationWhenInUseUsageDescription": "Websites you allow can see your location."
+      }
+    },
+    "dmg": {
+      "artifactName": "StupidBrowser-${version}-${arch}.${ext}"
     },
     "portable": {
       "artifactName": "StupidBrowser-portable.exe"
@@ -78,6 +130,7 @@
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@ghostery/adblocker-electron": "^2.20.1",
     "cross-fetch": "^4.1.0",
     "electron-updater": "^6.8.9",

@@ -8,7 +8,7 @@ const NEWTAB = 'stupid://newtab/';
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
 const GROUP_COLORS = { clay: '#D97757', sand: '#C9A15A', sage: '#7C9A6E', sky: '#6A8FB5', plum: '#9B6A8E', rose: '#C96A7A', teal: '#5E9A94', slate: '#8A857A', ink: '#3D3929' };
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
-const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source' };
+const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome' };
 
 let info = {};
 let settings = {};
@@ -49,8 +49,8 @@ const internalName = (u) => { try { return new URL(u).hostname; } catch { return
 const tabById = (id) => tabs.find((t) => t.id === id);
 const activeTab = () => tabById(activeId);
 const faviconFor = (url) => { const h = hostOf(url); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${h}` : null; };
-function searchUrl(q) { return (settings.searchUrl || 'https://www.google.com/search?q=%s').replace('%s', encodeURIComponent(q)); }
-function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'Google' }).name; }
+function searchUrl(q) { return (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q)); }
+function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'DuckDuckGo' }).name; }
 function toUrl(text) {
   const t = String(text || '').trim();
   if (!t) return null;
@@ -262,7 +262,7 @@ function buildTabEl(tab) {
   au.addEventListener('mousedown', (ev) => ev.stopPropagation());
   au.addEventListener('click', (ev) => { ev.stopPropagation(); toggleMute(tab); });
   e.appendChild(au);
-  const c = el('button', 'close'); c.title = 'Close tab (Ctrl+W)'; c.appendChild(svg(ICON.x));
+  const c = el('button', 'close'); c.title = keyLabel('Close tab (Ctrl+W)'); c.appendChild(svg(ICON.x));
   c.addEventListener('mousedown', (ev) => ev.stopPropagation());
   c.addEventListener('click', (ev) => { ev.stopPropagation(); closeTab(tab.id); });
   e.appendChild(c);
@@ -414,7 +414,7 @@ function updateNav() {
   if (wv && tab.ready) { try { back = wv.canGoBack(); fwd = wv.canGoForward(); } catch {} }
   $('backBtn').disabled = !back; $('fwdBtn').disabled = !fwd;
   $('reloadBtn').classList.toggle('loading', !!tab.loading);
-  $('reloadBtn').title = tab.loading ? 'Stop loading' : 'Reload (Ctrl+R)';
+  $('reloadBtn').title = tab.loading ? 'Stop loading' : keyLabel('Reload (Ctrl+R)');
   if (document.activeElement !== $('address')) $('address').value = displayUrl(tab.url);
   const sb = $('siteBtn');
   const state = isNewtab(tab.url) ? 'search' : isInternal(tab.url) ? 'info' : /^https:/.test(tab.url) ? 'lock' : /^http:/.test(tab.url) ? 'warn' : 'info';
@@ -508,7 +508,7 @@ function toggleSplit(withId) {
   if (!other.wv) createWebview(other);
   split = [cur.id, other.id];
   renderAll();
-  toast('Split view on — Ctrl+Shift+S to exit');
+  toast(keyLabel('Split view on — Ctrl+Shift+S to exit'));
 }
 
 /* ---------------- popovers & menus ---------------- */
@@ -529,7 +529,7 @@ function showMenu(target, items, x, y) {
     if (it.row) { m.appendChild(it.row); continue; }
     const b = el('button', 'menu-item');
     b.appendChild(el('span', 'ml', it.label));
-    if (it.key) b.appendChild(el('span', 'mk', it.key));
+    if (it.key) b.appendChild(el('span', 'mk', keyLabel(it.key)));
     if (it.disabled) b.disabled = true;
     b.addEventListener('click', () => { hideMenus(); it.fn(); });
     m.appendChild(b);
@@ -538,7 +538,7 @@ function showMenu(target, items, x, y) {
 }
 document.addEventListener('mousedown', (e) => {
   if (!$('ctxMenu').contains(e.target) && !$('menu').contains(e.target) && e.target.id !== 'menuBtn' && !$('menuBtn').contains(e.target)) hideMenus();
-  if (!$('popover').contains(e.target) && !e.target.closest('#siteBtn,#starBtn,#dlBtn,.group-chip,.rail-add') && !$('popover').classList.contains('sticky')) hidePop();
+  if (!$('popover').contains(e.target) && !e.target.closest('#siteBtn,#starBtn,#dlBtn,.group-chip,.rail-add,#gridBtn,#profileBtn,#soundBtn') && !$('popover').classList.contains('sticky')) hidePop();
   if (!$('omnibox').contains(e.target)) closeSuggest();
 });
 addEventListener('blur', () => { hideMenus(); hideHoverCard(); });
@@ -595,6 +595,7 @@ function mainMenu() {
     '-',
     { label: 'Print…', key: 'Ctrl+P', fn: () => runCmd('print') },
     { label: 'Find…', key: 'Ctrl+F', fn: openFind },
+    { label: 'Sound & EQ…', fn: () => openSoundPanel() },
     { label: 'Command bar', key: 'Ctrl+K', fn: () => openCmd() },
     { label: 'View page source', key: 'Ctrl+U', fn: () => runCmd('view-source') },
     { label: 'Developer tools', key: 'F12', fn: () => runCmd('devtools') },
@@ -616,7 +617,7 @@ function renderBookmarks() {
   const bar = $('bookmarksBar'); bar.innerHTML = '';
   document.body.classList.toggle('no-bm', settings.showBookmarksBar === false);
   const root = bookmarks.filter((b) => !b.parentId);
-  if (!root.length) bar.appendChild(el('div', 'bm-empty', 'Press ★ or Ctrl+D to bookmark a page'));
+  if (!root.length) bar.appendChild(el('div', 'bm-empty', keyLabel('Press ★ or Ctrl+D to bookmark a page')));
   for (const b of root) {
     const e = el('div', 'bm' + (b.type === 'folder' ? ' folder' : ''));
     e.title = b.type === 'folder' ? b.title : `${b.title}\n${b.url}`;
@@ -782,7 +783,7 @@ function dlPopover() {
     else act('Retry', 'retry');
     pop.appendChild(row);
   }
-  const all = el('button', 'menu-item', 'Show all downloads   Ctrl+J'); all.addEventListener('click', () => { hidePop(); openInternal('downloads'); });
+  const all = el('button', 'menu-item', keyLabel('Show all downloads   Ctrl+J')); all.addEventListener('click', () => { hidePop(); openInternal('downloads'); });
   pop.appendChild(all);
   const r = $('dlBtn').getBoundingClientRect();
   showPopAt(pop, r.right - 360, r.bottom + 8);
@@ -875,12 +876,13 @@ function renderRail() {
   document.body.classList.toggle('no-rail', settings.showSidebar === false);
   $('railBtn').classList.toggle('on', settings.showSidebar !== false);
   for (const it of sideItems) {
-    const b = el('button', 'rail-item' + (activeApp === it.id ? ' on' : ''));
-    b.title = it.name;
+    const b = el('button', 'rail-item app' + (activeApp === it.id ? ' on' : ''));
+    b.title = it.name; b.dataset.id = it.id;
     const img = el('img'); img.draggable = false; img.src = faviconFor(it.url);
     img.onerror = () => img.replaceWith(el('span', 'rail-letter', (it.name || '?')[0].toUpperCase()));
     b.appendChild(img);
-    b.addEventListener('click', () => toggleApp(it.id));
+    b.addEventListener('click', () => { if (!railJustDragged) toggleApp(it.id); });
+    b.addEventListener('pointerdown', (e) => railDragStart(e, b));
     b.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       showMenu('ctxMenu', [
@@ -900,9 +902,49 @@ function renderRail() {
   add.addEventListener('click', railAddForm);
   rail.appendChild(add);
   rail.appendChild(el('div', 'grow'));
-  const gear = el('button', 'rail-item'); gear.title = 'Settings (Ctrl+,)'; gear.appendChild(svg(ICON.gear));
+  const gear = el('button', 'rail-item'); gear.title = keyLabel('Settings (Ctrl+,)'); gear.appendChild(svg(ICON.gear));
   gear.addEventListener('click', () => openInternal('settings'));
   rail.appendChild(gear);
+}
+// Drag sidebar icons to reorder (Dock-style): the dragged icon follows the pointer and the
+// others slide out of the way; the new order is saved on release. A plain click still opens the app.
+let railDrag = null, railJustDragged = false;
+function railDragStart(e, b) {
+  if (e.button !== 0) return;
+  const rail = $('rail');
+  railDrag = { b, rail, sy: e.clientY, moved: false, grab: e.clientY - rail.getBoundingClientRect().top + rail.scrollTop - b.offsetTop };
+  const move = (ev) => {
+    const d = railDrag; if (!d) return;
+    if (!d.moved) {
+      if (Math.abs(ev.clientY - d.sy) < 5) return;
+      d.moved = true; b.classList.add('dragging'); document.body.classList.add('rail-dragging'); hideHoverCard();
+    }
+    const y = ev.clientY - rail.getBoundingClientRect().top + rail.scrollTop;   // pointer within the rail
+    const items = [...rail.querySelectorAll('.rail-item.app')];
+    // Where should the dragged icon sit? Before the first other icon whose middle is below the pointer.
+    const center = y - d.grab + b.offsetHeight / 2;
+    const others = items.filter((x) => x !== b);
+    const before = others.find((x) => center < x.offsetTop + x.offsetHeight / 2) || null;
+    const target = before || others[others.length - 1].nextSibling;
+    if (target !== b && b.nextSibling !== target) {
+      const first = new Map(others.map((x) => [x, x.offsetTop]));
+      rail.insertBefore(b, target);
+      for (const x of others) { const dy = first.get(x) - x.offsetTop; if (dy) x.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)' }); }
+    }
+    b.style.transform = `translateY(${y - d.grab - b.offsetTop}px) scale(1.12)`;
+  };
+  const up = () => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+    const d = railDrag; railDrag = null; if (!d || !d.moved) return;
+    railJustDragged = true; setTimeout(() => { railJustDragged = false; }, 0);
+    document.body.classList.remove('rail-dragging');
+    const order = [...d.rail.querySelectorAll('.rail-item.app')].map((x) => x.dataset.id);
+    b.style.transform = ''; b.classList.remove('dragging');
+    const next = order.map((id) => sideItems.find((x) => x.id === id)).filter(Boolean);
+    if (next.length === sideItems.length && next.some((x, i) => x !== sideItems[i])) { sideItems = next; call('sidebar:set', sideItems); }
+    renderRail();
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
 }
 function moveSide(it, d) { const i = sideItems.indexOf(it); sideItems.splice(i, 1); sideItems.splice(i + d, 0, it); call('sidebar:set', sideItems); renderRail(); }
 function railAddForm() {
@@ -1012,7 +1054,7 @@ $('botForm').addEventListener('submit', (e) => {
   selectBot(url);
 });
 $('aiClose').addEventListener('click', closeAI);
-$('aiBtn').addEventListener('click', toggleAI);
+$('aiBtn').addEventListener('click', () => window.aiButtonAction());
 
 /* ---------------- command bar (Ctrl+K) ---------------- */
 let cmdSel = 0, cmdItems = [];
@@ -1120,7 +1162,7 @@ function runCmd(cmd) {
     case 'downloads': openInternal('downloads'); break;
     case 'settings': openInternal('settings'); break;
     case 'clear-data': openUrlInternal('settings', '#clear'); break;
-    case 'toggle-ai': toggleAI(); break;
+    case 'toggle-ai': window.aiButtonAction(); break;
     case 'open-ai': openAI(); toast('Selection copied — paste it into the chat'); break;
     case 'toggle-sidebar': call('settings:set', { showSidebar: settings.showSidebar === false }); break;
     case 'split': toggleSplit(); break;

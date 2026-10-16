@@ -18,6 +18,7 @@
     <a href="#privacy">Privacy &amp; security</a>
     <a href="#passwords">Passwords</a>
     <a href="#downloads">Downloads</a>
+    <a href="#buddy">AI buddy</a>
     <a href="#ai">AI sidebar</a>
     <a href="#sidebar">Sidebar apps</a>
     <a href="#default">Default browser</a>
@@ -25,11 +26,12 @@
   </nav>
   <main id="main">
     <section id="appearance"><h2>Appearance</h2><div class="card">
-      <div class="row"><div class="lbl">Theme<small>Follow Windows, or pick one</small></div><div class="seg" id="theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+      <div class="row"><div class="lbl">Theme<small>Follow the system, or pick one</small></div><div class="seg" id="theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
       <div class="row"><div class="lbl">Accent color</div><div id="accent" class="swatches"></div></div>
       <div class="row"><div class="lbl">Font size<small>Default text size for web pages (new tabs)</small></div><select id="fontSize" class="input"><option value="small">Small</option><option value="medium">Medium (recommended)</option><option value="large">Large</option><option value="xlarge">Very large</option></select></div>
       <div class="row"><div class="lbl">Show bookmarks bar<small>Ctrl+Shift+B</small></div><input type="checkbox" class="toggle" id="showBookmarksBar"></div>
       <div class="row"><div class="lbl">Show home button</div><input type="checkbox" class="toggle" id="showHome"></div>
+      <div class="row"><div class="lbl">Music island<small>Shows what's playing when you're on another tab</small></div><input type="checkbox" class="toggle" id="musicIsland"></div>
       <div class="row"><div class="lbl">Show sidebar<small>App icons on the left (Ctrl+Shift+E)</small></div><input type="checkbox" class="toggle" id="showSidebar"></div>
       <div class="row"><div class="lbl">Your name<small>Used in the new tab greeting</small></div><input id="name" class="input" maxlength="40"></div>
     </div></section>
@@ -78,8 +80,24 @@
       <div class="row"><div class="lbl">Ask where to save each file before downloading</div><input type="checkbox" class="toggle" id="askWhereToSave"></div>
     </div></section>
 
+    <section id="buddy"><h2>AI buddy</h2>
+      <div class="card">
+        <div class="row"><div class="lbl">AI buddy<small>The little helper in the corner. Turn off to never show it.</small></div><input type="checkbox" class="toggle" id="buddyOn"></div>
+        <div class="row"><div class="lbl">AI button<small>What the ✳ button and Ctrl+Shift+A do</small></div><select id="aiButton" class="input"><option value="buddy">Open AI buddy</option><option value="sidebar">Open AI sidebar (chat websites)</option><option value="off">Nothing — hide the AI button</option></select></div>
+      </div>
+      <div class="card" id="buddySetup">
+        <div class="row"><div class="lbl">AI<small>Which AI Buddy talks to</small></div><select id="buddyProvider" class="input"></select></div>
+        <div class="row" id="buddyBaseRow"><div class="lbl">Address<small id="buddyBaseHint">The service’s OpenAI-compatible API address</small></div><input id="buddyBase" class="input wide" placeholder="https://…/v1" spellcheck="false"></div>
+        <div class="row" id="buddyKeyRow"><div class="lbl"><span id="buddyKeyName">API key</span><small id="buddyKeyHint"></small></div>
+          <div class="inline"><input id="buddyKey" class="input wide" type="password" placeholder="Paste your API key" autocomplete="off"><button id="buddyKeySave" class="btn small primary">Save</button><button id="buddyKeyClear" class="btn small hidden">Remove</button></div></div>
+        <div class="row"><div class="lbl">Model<small id="buddyModelHint">Pick one of the models this AI offers</small></div>
+          <div class="inline"><input id="buddyModel" class="input wide" list="buddyModelList" placeholder="Model name" spellcheck="false"><datalist id="buddyModelList"></datalist><button id="buddyModelLoad" class="btn small">Refresh list</button></div></div>
+        <div class="row"><div class="lbl" id="buddyState">…</div></div>
+      </div>
+    </section>
+
     <section id="ai"><h2>AI sidebar</h2>
-      <div class="card"><div class="row"><div class="lbl">Default AI<small>Opens first when you press Ctrl+Shift+A</small></div><select id="defaultBot" class="input"></select></div></div>
+      <div class="card"><div class="row"><div class="lbl">Default AI<small>Opens first in the AI sidebar</small></div><select id="defaultBot" class="input"></select></div></div>
       <div class="card" id="botList"></div>
       <form id="botForm" class="inline card-form"><input id="botName" class="input" placeholder="Name" maxlength="24"><input id="botUrl" class="input grow" placeholder="https://…"><button class="btn small">Add AI</button><button type="button" id="botReset" class="btn small">Reset to defaults</button></form>
     </section>
@@ -90,17 +108,18 @@
     </section>
 
     <section id="default"><h2>Default browser</h2><div class="card">
-      <div class="row"><div class="lbl" id="defStatus">Checking…<small>Windows asks you to confirm in Settings → Apps → Default apps. Pick “The Stupid Browser” for HTTP and HTTPS.</small></div><button id="defBtn" class="btn primary">Make default</button></div>
+      <div class="row"><div class="lbl" id="defStatus">Checking…<small id="defHint">Windows asks you to confirm in Settings → Apps → Default apps. Pick “The Stupid Browser” for HTTP and HTTPS.</small></div><button id="defBtn" class="btn primary">Make default</button></div>
     </div></section>
 
     <section id="about"><h2>About The Stupid Browser</h2><div class="card">
-      <div class="row"><div class="about-logo"></div><div class="lbl"><b class="serif big">The Stupid Browser</b><small id="ver"></small></div></div>
+      <div class="row"><div class="about-logo"></div><div class="lbl"><b class="serif big">The Stupid Browser</b><small id="ver"></small></div><button id="showWelcome" class="btn small">Show welcome screen again</button></div>
       <div class="row"><div class="lbl">Updates<small id="updNote">Checking…</small><div id="updBar" class="upd-bar hidden"><div></div></div></div><button id="updInstall" class="btn small primary hidden">Restart to update</button><button id="updBtn" class="btn small">Check for updates</button></div>
       <div class="row"><div class="lbl">Profile folder<small id="udata"></small></div></div>
       <div class="row end"><button id="resetAll" class="btn small danger">Reset settings to defaults</button></div>
     </div></section>
   </main>
 </div>
+<script src="keys.js"></script>
 <script src="common.js"></script>
 <script src="settings.js"></script>
 </body>
