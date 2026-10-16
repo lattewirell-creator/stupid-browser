@@ -7,7 +7,21 @@
   const root = el('div', 'buddy hidden'); root.id = 'buddy';
   const panel = el('section', 'bd-panel');
   const head = el('div', 'bd-head');
-  const face = () => { const f = el('span', 'bd-face'); f.append(el('i', 'bd-eye'), el('i', 'bd-eye')); return f; };
+  // 3D robot buddy: head turns and eyes follow the mouse (see .bot3d in styles.css).
+  const bot = (size) => {
+    const b = el('span', 'bot3d ' + size);
+    const fl = el('span', 'bot-float');
+    const ant = el('span', 'bot-antenna'); ant.appendChild(el('i'));
+    const headEl = el('span', 'bot-head');
+    const visor = el('span', 'bot-visor');
+    const eyes = el('span', 'bot-eyes'); eyes.append(el('i', 'bot-eye'), el('i', 'bot-eye'));
+    visor.append(eyes, el('span', 'bot-mouth'));
+    headEl.append(el('span', 'bot-ear l'), el('span', 'bot-ear r'), visor, el('span', 'bot-shine'));
+    fl.append(ant, headEl);
+    b.append(el('span', 'bot-shadow'), fl);
+    return b;
+  };
+  const face = () => bot('mini');
   const titleBox = el('div', 'bd-titles'); const modelLine = el('small', null, '');
   titleBox.append(el('b', null, 'Buddy'), modelLine);
   const newBtn = el('button', 'icon-btn small'); newBtn.title = 'New chat'; newBtn.appendChild(svg('<path d="M12 5v14M5 12h14"/>'));
@@ -24,7 +38,7 @@
   sendBtn.appendChild(sendIcon);
   form.append(lookBtn, input, sendBtn);
   panel.append(head, log, chips, form);
-  const avatar = el('button', 'bd-avatar'); avatar.title = 'Buddy'; avatar.appendChild(face());
+  const avatar = el('button', 'bd-avatar'); avatar.title = 'Buddy'; avatar.appendChild(bot('big'));
   root.append(panel, avatar);
   document.getElementById('content').appendChild(root);
 
@@ -121,9 +135,27 @@
     if (!current) return;
     current.classList.remove('typing');
     current.__text += d; fmt(current, current.__text); log.scrollTop = log.scrollHeight;
+    root.classList.add('talking'); clearTimeout(talkT); talkT = setTimeout(() => root.classList.remove('talking'), 400);
+  });
+  let talkT, happyT;
+  // Head and eyes follow the mouse while it's over the browser UI; otherwise Buddy glances around on its own.
+  let raf = 0, idleT;
+  addEventListener('mousemove', (e) => {
+    if (raf || root.classList.contains('hidden')) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const r = avatar.getBoundingClientRect(); if (!r.width) return;
+      const dx = (e.clientX - (r.left + r.width / 2)) / innerWidth, dy = (e.clientY - (r.top + r.height / 2)) / innerHeight;
+      root.style.setProperty('--ry', (Math.max(-1, Math.min(1, dx * 2.2)) * 28).toFixed(1) + 'deg');
+      root.style.setProperty('--rx', (Math.max(-1, Math.min(1, -dy * 2.2)) * 18).toFixed(1) + 'deg');
+      root.style.setProperty('--ex', (Math.max(-1, Math.min(1, dx * 3)) * 3).toFixed(1) + 'px');
+      root.style.setProperty('--ey', (Math.max(-1, Math.min(1, dy * 3)) * 2).toFixed(1) + 'px');
+      root.classList.add('tracking'); clearTimeout(idleT); idleT = setTimeout(() => root.classList.remove('tracking'), 2500);
+    });
   });
   function setBusy(b) {
     busy = b; root.classList.toggle('busy', b);
+    if (!b) { root.classList.add('happy'); clearTimeout(happyT); happyT = setTimeout(() => root.classList.remove('happy'), 1800); }
     sendBtn.replaceChildren(b ? stopIcon : sendIcon); sendBtn.title = b ? 'Stop' : 'Send';
   }
   const autoGrow = () => { input.style.height = 'auto'; input.style.height = Math.min(120, input.scrollHeight) + 'px'; };
