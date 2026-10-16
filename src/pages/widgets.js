@@ -1,6 +1,7 @@
 'use strict';
 /* New-tab widgets: weather, notes, to-do, clock, calendar, countdown.
-   Added/removed from the Customize panel; drag a widget to reorder. Stored in widgets.json via main. */
+   Added/removed from the Customize panel. Drag a widget by its header to put it anywhere on the page
+   (position saved as a fraction of the window); "Put back" returns it to the grid. Stored in widgets.json via main. */
 const WIDGETS = {
   weather: { name: 'Weather', icon: '⛅' },
   notes: { name: 'Notes', icon: '📝' },
@@ -20,15 +21,25 @@ function saveWidgets(now) {
 const svgIcon = (d) => icon(d);
 const ICO = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
-  x: '<path d="M7 7l10 10M17 7L7 17"/>'
+  x: '<path d="M7 7l10 10M17 7L7 17"/>',
+  back: '<path d="M9 14l-5-5 5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>'
 };
+const layer = el('div', 'widget-layer'); document.body.appendChild(layer);
 
 /* ---------------- rendering ---------------- */
+function placeCard(card, pos) {
+  const r = card.getBoundingClientRect();
+  const x = Math.max(4, Math.min(innerWidth - r.width - 4, pos.x * innerWidth));
+  const y = Math.max(4, Math.min(innerHeight - Math.min(r.height, 60) - 4, pos.y * innerHeight));
+  card.style.left = Math.round(x) + 'px'; card.style.top = Math.round(y) + 'px';
+}
 function renderWidgets() {
-  const box = $('widgets'); box.replaceChildren();
-  box.classList.toggle('hidden', !widgets.length);
+  const box = $('widgets'); box.replaceChildren(); layer.replaceChildren();
+  box.classList.toggle('hidden', !widgets.some((w) => !w.pos));
   widgets.forEach((w, i) => {
-    const card = el('article', 'widget w-' + w.type); card.dataset.id = w.id;
+    const card = el('article', 'widget wt-' + w.type + (w.pos ? ' floating' : '')); card.dataset.id = w.id;
+    if (w.type === 'custom' && typeof styleCustomCard === 'function') styleCustomCard(card, w);
     const head = el('div', 'w-head');
     head.appendChild(el('span', 'w-title', w.config.title || WIDGETS[w.type].name));
     const tools = el('div', 'w-tools');
@@ -36,6 +47,16 @@ function renderWidgets() {
       const g = el('button', 'w-tool'); g.title = 'Settings'; g.appendChild(svgIcon(ICO.gear));
       g.addEventListener('click', () => { card.classList.toggle('editing'); fill(); });
       tools.appendChild(g);
+    }
+    if (w.type === 'custom') {
+      const g = el('button', 'w-tool'); g.title = 'Edit widget'; g.appendChild(svgIcon(ICO.edit));
+      g.addEventListener('click', () => openWidgetEditor(w));
+      tools.appendChild(g);
+    }
+    if (w.pos) {
+      const b = el('button', 'w-tool'); b.title = 'Put back in the grid'; b.appendChild(svgIcon(ICO.back));
+      b.addEventListener('click', () => { delete w.pos; saveWidgets(true); renderWidgets(); });
+      tools.appendChild(b);
     }
     const x = el('button', 'w-tool'); x.title = 'Remove widget'; x.appendChild(svgIcon(ICO.x));
     x.addEventListener('click', () => { widgets.splice(i, 1); saveWidgets(true); renderWidgets(); paintWidgetPicker(); });
@@ -45,20 +66,38 @@ function renderWidgets() {
     card.append(head, body);
     const fill = () => { body.replaceChildren(); (RENDER[w.type] || (() => {}))(w, body, card); };
     fill();
-    // drag to reorder (by the header)
-    head.draggable = true;
-    head.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/x-widget', String(i)); e.dataTransfer.effectAllowed = 'move'; card.classList.add('dragging'); });
-    head.addEventListener('dragend', () => card.classList.remove('dragging'));
-    card.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('text/x-widget')) { e.preventDefault(); card.classList.add('drop'); } });
-    card.addEventListener('dragleave', () => card.classList.remove('drop'));
-    card.addEventListener('drop', (e) => {
-      e.preventDefault(); card.classList.remove('drop');
-      const from = +e.dataTransfer.getData('text/x-widget'); if (isNaN(from) || from === i) return;
-      const [m] = widgets.splice(from, 1); widgets.splice(i, 0, m); saveWidgets(true); renderWidgets();
+    // Drag by the header to anywhere on the page.
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('.w-tools, button, input, a')) return;
+      const r0 = card.getBoundingClientRect();
+      const d = { sx: e.clientX, sy: e.clientY, ox: e.clientX - r0.left, oy: e.clientY - r0.top, moved: false };
+      const move = (ev) => {
+        if (!d.moved) {
+          if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) return;
+          d.moved = true;
+          card.style.width = r0.width + 'px';
+          card.classList.add('floating', 'dragging'); layer.appendChild(card);
+          box.classList.toggle('hidden', !box.children.length);
+        }
+        card.style.left = (ev.clientX - d.ox) + 'px'; card.style.top = (ev.clientY - d.oy) + 'px';
+      };
+      const up = () => {
+        removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+        if (!d.moved) return;
+        card.classList.remove('dragging');
+        const r = card.getBoundingClientRect();
+        w.pos = { x: +(r.left / innerWidth).toFixed(4), y: +(r.top / innerHeight).toFixed(4), w: Math.round(r.width) };
+        placeCard(card, w.pos);
+        saveWidgets(true); renderWidgets();
+      };
+      addEventListener('pointermove', move); addEventListener('pointerup', up);
     });
-    box.appendChild(card);
+    if (w.pos) { layer.appendChild(card); card.style.width = (w.pos.w || 260) + 'px'; placeCard(card, w.pos); }
+    else box.appendChild(card);
+    void i;
   });
 }
+addEventListener('resize', () => { for (const card of layer.children) { const w = widgets.find((x) => x.id === card.dataset.id); if (w && w.pos) placeCard(card, w.pos); } });
 function settingsForm(card, body, fields, onSave) {
   const f = el('form', 'w-form');
   const inputs = fields.map(([label, value, attrs]) => {
@@ -230,7 +269,7 @@ function paintWidgetPicker() {
     if (n) b.appendChild(el('span', 'cz-wn', '×' + n));
     b.title = `Add a ${w.name} widget`;
     b.addEventListener('click', () => {
-      if (widgets.length >= 12) { toast('That’s a lot of widgets. Remove one first.'); return; }
+      if (widgets.length >= 20) { toast('That’s a lot of widgets. Remove one first.'); return; }
       widgets.push({ id: 'w' + Date.now().toString(36), type, config: type === 'todo' ? { items: [] } : {} });
       saveWidgets(true); renderWidgets(); paintWidgetPicker();
       const last = $('widgets').lastElementChild; if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -238,6 +277,6 @@ function paintWidgetPicker() {
     box.appendChild(b);
   }
 }
-$('customizeBtn').addEventListener('click', paintWidgetPicker);
+$('customizeBtn').addEventListener('click', () => paintWidgetPicker());
 S.on('widgets:changed', (l) => { if (JSON.stringify(l) === lastSaved) return; widgets = l; renderWidgets(); paintWidgetPicker(); });
 call('widgets:get').then((l) => { widgets = Array.isArray(l) ? l : []; renderWidgets(); paintWidgetPicker(); }).catch(() => {});

@@ -17,14 +17,6 @@ function tile(name, url, used, onUse) {
 async function load() {
   try { settings = await call('settings:get'); } catch {}
   tick();
-  let bots = [];
-  try { bots = await call('bots:get'); } catch {}
-  $('tiles').innerHTML = '';
-  // Highlight the AI you used last (hover highlights the rest).
-  bots.forEach((b) => $('tiles').appendChild(tile(b.name, b.url, settings.lastBot === b.url, async () => {
-    try { await call('settings:set', { lastBot: b.url }); } catch {}
-    location.href = b.url;
-  })));
   renderLogo();
   let bms = [];
   try { bms = (await call('bookmarks:get')).filter((b) => b.type === 'bookmark').slice(0, 8); } catch {}
@@ -35,7 +27,6 @@ async function load() {
 setInterval(tick, 10000);
 load();
 S.on('settings:changed', (s) => { settings = s; load(); });
-S.on('bots:changed', load);
 
 /* ---------------- logo, title, quotes, customize panel ---------------- */
 const QUOTES = [
