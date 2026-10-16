@@ -130,6 +130,7 @@
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@ghostery/adblocker-electron": "^2.20.1",
     "cross-fetch": "^4.1.0",
     "electron-updater": "^6.8.9",

@@ -175,6 +175,24 @@ async function renderDefault() {
 }
 $('defBtn').onclick = async () => { await call('default:set'); toast(IS_MAC ? 'Confirm in the macOS dialog that opened' : 'Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
 
+async function renderBuddy() {
+  const s = await call('settings:get'); const st = await call('buddy:status');
+  $('aiButton').value = s.aiButton || 'buddy';
+  if ($('buddyModel').options.length !== Object.keys(st.models).length) $('buddyModel').replaceChildren(...Object.entries(st.models).map(([k, v]) => { const o = el('option', null, v); o.value = k; return o; }));
+  $('buddyModel').value = st.model;
+  $('buddyKey').placeholder = st.hasKey ? '•••••••••• saved — paste a new key to replace' : 'sk-ant-…';
+  $('buddyKeyClear').classList.toggle('hidden', !st.hasKey);
+}
+$('aiButton').onchange = () => call('settings:set', { aiButton: $('aiButton').value });
+$('buddyModel').onchange = async () => { const s = await call('settings:get'); call('settings:set', { buddy: Object.assign({}, s.buddy, { model: $('buddyModel').value }) }); };
+$('buddyKeySave').onclick = async () => {
+  const r = await call('buddy:setKey', $('buddyKey').value);
+  if (!r.ok) { toast(r.error); return; }
+  $('buddyKey').value = ''; toast('Saved — press the AI button to talk to Buddy'); renderBuddy();
+  call('settings:set', {});   // nudges open windows to refresh Buddy
+};
+$('buddyKeyClear').onclick = async () => { await call('buddy:setKey', ''); toast('Key removed'); renderBuddy(); call('settings:set', {}); };
+
 async function renderAbout() {
   const a = await call('about:info');
   $('ver').textContent = `Version ${a.version} · Chromium ${a.chrome} · Electron ${a.electron} · ${a.platform}`;
@@ -219,7 +237,7 @@ $('filter').oninput = () => {
 
 (async () => {
   s = await call('settings:get');
-  render(); renderPerms(); renderPasswords(); renderBots(); renderSide(); renderDefault(); renderAbout();
+  render(); renderPerms(); renderPasswords(); renderBots(); renderSide(); renderDefault(); renderAbout(); renderBuddy();
   highlightNav();
   if (location.hash) { const t = document.querySelector(location.hash); if (t) setTimeout(() => t.scrollIntoView(), 50); }
 })();

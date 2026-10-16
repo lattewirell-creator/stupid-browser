@@ -52,6 +52,7 @@ const DEFAULT_SETTINGS = () => ({
   name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true,
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
+  aiButton: 'buddy', buddy: { model: 'claude-opus-5-5', look: true },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -471,6 +472,8 @@ function cleanPatch(patch) {
   if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
   if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
   if ('eq' in p) p.eq = cleanEq(p.eq);
+  if ('aiButton' in p && !['buddy', 'sidebar'].includes(p.aiButton)) delete p.aiButton;
+  if ('buddy' in p) p.buddy = { model: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(p.buddy && p.buddy.model) ? p.buddy.model : 'claude-opus-5-5', look: !(p.buddy && p.buddy.look === false) };
   return p;
 }
 const cleanEq = (eq) => {
@@ -609,6 +612,7 @@ handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, ori
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
 handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
+require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
 
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
 handle('default:set', ['internal'], async () => {

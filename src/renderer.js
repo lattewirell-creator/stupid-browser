@@ -1013,7 +1013,7 @@ $('botForm').addEventListener('submit', (e) => {
   selectBot(url);
 });
 $('aiClose').addEventListener('click', closeAI);
-$('aiBtn').addEventListener('click', toggleAI);
+$('aiBtn').addEventListener('click', () => window.aiButtonAction());
 
 /* ---------------- command bar (Ctrl+K) ---------------- */
 let cmdSel = 0, cmdItems = [];
@@ -1121,7 +1121,7 @@ function runCmd(cmd) {
     case 'downloads': openInternal('downloads'); break;
     case 'settings': openInternal('settings'); break;
     case 'clear-data': openUrlInternal('settings', '#clear'); break;
-    case 'toggle-ai': toggleAI(); break;
+    case 'toggle-ai': window.aiButtonAction(); break;
     case 'open-ai': openAI(); toast('Selection copied — paste it into the chat'); break;
     case 'toggle-sidebar': call('settings:set', { showSidebar: settings.showSidebar === false }); break;
     case 'split': toggleSplit(); break;

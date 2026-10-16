@@ -18,6 +18,7 @@
     <a href="#privacy">Privacy &amp; security</a>
     <a href="#passwords">Passwords</a>
     <a href="#downloads">Downloads</a>
+    <a href="#buddy">AI buddy</a>
     <a href="#ai">AI sidebar</a>
     <a href="#sidebar">Sidebar apps</a>
     <a href="#default">Default browser</a>
@@ -79,8 +80,17 @@
       <div class="row"><div class="lbl">Ask where to save each file before downloading</div><input type="checkbox" class="toggle" id="askWhereToSave"></div>
     </div></section>
 
+    <section id="buddy"><h2>AI buddy</h2>
+      <div class="card">
+        <div class="row"><div class="lbl">AI button<small>What the ✳ button and Ctrl+Shift+A open</small></div><select id="aiButton" class="input"><option value="buddy">AI buddy (corner helper)</option><option value="sidebar">AI sidebar (chat websites)</option></select></div>
+        <div class="row"><div class="lbl" id="buddyKeyLbl">Anthropic API key<small>Buddy runs on Claude. Get a key at console.anthropic.com → API keys. It’s stored encrypted on this computer and only sent to Anthropic.</small></div>
+          <div class="inline"><input id="buddyKey" class="input wide" type="password" placeholder="sk-ant-…" autocomplete="off"><button id="buddyKeySave" class="btn small primary">Save</button><button id="buddyKeyClear" class="btn small hidden">Remove</button></div></div>
+        <div class="row"><div class="lbl">Model<small>Smarter models answer better; faster ones cost less</small></div><select id="buddyModel" class="input"></select></div>
+      </div>
+    </section>
+
     <section id="ai"><h2>AI sidebar</h2>
-      <div class="card"><div class="row"><div class="lbl">Default AI<small>Opens first when you press Ctrl+Shift+A</small></div><select id="defaultBot" class="input"></select></div></div>
+      <div class="card"><div class="row"><div class="lbl">Default AI<small>Opens first in the AI sidebar</small></div><select id="defaultBot" class="input"></select></div></div>
       <div class="card" id="botList"></div>
       <form id="botForm" class="inline card-form"><input id="botName" class="input" placeholder="Name" maxlength="24"><input id="botUrl" class="input grow" placeholder="https://…"><button class="btn small">Add AI</button><button type="button" id="botReset" class="btn small">Reset to defaults</button></form>
     </section>
