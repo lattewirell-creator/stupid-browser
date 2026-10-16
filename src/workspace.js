@@ -202,8 +202,18 @@ function appForm(it) {
 function saveLauncher() { call('launcher:set', launcher); appGrid(); }
 $('gridBtn').addEventListener('click', () => { if (isOpen('grid-pop')) hidePop(); else { gridEditing = false; appGrid(); } });
 
+// Window logo (top-left) follows the logo picked on the new tab page.
+function renderBrand() {
+  const m = document.querySelector('#titlebar .logo-mark'); if (!m) return;
+  const kind = settings.logo || 'ring';
+  m.className = 'logo-mark ' + kind; m.textContent = ''; m.style.backgroundImage = '';
+  if (kind === 'emoji') m.textContent = settings.logoEmoji || '🦆';
+  else if (kind === 'image' && /^data:image\//.test(settings.logoImage || '')) m.style.backgroundImage = `url("${settings.logoImage}")`;
+  else if (kind === 'image') m.className = 'logo-mark ring';
+}
+
 /* ---------------- wiring ---------------- */
 api.on('launcher:changed', (l) => { launcher = l; });
-api.on('settings:changed', () => setTimeout(renderProfileBtn, 0));   // renderer.js updates `settings` first
+api.on('settings:changed', () => setTimeout(() => { renderProfileBtn(); renderBrand(); }, 0));   // renderer.js updates `settings` first
 call('launcher:get').then((l) => { launcher = l; });
-call('settings:get').then((s) => { if (s) { settings = Object.assign({}, settings, s); renderProfileBtn(); } });
+call('settings:get').then((s) => { if (s) { settings = Object.assign({}, settings, s); renderProfileBtn(); renderBrand(); } });

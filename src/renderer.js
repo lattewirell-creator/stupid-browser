@@ -50,7 +50,7 @@ const tabById = (id) => tabs.find((t) => t.id === id);
 const activeTab = () => tabById(activeId);
 const faviconFor = (url) => { const h = hostOf(url); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${h}` : null; };
 function searchUrl(q) { return (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q)); }
-function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'Google' }).name; }
+function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'DuckDuckGo' }).name; }
 function toUrl(text) {
   const t = String(text || '').trim();
   if (!t) return null;
@@ -538,7 +538,7 @@ function showMenu(target, items, x, y) {
 }
 document.addEventListener('mousedown', (e) => {
   if (!$('ctxMenu').contains(e.target) && !$('menu').contains(e.target) && e.target.id !== 'menuBtn' && !$('menuBtn').contains(e.target)) hideMenus();
-  if (!$('popover').contains(e.target) && !e.target.closest('#siteBtn,#starBtn,#dlBtn,.group-chip,.rail-add,#gridBtn,#profileBtn') && !$('popover').classList.contains('sticky')) hidePop();
+  if (!$('popover').contains(e.target) && !e.target.closest('#siteBtn,#starBtn,#dlBtn,.group-chip,.rail-add,#gridBtn,#profileBtn,#soundBtn') && !$('popover').classList.contains('sticky')) hidePop();
   if (!$('omnibox').contains(e.target)) closeSuggest();
 });
 addEventListener('blur', () => { hideMenus(); hideHoverCard(); });
@@ -595,6 +595,7 @@ function mainMenu() {
     '-',
     { label: 'Print…', key: 'Ctrl+P', fn: () => runCmd('print') },
     { label: 'Find…', key: 'Ctrl+F', fn: openFind },
+    { label: 'Sound & EQ…', fn: () => openSoundPanel() },
     { label: 'Command bar', key: 'Ctrl+K', fn: () => openCmd() },
     { label: 'View page source', key: 'Ctrl+U', fn: () => runCmd('view-source') },
     { label: 'Developer tools', key: 'F12', fn: () => runCmd('devtools') },

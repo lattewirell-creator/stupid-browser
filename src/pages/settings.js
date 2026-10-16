@@ -27,7 +27,11 @@ function render() {
     r.appendChild(x); pages.appendChild(r);
   });
   // search
-  $('engine').value = s.search || 'google'; $('engine').onchange = () => set({ search: $('engine').value }).then(render);
+  if ($('engine').options.length < Object.keys(s.engines || {}).length + 1) {
+    $('engine').replaceChildren(...Object.entries(s.engines || {}).map(([k, v]) => { const o = el('option', null, v.name); o.value = k; return o; }));
+    const c = el('option', null, 'Custom…'); c.value = 'custom'; $('engine').appendChild(c);
+  }
+  $('engine').value = s.search || 'duckduckgo'; $('engine').onchange = () => set({ search: $('engine').value }).then(render);
   $('customRow').classList.toggle('hidden', s.search !== 'custom');
   $('customSearch').value = s.customSearch || '';
   $('customSearch').onchange = () => { const v = $('customSearch').value.trim(); if (v && (!/^https?:\/\//.test(v) || !v.includes('%s'))) { toast('Use a full https:// address with %s in it'); return; } set({ customSearch: v }).then(() => toast('Saved')); };

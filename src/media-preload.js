@@ -2,7 +2,7 @@
 // Runs in every web page (tabs, sidebar apps). Remembers the page's own media-session handlers
 // (play/pause/next/previous) so the browser's music island can press them, and exposes the
 // "now playing" info. Installed in the page's main world before any page script runs.
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 if (window.top === window && /^https?:$/.test(location.protocol)) {
   try {
     contextBridge.executeInMainWorld({
@@ -76,8 +76,54 @@ if (window.top === window && /^https?:$/.test(location.protocol)) {
           }
           return false;
         };
-        Object.defineProperty(window, '__stupidMedia', { value: Object.freeze({ info, act, queue, playAt }) });
+        // Equalizer: media elements are routed through 8 filters while the EQ is on.
+        // Skipped for DRM players (protected audio turns silent in Web Audio) and cross-origin media without CORS.
+        const BANDS = [60, 150, 400, 1000, 2400, 6000, 10000, 15000];
+        const DRM_HOSTS = /(^|\.)(spotify\.com|netflix\.com|disneyplus\.com|primevideo\.com|amazon\.[a-z.]+|music\.apple\.com|tv\.apple\.com|tidal\.com|hbomax\.com|max\.com|hulu\.com)$/;
+        let curve = { on: false, gains: BANDS.map(() => 0) };
+        let ctx = null; const graphs = []; const hooked = new WeakSet();
+        const active = () => curve.on && curve.gains.some((g) => g !== 0);
+        const usable = (m) => {
+          if (DRM_HOSTS.test(location.hostname) || m.mediaKeys) return false;
+          const src = m.currentSrc || m.src || '';
+          if (!src || /^(blob|data):/.test(src)) return true;
+          try { return new URL(src, location.href).origin === location.origin || m.crossOrigin != null; } catch { return false; }
+        };
+        const level = () => { for (const x of graphs) {
+          x.filters.forEach((f, i) => f.gain.setTargetAtTime(curve.on ? curve.gains[i] : 0, ctx.currentTime, 0.03));
+          const peak = curve.on ? Math.max(0, ...curve.gains) : 0;    // headroom so boosts don't clip
+          x.pre.gain.setTargetAtTime(Math.pow(10, -peak * 0.6 / 20), ctx.currentTime, 0.03);
+        } };
+        const attach = (m) => {
+          if (!(m instanceof HTMLMediaElement) || hooked.has(m) || !active() || !usable(m)) return;
+          if (!ctx) ctx = new AudioContext();
+          // Only take over the element once audio can actually run, or it would go silent.
+          if (ctx.state !== 'running') { ctx.resume().then(() => { if (ctx.state === 'running') attach(m); }).catch(() => {}); return; }
+          try {
+            const src = ctx.createMediaElementSource(m);
+            let node = src;
+            const filters = BANDS.map((f, i) => {
+              const b = ctx.createBiquadFilter();
+              b.type = i === 0 ? 'lowshelf' : i === BANDS.length - 1 ? 'highshelf' : 'peaking';
+              b.frequency.value = f; b.Q.value = 1.1; b.gain.value = 0;
+              node.connect(b); node = b; return b;
+            });
+            const pre = ctx.createGain(); node.connect(pre); pre.connect(ctx.destination);
+            hooked.add(m); graphs.push({ filters, pre }); level();
+          } catch {}
+        };
+        document.addEventListener('play', (e) => attach(e.target), true);
+        const setEq = (eq) => {
+          if (!eq || !Array.isArray(eq.gains)) return;
+          curve = { on: !!eq.on, gains: BANDS.map((_, i) => Math.max(-12, Math.min(12, +eq.gains[i] || 0))) };
+          if (ctx) level();
+          if (active()) document.querySelectorAll('video, audio').forEach((m) => { if (!m.paused) attach(m); });
+        };
+        Object.defineProperty(window, '__stupidMedia', { value: Object.freeze({ info, act, queue, playAt, setEq }) });
       }
     });
   } catch {}
+  const pushEq = (eq) => { try { contextBridge.executeInMainWorld({ func: (q) => { if (window.__stupidMedia) window.__stupidMedia.setEq(q); }, args: [eq] }); } catch {} };
+  ipcRenderer.invoke('eq:get').then(pushEq).catch(() => {});
+  ipcRenderer.on('eq:update', (_e, eq) => pushEq(eq));
 }

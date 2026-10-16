@@ -2,26 +2,46 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
 <title>New tab</title>
 <link rel="stylesheet" href="common.css">
 <link rel="stylesheet" href="newtab.css">
 </head>
 <body>
   <main>
-    <div class="logo"></div>
-    <h1 class="wordmark">The Stupid Browser</h1>
+    <div id="logo" class="logo ring"></div>
+    <h1 id="wordmark" class="wordmark">The Stupid Browser</h1>
+    <p id="quote" class="quote hidden" title="Click for another one"></p>
     <p class="greet"><span id="greeting">Hello</span> <span class="dotsep">·</span> <span id="clock"></span></p>
-    <form id="search">
-      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
-      <input name="q" id="q" type="text" placeholder="Search or type a URL" autocomplete="off">
-    </form>
     <h2>Ask an AI</h2>
     <div id="tiles" class="tiles"></div>
     <h2 id="topHead" class="hidden">Your bookmarks</h2>
     <div id="top" class="tiles"></div>
     <p class="hint">Ctrl+T new tab · Ctrl+K command bar · Ctrl+Shift+A AI sidebar · Ctrl+H history · Ctrl+, settings</p>
   </main>
+  <button id="customizeBtn" class="customize-btn" title="Customize this page"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>Customize</span></button>
+  <aside id="customize" class="customize hidden" aria-label="Customize">
+    <div class="cz-head"><h3 class="serif">Customize</h3><button id="czClose" class="icon-x" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="cz-label">Logo</div>
+    <div class="cz-logos" id="czLogos">
+      <button data-v="ring"><span class="logo ring"></span>Classic</button>
+      <button data-v="emoji"><span class="logo emoji" id="czEmojiPrev">🦆</span>Emoji</button>
+      <button data-v="image"><span class="logo image" id="czImgPrev"></span>Image</button>
+      <button data-v="none"><span class="logo none"></span>None</button>
+    </div>
+    <div id="czEmojiRow" class="cz-row">
+      <input id="czEmoji" class="cz-input" maxlength="16" placeholder="Type or paste an emoji">
+      <div class="cz-picks" id="czPicks"></div>
+    </div>
+    <div id="czImageRow" class="cz-row">
+      <label class="btn"><input id="czFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>Upload an image…</label>
+      <small class="cz-note">Square images look best. It stays on this computer.</small>
+    </div>
+    <div class="cz-label">Title</div>
+    <input id="czTitle" class="cz-input" maxlength="40" placeholder="The Stupid Browser">
+    <label class="cz-check"><span>Random browser quotes</span><input id="czQuotes" type="checkbox" class="toggle"></label>
+    <button id="czReset" class="btn cz-reset">Reset to default</button>
+  </aside>
   <script src="keys.js"></script>
   <script src="common.js"></script>
   <script src="newtab.js"></script>

@@ -51,4 +51,9 @@ Self-test: STUPID_SELFTEST=/tmp/s.png STUPID_SELFTEST_STEPS="quit@170000" STUPID
 - Profile button + app grid (src/workspace.js), top-right like Chrome: name/email/color, pick any webmail
   (Gmail, Proton, Outlook, iCloud, Yahoo, Tuta, custom); customizable 9-dot app grid (add, rename, remove, drag to reorder).
   Profiles are a card only for now: not separate data per profile yet.
-- DuckDuckGo is the default search engine for new installs.
+- DuckDuckGo is the default search engine for new installs; 14 engines (Brave, Startpage, Qwant, Kagi, Mojeek, Perplexity, …).
+- New tab: customizable logo (classic / emoji / uploaded image / none) and title via the Customize button; the window logo
+  follows it. Random browser quotes above the clock. Search box removed (use the address bar). AI tiles highlight on hover
+  and the last-used AI stays highlighted.
+- Sound & EQ (src/sound.js; engine in media-preload.js): headphones button appears when headphones are the output,
+  8-band EQ with presets. Skips DRM sites (Spotify, Netflix, …) and cross-origin media without CORS so audio never goes silent.

@@ -36,10 +36,22 @@ const SEARCH_ENGINES = {
   google: { name: 'Google', url: 'https://www.google.com/search?q=%s' },
   bing: { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
   duckduckgo: { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
-  ecosia: { name: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' }
+  ecosia: { name: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' },
+  brave: { name: 'Brave Search', url: 'https://search.brave.com/search?q=%s' },
+  startpage: { name: 'Startpage', url: 'https://www.startpage.com/do/search?q=%s' },
+  qwant: { name: 'Qwant', url: 'https://www.qwant.com/?q=%s' },
+  kagi: { name: 'Kagi', url: 'https://kagi.com/search?q=%s' },
+  mojeek: { name: 'Mojeek', url: 'https://www.mojeek.com/search?q=%s' },
+  perplexity: { name: 'Perplexity (AI)', url: 'https://www.perplexity.ai/search?q=%s' },
+  yahoo: { name: 'Yahoo', url: 'https://search.yahoo.com/search?p=%s' },
+  yandex: { name: 'Yandex', url: 'https://yandex.com/search/?text=%s' },
+  wikipedia: { name: 'Wikipedia', url: 'https://en.wikipedia.org/w/index.php?search=%s' },
+  youtube: { name: 'YouTube', url: 'https://www.youtube.com/results?search_query=%s' }
 };
 const DEFAULT_SETTINGS = () => ({
   name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
+  logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true,
+  eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -418,6 +430,12 @@ function setAdblock(on, only) {
 function applySettingsSideEffects(patch) {
   if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system';
   if ('adblock' in patch) setAdblock(!!patch.adblock);
+  if ('eq' in patch) {
+    // Equalizer runs inside web pages (media-preload.js); push the new curve to every page.
+    for (const wc of webContents.getAllWebContents()) {
+      if (!wc.isDestroyed() && wc.getType() === 'webview' && /^https?:/.test(wc.getURL())) wc.send('eq:update', getSettings().eq);
+    }
+  }
 }
 nativeTheme.on('updated', () => {
   for (const { win, incognito } of windows.values()) {
@@ -444,7 +462,21 @@ const ANY = ['shell', 'internal'];
 
 handle('win:info', ['shell'], (e) => { const w = entryFor(e.sender); const r = w.restore; w.restore = null; const u = w.pendingUrls; w.pendingUrls = null; return { incognito: w.incognito, partition: w.partition, ai: w.aiPartition, apps: w.appsPartition, restore: r, urls: u, version: app.getVersion() }; });
 handle('settings:get', ANY, () => publicSettings());
-handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(patch); return publicSettings(); });
+handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(cleanPatch(patch)); return publicSettings(); });
+// Values that end up in pages or audio graphs get checked here.
+function cleanPatch(patch) {
+  const p = Object.assign({}, patch);
+  if ('logo' in p && !['ring', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
+  if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
+  if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
+  if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
+  if ('eq' in p) p.eq = cleanEq(p.eq);
+  return p;
+}
+const cleanEq = (eq) => {
+  const g = Array.isArray(eq && eq.gains) ? eq.gains : [];
+  return { on: !!(eq && eq.on), preset: String((eq && eq.preset) || 'custom').slice(0, 20), gains: Array.from({ length: 8 }, (_, i) => Math.max(-12, Math.min(12, Math.round((+g[i] || 0) * 2) / 2))) };
+};
 handle('settings:reset', ['internal'], () => { const keep = { pinned: getSettings().pinned }; store.write('settings.json', keep); applySettingsSideEffects(DEFAULT_SETTINGS()); broadcast('settings:changed', publicSettings()); return publicSettings(); });
 
 handle('bookmarks:get', ANY, () => getBookmarks());
@@ -579,6 +611,7 @@ handle('default:set', ['internal'], async () => {
 handle('about:info', ['internal'], () => ({ version: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node, platform: `${os.type()} ${os.release()} ${process.arch}`, userData: app.getPath('userData') }));
 
 // Password helper preload (runs inside web pages): origin-checked by the frame that sends.
+ipcMain.handle('eq:get', (e) => (e.sender.getType() === 'webview' ? cleanEq(getSettings().eq) : null));
 ipcMain.handle('pw:query', (e) => {
   if (e.sender.getType() !== 'webview' || !getSettings().savePasswords) return [];
   let origin; try { origin = e.senderFrame.origin; } catch { return []; }
