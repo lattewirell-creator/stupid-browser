@@ -503,6 +503,15 @@ const cleanLauncher = (list) => list.filter((x) => x && typeof x.name === 'strin
 handle('launcher:get', ANY, () => store.read('launcher.json', DEFAULT_LAUNCHER));
 handle('launcher:set', ANY, (_e, list) => { if (Array.isArray(list)) { const l = cleanLauncher(list); store.write('launcher.json', l); broadcast('launcher:changed', l); } return true; });
 handle('launcher:defaults', ANY, () => DEFAULT_LAUNCHER);
+// New-tab widgets (src/pages/widgets.js). Each: { id, type, config }.
+const WIDGET_TYPES = ['weather', 'notes', 'todo', 'clock', 'calendar', 'countdown'];
+const cleanWidgets = (list) => list.filter((w) => w && WIDGET_TYPES.includes(w.type)).slice(0, 12).map((w) => {
+  let config = w.config && typeof w.config === 'object' ? w.config : {};
+  if (JSON.stringify(config).length > 20000) config = {};
+  return { id: String(w.id || 'w' + Date.now().toString(36)).slice(0, 40), type: w.type, config };
+});
+handle('widgets:get', ['internal'], () => store.read('widgets.json', [{ id: 'w-weather', type: 'weather', config: {} }, { id: 'w-todo', type: 'todo', config: { items: [] } }, { id: 'w-notes', type: 'notes', config: { text: '' } }]));
+handle('widgets:set', ['internal'], (_e, list) => { if (Array.isArray(list)) { const l = cleanWidgets(list); store.write('widgets.json', l); broadcast('widgets:changed', l); } return true; });
 
 handle('history:suggest', ['shell'], (_e, q) => suggest(q));
 handle('history:query', ['internal'], (_e, q, limit = 300, before = Infinity) => {

@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; connect-src https://api.open-meteo.com https://geocoding-api.open-meteo.com; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
 <title>New tab</title>
 <link rel="stylesheet" href="common.css">
 <link rel="stylesheet" href="newtab.css">
+<link rel="stylesheet" href="widgets.css">
 </head>
 <body>
   <main>
@@ -15,6 +16,7 @@
     <p class="greet"><span id="greeting">Hello</span> <span class="dotsep">·</span> <span id="clock"></span></p>
     <h2>Ask an AI</h2>
     <div id="tiles" class="tiles"></div>
+    <section id="widgets" class="widgets"></section>
     <h2 id="topHead" class="hidden">Your bookmarks</h2>
     <div id="top" class="tiles"></div>
     <p class="hint">Ctrl+T new tab · Ctrl+K command bar · Ctrl+Shift+A AI sidebar · Ctrl+H history · Ctrl+, settings</p>
@@ -39,11 +41,14 @@
     </div>
     <div class="cz-label">Title</div>
     <input id="czTitle" class="cz-input" maxlength="40" placeholder="The Stupid Browser">
+    <div class="cz-label">Widgets</div>
+    <div class="cz-widgets" id="czWidgets"></div>
     <label class="cz-check"><span>Random browser quotes</span><input id="czQuotes" type="checkbox" class="toggle"></label>
     <button id="czReset" class="btn cz-reset">Reset to default</button>
   </aside>
   <script src="keys.js"></script>
   <script src="common.js"></script>
   <script src="newtab.js"></script>
+  <script src="widgets.js"></script>
 </body>
 </html>
