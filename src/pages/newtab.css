@@ -54,3 +54,23 @@ h2 { font-size: 17px; color: var(--text-2); margin: 42px 0 14px; }
 .cz-note { color: var(--muted); font-size: 11.5px; }
 .cz-check { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; color: var(--text-2); }
 .cz-reset { margin-top: 4px; }
+
+/* background (background.js) */
+.bg { position: fixed; inset: 0; z-index: -1; transition: opacity .4s; }
+.bg::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,var(--dim, 0)); transition: background .2s; }
+body.has-bg { background: transparent; }
+body.bg-dark .wordmark, body.bg-dark .greet, body.bg-dark .quote, body.bg-dark h2, body.bg-dark .hint { color: #fff; text-shadow: 0 1px 12px rgba(0,0,0,.35); }
+body.bg-dark .greet, body.bg-dark .hint { color: rgba(255,255,255,.82); }
+body.bg-light .wordmark, body.bg-light h2 { color: #2A2118; }
+body.bg-light .greet, body.bg-light .quote, body.bg-light .hint { color: rgba(42,33,24,.75); }
+body.has-bg .customize-btn { background: color-mix(in srgb, var(--surface) 80%, transparent); backdrop-filter: blur(12px); }
+body.has-bg .widget { background: linear-gradient(180deg, color-mix(in srgb, #fff 4%, transparent), transparent 40%), color-mix(in srgb, var(--wbg) 86%, transparent); backdrop-filter: blur(14px); }
+.cz-bgs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.cz-bg { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--text-2); cursor: pointer; }
+.cz-bg-sw { width: 100%; aspect-ratio: 1; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); display: grid; place-items: center; color: var(--muted); transition: transform .15s; }
+.cz-bg:hover .cz-bg-sw { transform: scale(1.05); }
+.cz-bg.on .cz-bg-sw { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.cz-bg small { font-size: 10.5px; }
+.cz-dim { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-2); }
+.cz-dim input { flex: 1; accent-color: var(--accent); }
+.cz-dim span:last-child { width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }

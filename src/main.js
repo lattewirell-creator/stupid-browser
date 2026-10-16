@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true,
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { model: 'claude-opus-5-5', look: true },
+  bg: 'none', bgDim: 25,
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -473,6 +474,8 @@ function cleanPatch(patch) {
   if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
   if ('eq' in p) p.eq = cleanEq(p.eq);
   if ('aiButton' in p && !['buddy', 'sidebar'].includes(p.aiButton)) delete p.aiButton;
+  if ('bg' in p && !/^(none|image|preset:[a-z]{2,16})$/.test(String(p.bg))) delete p.bg;
+  if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
   if ('buddy' in p) p.buddy = { model: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(p.buddy && p.buddy.model) ? p.buddy.model : 'claude-opus-5-5', look: !(p.buddy && p.buddy.look === false) };
   return p;
 }
@@ -515,6 +518,13 @@ const cleanWidgets = (list) => list.filter((w) => w && WIDGET_TYPES.includes(w.t
   const out = { id: String(w.id || 'w' + Date.now().toString(36)).slice(0, 40), type: w.type, config };
   if (w.pos && typeof w.pos === 'object') out.pos = { x: num(w.pos.x, 0, 1), y: num(w.pos.y, 0, 1), w: num(w.pos.w, 160, 900) };
   return out;
+});
+// New-tab background photo, kept out of settings.json so settings broadcasts stay small.
+handle('background:get', ['internal'], () => store.read('background.json', { image: '' }).image || '');
+handle('background:set', ['internal'], (_e, image) => {
+  image = String(image || '');
+  if (image && !(image.length < 6e6 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image))) return false;
+  store.write('background.json', { image }); broadcast('background:changed', true); return true;
 });
 handle('widgets:get', ['internal'], () => store.read('widgets.json', [{ id: 'w-weather', type: 'weather', config: {} }, { id: 'w-todo', type: 'todo', config: { items: [] } }, { id: 'w-notes', type: 'notes', config: { text: '' } }]));
 handle('widgets:set', ['internal'], (_e, list) => { if (Array.isArray(list)) { const l = cleanWidgets(list); store.write('widgets.json', l); broadcast('widgets:changed', l); } return true; });

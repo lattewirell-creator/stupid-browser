@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="widgets.css">
 </head>
 <body>
+  <div id="bg" class="bg" aria-hidden="true"></div>
   <main>
     <div id="logo" class="logo ring"></div>
     <h1 id="wordmark" class="wordmark">The Stupid Browser</h1>
@@ -17,7 +18,7 @@
     <section id="widgets" class="widgets"></section>
     <h2 id="topHead" class="hidden">Your bookmarks</h2>
     <div id="top" class="tiles"></div>
-    <p class="hint">Ctrl+T new tab · Ctrl+K command bar · Ctrl+Shift+A AI sidebar · Ctrl+H history · Ctrl+, settings</p>
+    <p class="hint">Ctrl+T new tab · Ctrl+K command bar · Ctrl+Shift+A AI buddy · Ctrl+H history · Ctrl+, settings</p>
   </main>
   <button id="customizeBtn" class="customize-btn" title="Customize this page"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>Customize</span></button>
   <aside id="customize" class="customize hidden" aria-label="Customize">
@@ -37,6 +38,9 @@
       <label class="btn"><input id="czFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>Upload an image…</label>
       <small class="cz-note">Square images look best. It stays on this computer.</small>
     </div>
+    <div class="cz-label">Background</div>
+    <div class="cz-bgs" id="czBgs"></div>
+    <div id="czDimRow" class="cz-dim"><span>Darken</span><input id="czDim" type="range" min="0" max="70" step="5"><span id="czDimVal"></span></div>
     <div class="cz-label">Title</div>
     <input id="czTitle" class="cz-input" maxlength="40" placeholder="The Stupid Browser">
     <div class="cz-label">Widgets</div>
@@ -49,5 +53,6 @@
   <script src="newtab.js"></script>
   <script src="widgets.js"></script>
   <script src="widget-builder.js"></script>
+  <script src="background.js"></script>
 </body>
 </html>
