@@ -459,3 +459,11 @@ body.htmlfs #island { display: none; }
 .bd-look svg, .bd-send svg { width: 18px; height: 18px; }
 body.htmlfs .buddy { display: none; }
 @media (prefers-reduced-motion: reduce) { .bd-avatar, .bd-eye { animation: none !important; } }
+.pf-profiles { display: flex; flex-direction: column; }
+.pf-prow { display: flex; align-items: center; }
+.pf-prow .pf-link { flex: 1; }
+.pf-profiles .avatar { width: 22px; height: 22px; font-size: 10.5px; }
+.pf-plus { background: transparent !important; box-shadow: 0 0 0 1.5px var(--line-strong) inset; color: var(--muted); }
+.pf-plus svg { stroke: var(--muted); }
+.pf-del { opacity: .5; } .pf-del:hover { opacity: 1; } .pf-del.confirm { opacity: 1; color: #C8606F; background: rgba(200,96,111,.12); }
+.pf-addtitle { margin: 16px 6px 4px; } .pf-addnote { margin: 0 6px 10px; }

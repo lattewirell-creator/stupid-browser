@@ -100,6 +100,34 @@ function profileCard(editing = false) {
   });
   pop.appendChild(custom);
 
+  // Other profiles (each opens as its own browser with separate data).
+  pop.appendChild(el('div', 'pop-sub', 'Profiles'));
+  const plist = el('div', 'pf-profiles'); pop.appendChild(plist);
+  call('profiles:list').then(({ current, list }) => {
+    for (const p of list) {
+      if (p.id === current) continue;
+      const row = el('div', 'pf-prow');
+      const b = el('button', 'menu-item pf-link');
+      const a = el('span', 'avatar'); a.style.background = GROUP_COLORS[p.color] || GROUP_COLORS.clay; a.textContent = (p.name || '?')[0].toUpperCase();
+      b.append(a, el('span', 'ml', p.name)); b.title = `Open ${p.name}’s browser`;
+      b.addEventListener('click', () => { hidePop(); call('profiles:open', p.id); toast(`Opening ${p.name}…`); });
+      row.appendChild(b);
+      if (p.id !== 'default') {
+        const x = el('button', 'icon-btn small pf-del'); x.title = `Remove ${p.name}`; x.appendChild(svg('<path d="M6 6l12 12M18 6L6 18"/>'));
+        x.addEventListener('click', () => {
+          if (x.classList.contains('confirm')) { call('profiles:remove', p.id).then(() => { toast(`${p.name} moved to the Trash`); profileCard(false); }); return; }
+          x.classList.add('confirm'); x.title = 'Click again to remove (its data goes to the Trash)'; toast(`Click × again to remove ${p.name}`);
+        });
+        row.appendChild(x);
+      }
+      plist.appendChild(row);
+    }
+    const add = el('button', 'menu-item pf-link'); const plus = el('span', 'avatar pf-plus'); plus.appendChild(svg('<path d="M12 6v12M6 12h12"/>'));
+    add.append(plus, el('span', 'ml', 'Add profile'));
+    add.addEventListener('click', () => addProfileForm());
+    plist.appendChild(add);
+  }).catch(() => {});
+
   pop.appendChild(el('div', 'sep'));
   const links = [
     ['Passwords', '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>', () => openUrlInternal('settings', '#passwords')],
@@ -114,6 +142,25 @@ function profileCard(editing = false) {
     pop.appendChild(b);
   }
   anchorBelow($('profileBtn'), pop);
+}
+function addProfileForm() {
+  const pop = $('popover'); pop.innerHTML = ''; pop.className = 'pop profile-pop';
+  pop.appendChild(el('div', 'pop-title serif pf-addtitle', 'Add a profile'));
+  pop.appendChild(el('div', 'pop-note pf-addnote', 'A profile is a separate browser with its own logins, history, bookmarks and passwords. Great for work vs. personal, or sharing the computer.'));
+  const f = el('form', 'stack pf-form');
+  const name = el('input', 'text-in'); name.placeholder = 'Name (e.g. Work)'; name.maxLength = 40; name.required = true;
+  const sw = el('div', 'pf-swatches'); let color = 'sky';
+  for (const c of PROFILE_COLORS) {
+    const s = el('button', 'pf-swatch' + (c === color ? ' on' : '')); s.type = 'button'; s.style.background = GROUP_COLORS[c];
+    s.addEventListener('click', () => { color = c; sw.querySelectorAll('.pf-swatch').forEach((x) => x.classList.toggle('on', x === s)); });
+    sw.appendChild(s);
+  }
+  const row = el('div', 'pop-actions'); const back = el('button', 'pill', 'Back'); back.type = 'button'; back.addEventListener('click', () => profileCard(false));
+  const ok = el('button', 'pill solid', 'Create & open'); ok.type = 'submit'; row.append(el('div', 'grow'), back, ok);
+  f.append(name, el('div', 'pop-sub', 'Color'), sw, row);
+  f.addEventListener('submit', async (e) => { e.preventDefault(); const p = await call('profiles:create', { name: name.value.trim(), color }); hidePop(); toast(p ? `Opening ${p.name}…` : 'Couldn’t create the profile'); });
+  pop.appendChild(f);
+  anchorBelow($('profileBtn'), pop); name.focus();
 }
 $('profileBtn').addEventListener('click', () => { if (isOpen('profile-pop')) hidePop(); else profileCard(false); });
 

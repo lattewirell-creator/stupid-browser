@@ -50,10 +50,18 @@ Self-test: STUPID_SELFTEST=/tmp/s.png STUPID_SELFTEST_STEPS="quit@170000" STUPID
   playlist panel for YouTube playlists, YouTube Music queue and Spotify track lists. Toggle in Settings → Appearance.
 - Profile button + app grid (src/workspace.js), top-right like Chrome: name/email/color, pick any webmail
   (Gmail, Proton, Outlook, iCloud, Yahoo, Tuta, custom); customizable 9-dot app grid (add, rename, remove, drag to reorder).
-  Profiles are a card only for now: not separate data per profile yet.
+  Multiple profiles (src/profiles.js): each profile = own data folder + own browser process (Chrome-style);
+  "default" keeps the original folder. Add / switch / remove (to Trash) from the profile menu.
 - DuckDuckGo is the default search engine for new installs; 14 engines (Brave, Startpage, Qwant, Kagi, Mojeek, Perplexity, …).
 - New tab: customizable logo (classic / emoji / uploaded image / none) and title via the Customize button; the window logo
   follows it. Random browser quotes above the clock. Search box removed (use the address bar). AI tiles highlight on hover
   and the last-used AI stays highlighted.
 - Sound & EQ (src/sound.js; engine in media-preload.js): headphones button appears when headphones are the output,
   8-band EQ with presets. Skips DRM sites (Spotify, Netflix, …) and cross-origin media without CORS so audio never goes silent.
+- Widgets on the new tab (src/pages/widgets.js, widget-builder.js): weather (Open-Meteo), notes, to-do, clock, calendar,
+  countdown; drag anywhere; build your own from blocks (text, links, photo, counter, habit) or 7 templates, 8 themes.
+- New-tab backgrounds (src/pages/background.js): 8 presets or a photo (stored in background.json), darken slider.
+- AI buddy (src/buddy.js + src/buddy-main.js): Claude via the user's Anthropic API key (encrypted with safeStorage);
+  can see the current tab (screenshot + text). AI button opens it; Settings → AI buddy can switch back to the sidebar.
+  "Ask an AI" tiles removed from the new tab.
+- Easter egg: Konami code opens the Zelda secret sound on YouTube (main.js, before-input-event).

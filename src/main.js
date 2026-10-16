@@ -11,6 +11,7 @@ const store = require('./store');
 
 const IS_MAC = process.platform === 'darwin';
 app.setName('The Stupid Browser');
+const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
 if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
 
 // Plain Chrome user agent so sites (Google, AI chats) treat us like a normal browser.
@@ -97,6 +98,7 @@ function setSettings(patch) {
   store.write('settings.json', next);
   applySettingsSideEffects(patch);
   broadcast('settings:changed', publicSettings());
+  if ('name' in patch || 'profileColor' in patch || 'email' in patch) profiles.sync(next);
   return next;
 }
 function publicSettings() {
@@ -622,6 +624,10 @@ handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, ori
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
 handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
+handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
+handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
+handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
+handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
 require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
 
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
@@ -1052,6 +1058,7 @@ if (!app.requestSingleInstanceLock()) {
     const s = getSettings();
     nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
     if (IS_MAC) buildMacMenu();
+    profiles.sync(s);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
     openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
     app.on('activate', () => {
