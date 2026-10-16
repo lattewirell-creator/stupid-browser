@@ -25,7 +25,7 @@
   </nav>
   <main id="main">
     <section id="appearance"><h2>Appearance</h2><div class="card">
-      <div class="row"><div class="lbl">Theme<small>Follow Windows, or pick one</small></div><div class="seg" id="theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+      <div class="row"><div class="lbl">Theme<small>Follow the system, or pick one</small></div><div class="seg" id="theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
       <div class="row"><div class="lbl">Accent color</div><div id="accent" class="swatches"></div></div>
       <div class="row"><div class="lbl">Font size<small>Default text size for web pages (new tabs)</small></div><select id="fontSize" class="input"><option value="small">Small</option><option value="medium">Medium (recommended)</option><option value="large">Large</option><option value="xlarge">Very large</option></select></div>
       <div class="row"><div class="lbl">Show bookmarks bar<small>Ctrl+Shift+B</small></div><input type="checkbox" class="toggle" id="showBookmarksBar"></div>
@@ -90,7 +90,7 @@
     </section>
 
     <section id="default"><h2>Default browser</h2><div class="card">
-      <div class="row"><div class="lbl" id="defStatus">Checking…<small>Windows asks you to confirm in Settings → Apps → Default apps. Pick “The Stupid Browser” for HTTP and HTTPS.</small></div><button id="defBtn" class="btn primary">Make default</button></div>
+      <div class="row"><div class="lbl" id="defStatus">Checking…<small id="defHint">Windows asks you to confirm in Settings → Apps → Default apps. Pick “The Stupid Browser” for HTTP and HTTPS.</small></div><button id="defBtn" class="btn primary">Make default</button></div>
     </div></section>
 
     <section id="about"><h2>About The Stupid Browser</h2><div class="card">
@@ -101,6 +101,7 @@
     </div></section>
   </main>
 </div>
+<script src="keys.js"></script>
 <script src="common.js"></script>
 <script src="settings.js"></script>
 </body>

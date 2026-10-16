@@ -76,9 +76,12 @@ async function renderPerms() {
   }
 }
 
+const IS_MAC = S.platform === 'darwin';
+if (IS_MAC) $('defHint').textContent = 'macOS asks you to confirm. Choose “Use The Stupid Browser”.';
+
 async function renderPasswords() {
   const enc = await call('pw:encryption');
-  $('encNote').textContent = enc ? 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.' : 'Warning: system encryption is not available, passwords are only obfuscated.';
+  $('encNote').textContent = enc ? (IS_MAC ? 'Passwords are encrypted with a key kept in your macOS Keychain and stay on this computer.' : 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.') : 'Warning: system encryption is not available, passwords are only obfuscated.';
   const list = await call('pw:list');
   const box = $('pwList'); box.innerHTML = '';
   if (!list.length) { box.appendChild(el('div', 'row muted', 'No saved passwords. When you sign in to a site, The Stupid Browser offers to save it.')); return; }
@@ -165,7 +168,7 @@ async function renderDefault() {
   const isDef = st.http && st.https;
   $('defStatus').firstChild.textContent = isDef ? 'The Stupid Browser is registered for web links. ' : 'The Stupid Browser is not your default browser. ';
 }
-$('defBtn').onclick = async () => { await call('default:set'); toast('Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
+$('defBtn').onclick = async () => { await call('default:set'); toast(IS_MAC ? 'Confirm in the macOS dialog that opened' : 'Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
 
 async function renderAbout() {
   const a = await call('about:info');
@@ -176,7 +179,7 @@ function renderUpdate(u) {
   if (!u) return;
   const when = u.lastCheck ? ' · checked ' + new Date(u.lastCheck).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const msg = {
-    unsupported: u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
+    unsupported: IS_MAC ? 'Automatic updates aren’t available on macOS yet. Download the latest .dmg from GitHub Releases to update.' : u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
     idle: `Version ${u.current}. Updates are checked automatically every few hours.`,
     checking: 'Checking for updates…',
     none: `You’re up to date (version ${u.current})${when}.`,

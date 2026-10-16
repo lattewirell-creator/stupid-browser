@@ -262,7 +262,7 @@ function buildTabEl(tab) {
   au.addEventListener('mousedown', (ev) => ev.stopPropagation());
   au.addEventListener('click', (ev) => { ev.stopPropagation(); toggleMute(tab); });
   e.appendChild(au);
-  const c = el('button', 'close'); c.title = 'Close tab (Ctrl+W)'; c.appendChild(svg(ICON.x));
+  const c = el('button', 'close'); c.title = keyLabel('Close tab (Ctrl+W)'); c.appendChild(svg(ICON.x));
   c.addEventListener('mousedown', (ev) => ev.stopPropagation());
   c.addEventListener('click', (ev) => { ev.stopPropagation(); closeTab(tab.id); });
   e.appendChild(c);
@@ -414,7 +414,7 @@ function updateNav() {
   if (wv && tab.ready) { try { back = wv.canGoBack(); fwd = wv.canGoForward(); } catch {} }
   $('backBtn').disabled = !back; $('fwdBtn').disabled = !fwd;
   $('reloadBtn').classList.toggle('loading', !!tab.loading);
-  $('reloadBtn').title = tab.loading ? 'Stop loading' : 'Reload (Ctrl+R)';
+  $('reloadBtn').title = tab.loading ? 'Stop loading' : keyLabel('Reload (Ctrl+R)');
   if (document.activeElement !== $('address')) $('address').value = displayUrl(tab.url);
   const sb = $('siteBtn');
   const state = isNewtab(tab.url) ? 'search' : isInternal(tab.url) ? 'info' : /^https:/.test(tab.url) ? 'lock' : /^http:/.test(tab.url) ? 'warn' : 'info';
@@ -508,7 +508,7 @@ function toggleSplit(withId) {
   if (!other.wv) createWebview(other);
   split = [cur.id, other.id];
   renderAll();
-  toast('Split view on — Ctrl+Shift+S to exit');
+  toast(keyLabel('Split view on — Ctrl+Shift+S to exit'));
 }
 
 /* ---------------- popovers & menus ---------------- */
@@ -529,7 +529,7 @@ function showMenu(target, items, x, y) {
     if (it.row) { m.appendChild(it.row); continue; }
     const b = el('button', 'menu-item');
     b.appendChild(el('span', 'ml', it.label));
-    if (it.key) b.appendChild(el('span', 'mk', it.key));
+    if (it.key) b.appendChild(el('span', 'mk', keyLabel(it.key)));
     if (it.disabled) b.disabled = true;
     b.addEventListener('click', () => { hideMenus(); it.fn(); });
     m.appendChild(b);
@@ -616,7 +616,7 @@ function renderBookmarks() {
   const bar = $('bookmarksBar'); bar.innerHTML = '';
   document.body.classList.toggle('no-bm', settings.showBookmarksBar === false);
   const root = bookmarks.filter((b) => !b.parentId);
-  if (!root.length) bar.appendChild(el('div', 'bm-empty', 'Press ★ or Ctrl+D to bookmark a page'));
+  if (!root.length) bar.appendChild(el('div', 'bm-empty', keyLabel('Press ★ or Ctrl+D to bookmark a page')));
   for (const b of root) {
     const e = el('div', 'bm' + (b.type === 'folder' ? ' folder' : ''));
     e.title = b.type === 'folder' ? b.title : `${b.title}\n${b.url}`;
@@ -782,7 +782,7 @@ function dlPopover() {
     else act('Retry', 'retry');
     pop.appendChild(row);
   }
-  const all = el('button', 'menu-item', 'Show all downloads   Ctrl+J'); all.addEventListener('click', () => { hidePop(); openInternal('downloads'); });
+  const all = el('button', 'menu-item', keyLabel('Show all downloads   Ctrl+J')); all.addEventListener('click', () => { hidePop(); openInternal('downloads'); });
   pop.appendChild(all);
   const r = $('dlBtn').getBoundingClientRect();
   showPopAt(pop, r.right - 360, r.bottom + 8);
@@ -900,7 +900,7 @@ function renderRail() {
   add.addEventListener('click', railAddForm);
   rail.appendChild(add);
   rail.appendChild(el('div', 'grow'));
-  const gear = el('button', 'rail-item'); gear.title = 'Settings (Ctrl+,)'; gear.appendChild(svg(ICON.gear));
+  const gear = el('button', 'rail-item'); gear.title = keyLabel('Settings (Ctrl+,)'); gear.appendChild(svg(ICON.gear));
   gear.addEventListener('click', () => openInternal('settings'));
   rail.appendChild(gear);
 }

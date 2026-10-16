@@ -25,3 +25,10 @@ Don't change `appId` in package.json, or Windows treats it as a different app.
 ## Before releasing
 - `npm test` (headless self-tests, needs xvfb on Linux)
 - Building on Linux needs wine for the Windows exe resources (`apt install wine wine64`).
+
+## macOS builds
+On a Mac: `npm run dist:mac`, then attach the dmgs to the same release:
+```
+gh release upload v1.2.0 -R lattewirell-creator/stupid-browser release/StupidBrowser-1.2.0-arm64.dmg release/StupidBrowser-1.2.0-x64.dmg
+```
+Mac copies don't auto-update (that needs Developer ID signing + notarization).

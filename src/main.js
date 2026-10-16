@@ -9,11 +9,13 @@ const os = require('os');
 const { pathToFileURL } = require('url');
 const store = require('./store');
 
+const IS_MAC = process.platform === 'darwin';
 app.setName('The Stupid Browser');
-app.setAppUserModelId('com.emil.stupidbrowser');
+if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
 
 // Plain Chrome user agent so sites (Google, AI chats) treat us like a normal browser.
-const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; Win64; x64';
+const UA = `Mozilla/5.0 (${UA_OS}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
 app.userAgentFallback = UA;
 
 protocol.registerSchemesAsPrivileged([
@@ -123,8 +125,10 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
     title: incognito ? 'Private — The Stupid Browser' : 'The Stupid Browser',
     backgroundColor: c.bg,
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: c.bar, symbolColor: c.fg, height: 40 },
+    // Windows: custom-drawn caption buttons on the right. macOS: traffic lights inset on the left.
+    ...(IS_MAC
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 } }
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: c.bar, symbolColor: c.fg, height: 40 } }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -132,7 +136,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
       spellcheck: true
     }
   });
-  win.removeMenu();
+  if (!IS_MAC) win.removeMenu();   // macOS uses the app menu bar (see buildMacMenu)
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
@@ -403,7 +407,7 @@ nativeTheme.on('updated', () => {
     if (win.isDestroyed()) continue;
     const c = themeColors(incognito);
     win.setBackgroundColor(c.bg);
-    if (process.platform !== 'darwin') { try { win.setTitleBarOverlay({ color: c.bar, symbolColor: c.fg, height: 40 }); } catch {} }
+    if (!IS_MAC) { try { win.setTitleBarOverlay({ color: c.bar, symbolColor: c.fg, height: 40 }); } catch {} }
   }
 });
 
@@ -543,6 +547,7 @@ handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable())
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
 handle('default:set', ['internal'], async () => {
   app.setAsDefaultProtocolClient('http'); app.setAsDefaultProtocolClient('https');
+  // macOS shows its own "change default browser?" confirmation for the call above.
   if (process.platform === 'win32') {
     try { await shell.openExternal('ms-settings:defaultapps?registeredAppUser=The%20Stupid%20Browser'); }
     catch { try { await shell.openExternal('ms-settings:defaultapps'); } catch {} }
@@ -624,7 +629,9 @@ function shortcutFor(input) {
   if (input.type !== 'keyDown') return null;
   const k = (input.key || '').toLowerCase();
   const code = input.code || '';
-  const ctrl = input.control || input.meta;
+  if (IS_MAC) { const m = macShortcutFor(input, k, code); if (m !== undefined) return m; }
+  // On macOS Ctrl+letter is text editing (Ctrl+A/E/K…), so only Cmd counts there.
+  const ctrl = IS_MAC ? input.meta : (input.control || input.meta);
   const shift = input.shift, alt = input.alt;
   if (k === 'f12' || (ctrl && shift && k === 'i')) return 'devtools';
   if (ctrl && shift && k === 'j') return 'devtools';
@@ -675,6 +682,36 @@ function shortcutFor(input) {
   if (k === '0' || code === 'Numpad0') return 'zoom-reset';
   if (/^[1-9]$/.test(k)) return 'tab-' + k;
   return null;
+}
+// macOS (Chrome for Mac) bindings. Returns undefined to fall through to the shared table.
+function macShortcutFor(input, k, code) {
+  const cmd = input.meta, shift = input.shift, alt = input.alt, ctl = input.control;
+  if (ctl && !cmd && k === 'tab') return shift ? 'prev-tab' : 'next-tab';
+  if (ctl && cmd && k === 'f') return 'fullscreen';
+  if (ctl) return null;
+  if (!cmd) return (k === 'f12' || k === 'f5' || k === 'f3' || k === 'f6') ? undefined : null;
+  if (alt) {
+    if (k === 'i' || code === 'KeyI' || k === 'j' || code === 'KeyJ') return 'devtools';
+    if (k === 'u' || code === 'KeyU') return 'view-source';
+    if (k === 'b' || code === 'KeyB') return 'bookmarks';
+    if (k === 'arrowright') return 'next-tab';
+    if (k === 'arrowleft') return 'prev-tab';
+    return null;
+  }
+  if (shift) {
+    if (code === 'BracketRight' || k === '}') return 'next-tab';
+    if (code === 'BracketLeft' || k === '{') return 'prev-tab';
+    if (k === 'h') return 'home';
+    if (k === 'j') return 'downloads';
+    if (k === 'backspace' || k === 'delete') return 'clear-data';
+    if (k === 'w') return 'close-window';
+    return undefined;
+  }
+  if (k === '[' || code === 'BracketLeft') return 'back';      // not Cmd+Arrow: that's line start/end in text fields
+  if (k === ']' || code === 'BracketRight') return 'forward';
+  if (k === 'y') return 'history';
+  if (k === 'h' || k === 'q' || k === 'm' || k === 'c' || k === 'v' || k === 'x' || k === 'a' || k === 'z') return null;   // app menu roles
+  return undefined;
 }
 function hookShortcuts(wc) {
   wc.on('before-input-event', (event, input) => {
@@ -825,36 +862,117 @@ function selfTest(win) {
 const urlFromArgv = (argv) => argv.slice(1).find((a) => /^(https?:\/\/|file:\/\/)/i.test(a) || /\.(html?|pdf|svg)$/i.test(a));
 function normalizeArgUrl(a) { if (!a) return null; if (/^(https?|file):/i.test(a)) return a; try { return pathToFileURL(path.resolve(a)).toString(); } catch { return null; } }
 
+function openFromOutside(url) {
+  const w = [...windows.values()].reverse().find((x) => !x.incognito && !x.win.isDestroyed());
+  if (w) {
+    if (w.win.isMinimized()) w.win.restore();
+    w.win.focus();
+    if (url) w.win.webContents.send('open-url', { url, where: 'foreground' });
+    else w.win.webContents.send('shortcut', 'new-tab');
+  } else createWindow({ urls: url ? [url] : null });
+}
+
+function openStartupWindows(extraUrls) {
+  const s = getSettings();
+  const saved = store.read('session.json', []);
+  if (s.startup === 'continue' && saved.length) {
+    saved.forEach((sess, i) => createWindow({ restore: sess, urls: i === 0 && extraUrls.length ? extraUrls : null }));
+  } else if (s.startup === 'pages' && s.startupPages && s.startupPages.length) {
+    createWindow({ urls: [...s.startupPages, ...extraUrls] });
+  } else {
+    createWindow({ urls: extraUrls.length ? extraUrls : null });
+  }
+}
+
+// macOS application menu. Without it Cmd+C/V/X/A/Z don't work and there's no Quit/Hide.
+// Browser shortcuts are handled in hookShortcuts; menu items just send the same commands.
+function buildMacMenu() {
+  const send = (cmd) => () => {
+    const w = BrowserWindow.getFocusedWindow();
+    if (w && windows.has(w.id)) w.webContents.send('shortcut', cmd); else if (cmd === 'new-tab') createWindow();
+  };
+  const T = [
+    { label: app.name, submenu: [
+      { role: 'about' }, { type: 'separator' },
+      { label: 'Settings…', accelerator: 'Cmd+,', registerAccelerator: false, click: send('settings') },
+      { type: 'separator' }, { role: 'services' }, { type: 'separator' },
+      { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }
+    ] },
+    { label: 'File', submenu: [
+      { label: 'New Tab', accelerator: 'Cmd+T', registerAccelerator: false, click: send('new-tab') },
+      { label: 'New Window', accelerator: 'Cmd+N', registerAccelerator: false, click: () => createWindow() },
+      { label: 'New Private Window', accelerator: 'Cmd+Shift+N', registerAccelerator: false, click: () => createWindow({ incognito: true }) },
+      { label: 'Reopen Closed Tab', accelerator: 'Cmd+Shift+T', registerAccelerator: false, click: send('reopen-tab') },
+      { type: 'separator' },
+      { label: 'Open Location…', accelerator: 'Cmd+L', registerAccelerator: false, click: send('focus-address') },
+      { label: 'Close Tab', accelerator: 'Cmd+W', registerAccelerator: false, click: send('close-tab') },
+      { label: 'Close Window', accelerator: 'Cmd+Shift+W', registerAccelerator: false, click: send('close-window') },
+      { type: 'separator' },
+      { label: 'Print…', accelerator: 'Cmd+P', registerAccelerator: false, click: send('print') }
+    ] },
+    { role: 'editMenu' },
+    { label: 'View', submenu: [
+      { label: 'Reload', accelerator: 'Cmd+R', registerAccelerator: false, click: send('reload') },
+      { label: 'Toggle Sidebar', accelerator: 'Cmd+Shift+E', registerAccelerator: false, click: send('toggle-sidebar') },
+      { label: 'Toggle AI Sidebar', accelerator: 'Cmd+Shift+A', registerAccelerator: false, click: send('toggle-ai') },
+      { label: 'Toggle Bookmarks Bar', accelerator: 'Cmd+Shift+B', registerAccelerator: false, click: send('toggle-bookmarks-bar') },
+      { type: 'separator' },
+      { label: 'Actual Size', accelerator: 'Cmd+0', registerAccelerator: false, click: send('zoom-reset') },
+      { label: 'Zoom In', accelerator: 'Cmd+Plus', registerAccelerator: false, click: send('zoom-in') },
+      { label: 'Zoom Out', accelerator: 'Cmd+-', registerAccelerator: false, click: send('zoom-out') },
+      { type: 'separator' },
+      { label: 'Developer Tools', accelerator: 'Cmd+Alt+I', registerAccelerator: false, click: send('devtools') },
+      { role: 'togglefullscreen' }
+    ] },
+    { label: 'History', submenu: [
+      { label: 'Back', accelerator: 'Cmd+[', registerAccelerator: false, click: send('back') },
+      { label: 'Forward', accelerator: 'Cmd+]', registerAccelerator: false, click: send('forward') },
+      { label: 'Home', accelerator: 'Cmd+Shift+H', registerAccelerator: false, click: send('home') },
+      { type: 'separator' },
+      { label: 'Show All History', accelerator: 'Cmd+Y', registerAccelerator: false, click: send('history') }
+    ] },
+    { label: 'Bookmarks', submenu: [
+      { label: 'Bookmark This Tab', accelerator: 'Cmd+D', registerAccelerator: false, click: send('bookmark') },
+      { label: 'Bookmark Manager', accelerator: 'Cmd+Alt+B', registerAccelerator: false, click: send('bookmarks') }
+    ] },
+    { role: 'windowMenu' },
+    { role: 'help', submenu: [{ label: 'The Stupid Browser on GitHub', click: () => shell.openExternal('https://github.com/lattewirell-creator/stupid-browser') }] }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(T));
+}
+
+// macOS delivers links and files through events instead of argv (and may do so before "ready").
+const pendingOpen = [];
+if (IS_MAC) {
+  const queueOrOpen = (url) => { if (!url) return; if (app.isReady() && windows.size) openFromOutside(url); else pendingOpen.push(url); };
+  app.on('open-url', (e, url) => { e.preventDefault(); if (/^https?:/i.test(url)) queueOrOpen(url); });
+  app.on('open-file', (e, file) => { e.preventDefault(); queueOrOpen(normalizeArgUrl(file)); });
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', (_e, argv) => {
-    const url = normalizeArgUrl(urlFromArgv(argv));
-    const w = [...windows.values()].reverse().find((x) => !x.incognito && !x.win.isDestroyed());
-    if (w) {
-      if (w.win.isMinimized()) w.win.restore();
-      w.win.focus();
-      if (url) w.win.webContents.send('open-url', { url, where: 'foreground' });
-      else w.win.webContents.send('shortcut', 'new-tab');
-    } else createWindow({ urls: url ? [url] : null });
-  });
+  app.on('second-instance', (_e, argv) => openFromOutside(normalizeArgUrl(urlFromArgv(argv))));
 
   app.whenReady().then(() => {
     const s = getSettings();
     nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
+    if (IS_MAC) buildMacMenu();
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
-    const saved = store.read('session.json', []);
-    if (s.startup === 'continue' && saved.length) {
-      saved.forEach((sess, i) => createWindow({ restore: sess, urls: i === 0 && argUrl ? [argUrl] : null }));
-    } else if (s.startup === 'pages' && s.startupPages && s.startupPages.length) {
-      createWindow({ urls: [...s.startupPages, ...(argUrl ? [argUrl] : [])] });
-    } else {
-      createWindow({ urls: argUrl ? [argUrl] : null });
-    }
-    app.on('activate', () => { if (!windows.size) createWindow(); });
+    openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
+    app.on('activate', () => {
+      if (windows.size) return;
+      // Dock click after closing every window (macOS): start fresh like a relaunch.
+      sessions.clear();
+      openStartupWindows(pendingOpen.splice(0));
+    });
     initUpdater();
   });
 }
 
 app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); });
-app.on('window-all-closed', () => { quitting = true; saveSessions(); store.flushAll(); if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  // macOS keeps the app alive in the Dock; the last window's tabs are already in session.json.
+  if (IS_MAC) { saveSessions(); store.flushAll(); return; }
+  quitting = true; saveSessions(); store.flushAll(); app.quit();
+});

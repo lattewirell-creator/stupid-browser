@@ -31,6 +31,7 @@ svg .fill { fill: currentColor; stroke: none; }
 /* ---------- title bar + tabs ---------- */
 #titlebar { height: 40px; display: flex; align-items: flex-end; gap: 2px; background: var(--bar); padding: 0 8px 0 6px; -webkit-app-region: drag; user-select: none;
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px); }
+.mac #titlebar { padding-left: 82px; padding-right: 8px; }   /* room for the macOS traffic lights */
 .brand { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 6px; }
 .logo-mark { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: inset 0 0 0 4px var(--bar); outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
 .private-badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
