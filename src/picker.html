@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Who’s browsing?</title>
+<link rel="stylesheet" href="picker.css">
+</head>
+<body>
+  <main>
+    <div class="logo"><span></span></div>
+    <h1>Who’s browsing?</h1>
+    <p class="sub">Each profile has its own logins, history, bookmarks and settings.</p>
+    <div id="grid" class="grid"></div>
+    <form id="addForm" class="add-form hidden">
+      <input id="addName" maxlength="40" placeholder="Name (e.g. Work)" required>
+      <div id="colors" class="colors"></div>
+      <div class="row"><button type="button" id="cancelAdd" class="btn">Cancel</button><button class="btn primary">Create</button></div>
+    </form>
+  </main>
+  <footer><label><input type="checkbox" id="showAgain"> Show this when the browser opens</label></footer>
+  <script src="picker.js"></script>
+</body>
+</html>

@@ -14,6 +14,8 @@ function render() {
   bindValue('fontSize');
   $('tabSleep').value = String(s.tabSleep == null ? 15 : s.tabSleep); $('tabSleep').onchange = () => set({ tabSleep: +$('tabSleep').value });
   for (const k of ['modernLook', 'verticalTabs', 'compactMode']) { $(k).checked = k === 'modernLook' ? s[k] !== false : !!s[k]; $(k).onchange = () => set({ [k]: $(k).checked }); }
+  call('profiles:picker').then((p) => { $('profilePicker').checked = p.on; }).catch(() => {});
+  $('profilePicker').onchange = () => call('profiles:picker', $('profilePicker').checked);
   paintLogo(s);
   $('musicIsland').checked = s.musicIsland !== false; $('musicIsland').onchange = (e) => set({ musicIsland: e.target.checked });
   $('showBookmarksBar').checked = s.showBookmarksBar !== false; $('showBookmarksBar').onchange = (e) => set({ showBookmarksBar: e.target.checked });

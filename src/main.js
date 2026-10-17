@@ -670,6 +670,7 @@ handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable())
 // Compact mode hides the macOS traffic lights while the top bar is tucked away.
 handle('win:trafficLights', ['shell'], (e, on) => { const w = BrowserWindow.fromWebContents(e.sender); if (IS_MAC && w && w.setWindowButtonVisibility) w.setWindowButtonVisibility(!!on); return true; });
 handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
+handle('profiles:picker', ['internal'], (_e, on) => (on === undefined ? { on: profiles.pickerEnabled(), count: profiles.list().length } : profiles.setPicker(on)));
 handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
 handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
 handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
@@ -1026,6 +1027,38 @@ function openFromOutside(url) {
   } else createWindow({ urls: url ? [url] : null });
 }
 
+// "Who's browsing?" — Chrome-style profile picker at launch when there is more than one profile.
+let pickerWin = null;
+function showProfilePicker() {
+  pickerWin = new BrowserWindow({
+    width: 760, height: 540, resizable: false, minimizable: true, maximizable: false, show: false,
+    title: 'Who’s browsing?', backgroundColor: themeColors(false).bg,
+    ...(IS_MAC ? { titleBarStyle: 'hiddenInset' } : { titleBarStyle: 'hidden', titleBarOverlay: { color: themeColors(false).bg, symbolColor: themeColors(false).fg, height: 36 } }),
+    webPreferences: { preload: path.join(__dirname, 'picker-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  pickerWin.removeMenu();
+  pickerWin.loadFile(path.join(__dirname, 'picker.html'));
+  pickerWin.once('ready-to-show', () => pickerWin.show());
+  pickerWin.on('closed', () => { const w = pickerWin; pickerWin = null; if (w && !w.__chosen && !windows.size) { if (IS_MAC) return; app.quit(); } });
+}
+const fromPicker = (e) => pickerWin && !pickerWin.isDestroyed() && e.sender === pickerWin.webContents;
+ipcMain.handle('picker:list', (e) => (fromPicker(e) ? { list: profiles.list(), show: profiles.pickerEnabled() } : null));
+ipcMain.handle('picker:show', (e, on) => (fromPicker(e) ? profiles.setPicker(on) : null));
+ipcMain.handle('picker:add', (e, p) => {
+  if (!fromPicker(e)) return null;
+  const made = profiles.create(p || {}); if (!made) return null;
+  pickerWin.__chosen = true; profiles.open(made.id); pickerWin.close(); if (!windows.size) app.quit();
+  return true;
+});
+ipcMain.handle('picker:choose', (e, id) => {
+  if (!fromPicker(e)) return null;
+  id = String(id || 'default');
+  pickerWin.__chosen = true;
+  if (id === 'default') { pickerWin.close(); openStartupWindows([]); }
+  else { profiles.open(id); pickerWin.close(); if (!windows.size) app.quit(); }
+  return true;
+});
+
 function openStartupWindows(extraUrls) {
   const s = getSettings();
   const saved = store.read('session.json', []);
@@ -1118,9 +1151,11 @@ if (!app.requestSingleInstanceLock()) {
     if (s.appIcon) setTimeout(applyAppIcon, 500);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
     if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
+    else if (profiles.CURRENT === 'default' && !argUrl && !pendingOpen.length && profiles.list().length > 1 && profiles.pickerEnabled() && !process.env.STUPID_SELFTEST) showProfilePicker();
     else openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
     app.on('activate', () => {
       if (windows.size) return;
+      if (pickerWin && !pickerWin.isDestroyed()) { pickerWin.focus(); return; }
       // Dock click after closing every window (macOS): start fresh like a relaunch.
       sessions.clear();
       openStartupWindows(pendingOpen.splice(0));
