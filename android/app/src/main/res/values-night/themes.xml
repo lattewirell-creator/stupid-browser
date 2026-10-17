@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Stupid" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#D97757</item>
+        <item name="android:windowBackground">#1E1C19</item>
+    </style>
+</resources>

@@ -6,7 +6,7 @@ const $ = (id) => document.getElementById(id);
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function icon(inner) { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.innerHTML = inner; return s; }
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
-function applyAccent(s) { const c = ACCENTS[s && s.accent] || ACCENTS.clay; document.documentElement.style.setProperty('--accent', c); document.documentElement.style.setProperty('--accent-soft', c + '24'); }
+function applyAccent(s) { const c = ACCENTS[s && s.accent] || (/^#[0-9a-f]{6}$/i.test((s && s.accent) || '') ? s.accent : ACCENTS.clay); document.documentElement.style.setProperty('--accent', c); document.documentElement.style.setProperty('--accent-soft', c + '24'); }
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 const favFor = (u) => { const h = hostOf(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${h}` : ''; };
 function favImg(u) { const i = el('img', 'fav'); i.src = favFor(u); i.onerror = () => { i.style.visibility = 'hidden'; }; return i; }

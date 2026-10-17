@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Windows installer and publish it as a GitHub Release that electron-updater picks up.
+# Build the Windows installer (and, on a Mac, the macOS app) and publish a GitHub Release that both updaters pick up.
 # Usage: bump "version" in package.json, commit, then: npm run release [-- "Release notes"]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,8 +18,21 @@ for f in release/StupidBrowser-Setup.exe release/StupidBrowser-Setup.exe.blockma
 done
 grep -q "version: $VERSION" release/latest.yml || { echo "latest.yml version mismatch" >&2; exit 1; }
 grep -q "url: StupidBrowser-Setup.exe" release/latest.yml || { echo "latest.yml file name mismatch" >&2; exit 1; }
+FILES=(release/StupidBrowser-Setup.exe release/StupidBrowser-Setup.exe.blockmap release/latest.yml release/StupidBrowser-portable.exe)
+
+# On a Mac, also build the macOS app. The zips + latest-mac.yml are what installed Macs auto-update from.
+if [ "$(uname)" = "Darwin" ]; then
+  npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+  for a in arm64 x64; do
+    for f in "release/StupidBrowser-$VERSION-$a.dmg" "release/StupidBrowser-$VERSION-$a.zip"; do [ -f "$f" ] || { echo "Missing $f" >&2; exit 1; }; done
+    grep -q "url: StupidBrowser-$VERSION-$a.zip" release/latest-mac.yml || { echo "latest-mac.yml is missing the $a zip" >&2; exit 1; }
+    FILES+=("release/StupidBrowser-$VERSION-$a.dmg" "release/StupidBrowser-$VERSION-$a.zip")
+  done
+  FILES+=(release/latest-mac.yml)
+else
+  echo "Not on a Mac: skipping the macOS build (Macs won't see this update)." >&2
+fi
 
 gh auth setup-git && git push origin HEAD
-gh release create "$TAG" -R "$REPO" --target "$(git rev-parse HEAD)" --title "The Stupid Browser $VERSION" --notes "$NOTES" \
-  release/StupidBrowser-Setup.exe release/StupidBrowser-Setup.exe.blockmap release/latest.yml release/StupidBrowser-portable.exe
+gh release create "$TAG" -R "$REPO" --target "$(git rev-parse HEAD)" --title "The Stupid Browser $VERSION" --notes "$NOTES" "${FILES[@]}"
 echo "Published https://github.com/$REPO/releases/tag/$TAG"

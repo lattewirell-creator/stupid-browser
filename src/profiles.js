@@ -61,4 +61,9 @@ async function remove(id) {
   return true;
 }
 
-module.exports = { CURRENT, list, sync, open, create, remove };
+// "Who's browsing?" picker at launch (shared preference, stored next to profiles.json)
+const prefFile = path.join(BASE, 'profiles-prefs.json');
+function pickerEnabled() { try { return JSON.parse(fs.readFileSync(prefFile, 'utf8')).picker !== false; } catch { return true; } }
+function setPicker(on) { try { fs.writeFileSync(prefFile, JSON.stringify({ picker: !!on })); } catch {} return !!on; }
+
+module.exports = { CURRENT, list, sync, open, create, remove, pickerEnabled, setPicker };

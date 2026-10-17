@@ -26,9 +26,11 @@ Don't change `appId` in package.json, or Windows treats it as a different app.
 - `npm test` (headless self-tests, needs xvfb on Linux)
 - Building on Linux needs wine for the Windows exe resources (`apt install wine wine64`).
 
-## macOS builds
-On a Mac: `npm run dist:mac`, then attach the dmgs to the same release:
-```
-gh release upload v1.2.0 -R lattewirell-creator/stupid-browser release/StupidBrowser-1.2.0-arm64.dmg release/StupidBrowser-1.2.0-x64.dmg
-```
-Mac copies don't auto-update (that needs Developer ID signing + notarization).
+## macOS builds and updates
+Run `npm run release` **on a Mac** and it also builds the macOS app (Apple Silicon + Intel) and uploads
+`StupidBrowser-<version>-arm64/x64.dmg` (for new installs) plus the `.zip` files and `latest-mac.yml`
+(what installed Macs update from). Releasing from Windows/Linux skips the Mac build, so Macs won't see that version.
+
+Installed Macs check GitHub Releases on startup and every 4 hours (src/mac-updater.js), download the zip for
+their chip, verify its SHA-512 against `latest-mac.yml`, and swap the app on restart or quit. This works without
+an Apple Developer ID, but the app must live somewhere writable (e.g. /Applications) — not run from the disk image.

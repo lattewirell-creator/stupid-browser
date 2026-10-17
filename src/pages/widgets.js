@@ -53,11 +53,7 @@ function renderWidgets() {
       g.addEventListener('click', () => openWidgetEditor(w));
       tools.appendChild(g);
     }
-    if (w.pos) {
-      const b = el('button', 'w-tool'); b.title = 'Put back in the grid'; b.appendChild(svgIcon(ICO.back));
-      b.addEventListener('click', () => { delete w.pos; saveWidgets(true); renderWidgets(); });
-      tools.appendChild(b);
-    }
+    if (w.pos) tools.appendChild(putBackButton(card, w));
     const x = el('button', 'w-tool'); x.title = 'Remove widget'; x.appendChild(svgIcon(ICO.x));
     x.addEventListener('click', () => { widgets.splice(i, 1); saveWidgets(true); renderWidgets(); paintWidgetPicker(); });
     tools.appendChild(x);
@@ -66,36 +62,96 @@ function renderWidgets() {
     card.append(head, body);
     const fill = () => { body.replaceChildren(); (RENDER[w.type] || (() => {}))(w, body, card); };
     fill();
-    // Drag by the header to anywhere on the page.
-    head.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target.closest('.w-tools, button, input, a')) return;
-      const r0 = card.getBoundingClientRect();
-      const d = { sx: e.clientX, sy: e.clientY, ox: e.clientX - r0.left, oy: e.clientY - r0.top, moved: false };
-      const move = (ev) => {
-        if (!d.moved) {
-          if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) return;
-          d.moved = true;
-          card.style.width = r0.width + 'px';
-          card.classList.add('floating', 'dragging'); layer.appendChild(card);
-          box.classList.toggle('hidden', !box.children.length);
-        }
-        card.style.left = (ev.clientX - d.ox) + 'px'; card.style.top = (ev.clientY - d.oy) + 'px';
-      };
-      const up = () => {
-        removeEventListener('pointermove', move); removeEventListener('pointerup', up);
-        if (!d.moved) return;
-        card.classList.remove('dragging');
-        const r = card.getBoundingClientRect();
-        w.pos = { x: +(r.left / innerWidth).toFixed(4), y: +(r.top / innerHeight).toFixed(4), w: Math.round(r.width) };
-        placeCard(card, w.pos);
-        saveWidgets(true); renderWidgets();
-      };
-      addEventListener('pointermove', move); addEventListener('pointerup', up);
-    });
+    // Drag by the header to anywhere on the page: spring-follows the pointer on the GPU, tilts with the motion,
+    // and settles into place on release (no re-render). Grid neighbours glide to close the gap.
+    head.addEventListener('pointerdown', (e) => startDrag(e, card, w, head));
     if (w.pos) { layer.appendChild(card); card.style.width = (w.pos.w || 260) + 'px'; placeCard(card, w.pos); }
     else box.appendChild(card);
     void i;
   });
+}
+// "Put back": glide the card back into the grid (no re-render, so widgets keep their state).
+function putBackButton(card, w) {
+  const b = el('button', 'w-tool w-putback'); b.title = 'Put back in the grid'; b.appendChild(svgIcon(ICO.back));
+  b.addEventListener('click', () => {
+    const box = $('widgets');
+    delete w.pos;
+    const order = widgets.filter((x) => !x.pos).map((x) => x.id);
+    const before = [...box.children].find((c) => order.indexOf(c.dataset.id) > order.indexOf(w.id)) || null;
+    flip([card, ...box.children], () => {
+      box.classList.remove('hidden');
+      card.classList.remove('floating'); card.style.left = card.style.top = card.style.width = '';
+      box.insertBefore(card, before);
+    });
+    b.remove();
+    saveWidgets(true);
+  });
+  return b;
+}
+function flip(nodes, mutate) {
+  const first = new Map(nodes.map((n) => [n, n.getBoundingClientRect()]));
+  mutate();
+  for (const n of nodes) {
+    if (!n.isConnected) continue;
+    const a = first.get(n), b = n.getBoundingClientRect();
+    const dx = a.left - b.left, dy = a.top - b.top;
+    if (dx || dy) n.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+}
+function startDrag(e, card, w, head) {
+  if (e.button !== 0 || e.target.closest('.w-tools, button, input, a, textarea')) return;
+  const box = $('widgets');
+  const r0 = card.getBoundingClientRect();
+  const d = { sx: e.clientX, sy: e.clientY, ox: e.clientX - r0.left, oy: e.clientY - r0.top, moved: false, fromGrid: !w.pos,
+    base: { x: r0.left, y: r0.top }, cur: { x: r0.left, y: r0.top }, tgt: { x: r0.left, y: r0.top }, vx: 0, raf: 0, w: r0.width, h: r0.height };
+  const frame = () => {
+    d.raf = 0;
+    const px = d.cur.x;
+    d.cur.x += (d.tgt.x - d.cur.x) * 0.35; d.cur.y += (d.tgt.y - d.cur.y) * 0.35;    // spring follow
+    d.vx = d.vx * 0.8 + (d.cur.x - px) * 0.2;
+    const tilt = Math.max(-6, Math.min(6, d.vx * 0.6));
+    card.style.transform = `translate3d(${d.cur.x - d.base.x}px, ${d.cur.y - d.base.y}px, 0) rotate(${tilt}deg) scale(1.04)`;
+    if (Math.abs(d.tgt.x - d.cur.x) > 0.3 || Math.abs(d.tgt.y - d.cur.y) > 0.3 || Math.abs(d.vx) > 0.05) d.raf = requestAnimationFrame(frame);
+  };
+  const move = (ev) => {
+    if (!d.moved) {
+      if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) return;
+      d.moved = true;
+      const others = [...box.children].filter((c) => c !== card);
+      flip(others, () => {
+        card.style.width = d.w + 'px'; card.style.left = d.base.x + 'px'; card.style.top = d.base.y + 'px';
+        card.classList.add('floating', 'dragging'); layer.appendChild(card);
+        box.classList.toggle('hidden', !box.children.length);
+      });
+    }
+    // keep it on screen, with a little rubber band at the edges
+    const rb = (v, lo, hi) => (v < lo ? lo - (lo - v) * 0.25 : v > hi ? hi + (v - hi) * 0.25 : v);
+    d.tgt.x = rb(ev.clientX - d.ox, 4, innerWidth - d.w - 4);
+    d.tgt.y = rb(ev.clientY - d.oy, 4, innerHeight - 60);
+    if (!d.raf) d.raf = requestAnimationFrame(frame);
+  };
+  const up = () => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+    if (!d.moved) return;
+    cancelAnimationFrame(d.raf);
+    const fx = Math.max(4, Math.min(innerWidth - d.w - 4, d.tgt.x)), fy = Math.max(4, Math.min(innerHeight - 60, d.tgt.y));
+    // settle: glide to the final spot, drop the lift and tilt, then pin it with left/top
+    card.classList.remove('dragging'); card.classList.add('settling');
+    card.style.transform = `translate3d(${fx - d.base.x}px, ${fy - d.base.y}px, 0) rotate(0deg) scale(1)`;
+    const done = () => {
+      // pin with left/top in the same frame the transform is cleared, so nothing jumps
+      card.style.transition = 'none';
+      card.style.left = Math.round(fx) + 'px'; card.style.top = Math.round(fy) + 'px'; card.style.transform = '';
+      card.classList.remove('settling'); void card.offsetWidth; card.style.transition = '';
+      w.pos = { x: +(fx / innerWidth).toFixed(4), y: +(fy / innerHeight).toFixed(4), w: Math.round(d.w) };
+      if (d.fromGrid && !card.querySelector('.w-putback')) card.querySelector('.w-tools').appendChild(putBackButton(card, w));
+      requestIdleCallback(() => saveWidgets(true), { timeout: 500 });   // save after the animation, off the busy frame
+    };
+    let fired = false; const once = () => { if (!fired) { fired = true; done(); } };
+    card.addEventListener('transitionend', (ev) => { if (ev.propertyName === 'transform') once(); }); setTimeout(once, 320);
+  };
+  // window-level listeners: moving the card into the floating layer would drop pointer capture
+  addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
 }
 addEventListener('resize', () => { for (const card of layer.children) { const w = widgets.find((x) => x.id === card.dataset.id); if (w && w.pos) placeCard(card, w.pos); } });
 function settingsForm(card, body, fields, onSave) {

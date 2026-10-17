@@ -39,3 +39,21 @@ section.dim { opacity: .3; }
 .upd-bar { height: 4px; border-radius: 4px; background: var(--line); margin-top: 8px; overflow: hidden; max-width: 320px; }
 .upd-bar div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 .card.dim { opacity: .5; pointer-events: none; }
+.logo-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.logo-prev { width: 34px; height: 34px; flex: none; position: relative; display: grid; place-items: center; font-size: 26px; }
+.logo-prev.ring { border-radius: 50%; border: 2.5px solid var(--accent); }
+.logo-prev.ring::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--accent); }
+.logo-prev.image { border-radius: 9px; background: var(--hover) center / cover no-repeat; }
+.logo-prev.none { border: 2px dashed var(--line-strong); border-radius: 50%; }
+.small-in { width: 70px; text-align: center; }
+
+/* Customize */
+.presets { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; max-width: 420px; }
+.preset { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--pbg); color: #333; font: inherit; font-size: 12.5px; cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.preset:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.12); }
+.preset-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--pfg); }
+.color-in { width: 44px; height: 28px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: none; cursor: pointer; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 420px; }
+.chip { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted, inherit); font: inherit; font-size: 12.5px; cursor: pointer; }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.brand-btns { display: flex; gap: 8px; }

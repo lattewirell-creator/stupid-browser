@@ -1,7 +1,7 @@
 'use strict';
 const {
   app, BrowserWindow, ipcMain, session, shell, webContents, nativeTheme, protocol, net,
-  Menu, clipboard, dialog, safeStorage
+  Menu, clipboard, dialog, safeStorage, nativeImage
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -51,10 +51,10 @@ const SEARCH_ENGINES = {
 };
 const DEFAULT_SETTINGS = () => ({
   name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
-  logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true,
+  logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25,
+  bg: 'none', bgDim: 25, tabSleep: 15, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -87,7 +87,7 @@ const DEFAULT_LAUNCHER = [
   { id: 'news', name: 'News', url: 'https://news.google.com' },
   { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
-const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome'];
+const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -143,6 +143,20 @@ function themeColors(incognito) {
     : { bg: '#FAF9F5', bar: '#F0EEE6', fg: '#3D3929' };
 }
 
+// Windows fade in/out instead of popping (smooth profile switches, new windows).
+function fadeWin(win, to, ms = 180, done) {
+  if (!win || win.isDestroyed() || process.env.STUPID_SELFTEST) { if (to > 0 && win && !win.isDestroyed()) { win.setOpacity(1); } if (done) done(); return; }
+  const from = win.getOpacity(), t0 = Date.now();
+  const step = () => {
+    if (win.isDestroyed()) return;
+    const k = Math.min(1, (Date.now() - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+    win.setOpacity(from + (to - from) * e);
+    if (k < 1) setTimeout(step, 12); else if (done) done();
+  };
+  step();
+}
+function showSmooth(win) { if (win.isDestroyed()) return; win.setOpacity(0); win.show(); fadeWin(win, 1); }
+const windowTitle = (incognito) => { const n = (getSettings().wordmark || '').trim() || 'The Stupid Browser'; return incognito ? `Private — ${n}` : n; };
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const partition = incognito ? `incognito-${++incognitoCounter}` : PERSIST;   // no "persist:" = in memory only
   const aiPartition = incognito ? `${partition}-ai` : PERSIST_AI;
@@ -153,7 +167,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const c = themeColors(incognito);
   const win = new BrowserWindow({
     width: 1360, height: 860, minWidth: 720, minHeight: 480,
-    title: incognito ? 'Private — The Stupid Browser' : 'The Stupid Browser',
+    title: windowTitle(incognito),
     backgroundColor: c.bg,
     icon: path.join(__dirname, 'assets', 'icon.png'),
     // Windows: custom-drawn caption buttons on the right. macOS: traffic lights inset on the left.
@@ -171,7 +185,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => { showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
@@ -220,6 +234,7 @@ function prepareSession(ses, { tabs, incognito }) {
     const host = u.hostname;
     if (!INTERNAL_PAGES.includes(host)) return new Response('Not found', { status: 404 });
     let rel = decodeURIComponent(u.pathname);
+    if (host === 'rewind' && rewindThumb) { const r = rewindThumb(rel); if (r) return r; }
     if (rel === '/' || rel === '') rel = `/${host}.html`;
     const base = rel.startsWith('/fonts/') || rel.startsWith('/assets/') ? __dirname : path.join(__dirname, 'pages');
     const target = path.normalize(path.join(base, rel));
@@ -250,6 +265,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Highlighted text → "Ask Buddy" button in the browser UI (tabs only).
+  if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'select-preload.js') });
   // Music island: lets the browser UI read "now playing" and press play/pause/next (all web sessions).
   ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'media-preload.js') });
   if (tabs) {
@@ -408,6 +425,25 @@ function loadBlocker() {
 let countTimer = null;
 function broadcastCount() { if (countTimer) return; countTimer = setTimeout(() => { countTimer = null; broadcast('adblock:count', blockedCount); }, 500); }
 function tabSessions() { const out = new Set([session.fromPartition(PERSIST)]); for (const w of windows.values()) out.add(session.fromPartition(w.partition)); return [...out]; }
+// Ghostery runs its scriptlets with event.sender.executeJavaScript, i.e. in the tab's *main* frame,
+// whenever *any* frame asks. On YouTube (lots of ad iframes) that re-ran the scriptlets ~30 times per
+// page, re-wrapping JSON/fetch each time, and videos stalled for up to 20 s. Run them in the frame that
+// asked instead, once per frame per document.
+const scriptletsRun = new Map();   // frame → url scriptlets ran for
+function frameScoped(e, url) {
+  const frame = e.senderFrame;
+  if (!frame) return e;
+  const sender = {
+    insertCSS: (css, opts) => e.sender.insertCSS(css, opts),
+    executeJavaScript: (code) => {
+      if (frame.isDestroyed() || scriptletsRun.get(frame) === frame.url) return;
+      scriptletsRun.set(frame, frame.url);
+      frame.executeJavaScript(code, true).catch(() => {});
+    }
+  };
+  if (scriptletsRun.size > 500) for (const f of scriptletsRun.keys()) if (f.isDestroyed()) scriptletsRun.delete(f);
+  return { frameId: e.frameId, processId: e.processId, sender };
+}
 function setAdblock(on, only) {
   const b = loadBlocker();
   if (!b) return { on: false, count: blockedCount, error: true };
@@ -424,16 +460,27 @@ function setAdblock(on, only) {
   }
   if (blockingCount > 0) {
     dropHandlers();
-    ipcMain.handle(AB_CHANNELS[0], (e, url, msg) => b.onInjectCosmeticFilters(e, url, msg));
+    ipcMain.handle(AB_CHANNELS[0], (e, url, msg) => b.onInjectCosmeticFilters(frameScoped(e, url), url, msg));
     ipcMain.handle(AB_CHANNELS[1], (e) => b.onIsMutationObserverEnabled(e));
   }
   return { on, count: blockedCount };
 }
 
 /* ---------- theme / font size side effects ---------- */
+// Your logo as the Dock / taskbar icon (Settings → Appearance), or the default icon.
+function applyAppIcon() {
+  const s = getSettings();
+  let img = null;
+  if (s.appIcon && s.appIconImage) { try { img = nativeImage.createFromDataURL(s.appIconImage); if (img.isEmpty()) img = null; } catch { img = null; } }
+  if (!img) img = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png'));
+  if (IS_MAC && app.dock) app.dock.setIcon(img);
+  else for (const { win } of windows.values()) if (!win.isDestroyed()) win.setIcon(img);
+}
 function applySettingsSideEffects(patch) {
   if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system';
   if ('adblock' in patch) setAdblock(!!patch.adblock);
+  if ('appIcon' in patch || 'appIconImage' in patch) applyAppIcon();
+  if ('wordmark' in patch) for (const { win, incognito } of windows.values()) if (!win.isDestroyed()) win.setTitle(windowTitle(incognito));
   if ('eq' in patch) {
     // Equalizer runs inside web pages (media-preload.js); push the new curve to every page.
     for (const wc of webContents.getAllWebContents()) {
@@ -467,16 +514,56 @@ const ANY = ['shell', 'internal'];
 handle('win:info', ['shell'], (e) => { const w = entryFor(e.sender); const r = w.restore; w.restore = null; const u = w.pendingUrls; w.pendingUrls = null; return { incognito: w.incognito, partition: w.partition, ai: w.aiPartition, apps: w.appsPartition, restore: r, urls: u, version: app.getVersion() }; });
 handle('settings:get', ANY, () => publicSettings());
 handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(cleanPatch(patch)); return publicSettings(); });
+// macOS: write the browser name + logo into the app itself (Finder / Dock), then restart. reset=true restores the originals.
+handle('brand:status', ['internal'], () => (IS_MAC ? require('./mac-brand').status() : { supported: false }));
+handle('brand:apply', ['internal'], async (_e, reset) => {
+  const brand = require('./mac-brand'), s = getSettings();
+  await brand.apply(reset ? { name: brand.DEFAULT_NAME, iconDataUrl: null } : { name: s.wordmark || brand.DEFAULT_NAME, iconDataUrl: s.appIcon && s.appIconImage ? s.appIconImage : null });
+  setSettings({ brandBundle: !reset });
+  setTimeout(() => app.quit(), 150);
+  return true;
+});
 // Values that end up in pages or audio graphs get checked here.
 function cleanPatch(patch) {
   const p = Object.assign({}, patch);
   if ('logo' in p && !['ring', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
   if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
+  if ('quoteMode' in p && !['browser', 'mine', 'mix'].includes(p.quoteMode)) delete p.quoteMode;
+  if ('myQuotes' in p) p.myQuotes = (Array.isArray(p.myQuotes) ? p.myQuotes : []).map((q) => String(q).trim().slice(0, 200)).filter(Boolean).slice(0, 100);
   if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
   if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
   if ('eq' in p) p.eq = cleanEq(p.eq);
   if ('aiButton' in p && !['buddy', 'sidebar', 'off'].includes(p.aiButton)) delete p.aiButton;
   if ('bg' in p && !/^(none|image|preset:[a-z]{2,16})$/.test(String(p.bg))) delete p.bg;
+  if ('buddyLook' in p) {
+    const L = p.buddyLook && typeof p.buddyLook === 'object' ? p.buddyLook : {};
+    const col = (v, keys, d) => (keys.includes(v) || /^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : d);
+    p.buddyLook = {
+      name: String(L.name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 20) || 'Buddy',
+      color: col(L.color, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'cream'),
+      glow: col(L.glow, ['cyan', 'green', 'pink', 'amber', 'white', 'violet'], 'cyan'),
+      extra: ['none', 'headphones', 'cap', 'bow', 'crown', 'glasses', 'flower'].includes(L.extra) ? L.extra : 'none',
+      shape: ['hiker', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'hiker',
+      eyes: ['dot', 'round', 'sleepy', 'wide', 'lash'].includes(L.eyes) ? L.eyes : 'dot',
+      mouth: ['smile', 'grin', 'flat', 'open', 'cat'].includes(L.mouth) ? L.mouth : 'smile',
+      outfit: col(L.outfit, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),
+      backpack: L.backpack !== false, scarf: L.scarf !== false,
+      hat: ['none', 'tophat', 'cap', 'beanie', 'crown', 'party', 'cowboy', 'headphones', 'halo'].includes(L.hat) ? L.hat : 'none',
+      glasses: ['none', 'round', 'square', 'shades', 'star', 'heart'].includes(L.glasses) ? L.glasses : 'none',
+      image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : ''
+    };
+  }
+  delete p.brandBundle;   // only brand:apply sets this
+  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind', 'clock24']) if (k in p) p[k] = !!p[k];
+  const pick = (k, list) => { if (k in p && !list.includes(p[k])) delete p[k]; };
+  pick('uiFont', ['inter', 'system', 'serif', 'rounded', 'mono']); pick('density', ['compact', 'comfortable', 'spacious']);
+  pick('corners', ['sharp', 'rounded', 'round']); pick('tabStyle', ['classic', 'pills', 'minimal']); pick('frameTint', ['none', 'soft', 'strong']);
+  if ('hideButtons' in p) p.hideButtons = (Array.isArray(p.hideButtons) ? p.hideButtons : []).filter((b) => ['shield', 'pip', 'ai', 'grid', 'profile', 'home', 'sidebarBtn'].includes(b));
+  if ('accent' in p && !(/^[a-z]{2,12}$/.test(String(p.accent)) || /^#[0-9a-f]{6}$/i.test(String(p.accent)))) delete p.accent;
+  if ('rewindExclude' in p) p.rewindExclude = (Array.isArray(p.rewindExclude) ? p.rewindExclude : []).map((d) => String(d).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '')).filter((d) => /^[a-z0-9.-]{3,253}$/.test(d)).slice(0, 200);
+  if ('appIcon' in p) p.appIcon = !!p.appIcon;
+  if ('appIconImage' in p && !(p.appIconImage === '' || (typeof p.appIconImage === 'string' && p.appIconImage.length < 1500000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.appIconImage)))) delete p.appIconImage;
+  if ('tabSleep' in p && ![0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
   if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
   if ('buddy' in p) {
     const b = p.buddy && typeof p.buddy === 'object' ? p.buddy : {};
@@ -635,12 +722,16 @@ handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, ori
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
 handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
+// Compact mode hides the macOS traffic lights while the top bar is tucked away.
+handle('win:trafficLights', ['shell'], (e, on) => { const w = BrowserWindow.fromWebContents(e.sender); if (IS_MAC && w && w.setWindowButtonVisibility) w.setWindowButtonVisibility(!!on); return true; });
 handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
+handle('profiles:picker', ['internal'], (_e, on) => (on === undefined ? { on: profiles.pickerEnabled(), count: profiles.list().length } : profiles.setPicker(on)));
 handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
 handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
 handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
 require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
-require('./import-bookmarks')({ handle, store, getBookmarks, broadcast });
+const rewindThumb = require('./rewind-main')({ app, handle, store, getSettings, entryFor, broadcast });
+require('./import-bookmarks')({ handle, store, getBookmarks, broadcast, getHistory, getPasswords, enc });
 
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
 handle('default:set', ['internal'], async () => {
@@ -687,7 +778,15 @@ const UPDATE_EVERY = 4 * 60 * 60 * 1000;
 const updateState = { status: 'idle', version: null, progress: 0, error: null, lastCheck: null, current: app.getVersion(), portable: IS_PORTABLE, packaged: app.isPackaged };
 let autoUpdater = null;
 function setUpdate(patch) { Object.assign(updateState, patch); broadcast('update:status', Object.assign({}, updateState)); }
+let macUpdater = null;
 function initUpdater() {
+  // macOS: our own updater (works without an Apple Developer ID); see mac-updater.js
+  if (IS_MAC && (app.isPackaged || process.env.STUPID_UPDATE_TEST_FEED)) {
+    macUpdater = autoUpdater = require('./mac-updater')({ setUpdate, log: (m) => console.log(m), afterSwap: (p) => require('./mac-brand').relabelAfterUpdate(p, getSettings()) });
+    setTimeout(checkForUpdates, 10000);
+    setInterval(checkForUpdates, UPDATE_EVERY);
+    return;
+  }
   if (!app.isPackaged || IS_PORTABLE || process.platform !== 'win32') {
     setUpdate({ status: 'unsupported' });
     return;
@@ -709,7 +808,7 @@ function initUpdater() {
 function checkForUpdates() {
   if (!autoUpdater) return Object.assign({}, updateState);
   if (['checking', 'downloading', 'ready'].includes(updateState.status)) return Object.assign({}, updateState);
-  autoUpdater.checkForUpdates().catch((err) => setUpdate({ status: 'error', error: String(err && err.message || err).split('\n')[0].slice(0, 200) }));
+  Promise.resolve(autoUpdater.checkForUpdates()).catch((err) => setUpdate({ status: 'error', error: String(err && err.message || err).split('\n')[0].slice(0, 200) }));
   return Object.assign({}, updateState);
 }
 handle('update:status', ANY, () => Object.assign({}, updateState));
@@ -752,6 +851,7 @@ function shortcutFor(input) {
     if (k === 'e') return 'toggle-sidebar';
     if (k === 'b') return 'toggle-bookmarks-bar';
     if (k === 'o') return 'bookmarks';
+    if (k === 'y') return 'rewind';
     if (k === 's') return 'split';
     if (k === 'r') return 'hard-reload';
     if (k === 'delete') return 'clear-data';
@@ -984,6 +1084,39 @@ function openFromOutside(url) {
   } else createWindow({ urls: url ? [url] : null });
 }
 
+// "Who's browsing?" — Chrome-style profile picker at launch when there is more than one profile.
+let pickerWin = null;
+function showProfilePicker() {
+  pickerWin = new BrowserWindow({
+    width: 760, height: 540, resizable: false, minimizable: true, maximizable: false, show: false,
+    title: 'Who’s browsing?', backgroundColor: themeColors(false).bg,
+    ...(IS_MAC ? { titleBarStyle: 'hiddenInset' } : { titleBarStyle: 'hidden', titleBarOverlay: { color: themeColors(false).bg, symbolColor: themeColors(false).fg, height: 36 } }),
+    webPreferences: { preload: path.join(__dirname, 'picker-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  pickerWin.removeMenu();
+  pickerWin.loadFile(path.join(__dirname, 'picker.html'));
+  pickerWin.once('ready-to-show', () => showSmooth(pickerWin));
+  pickerWin.on('closed', () => { const w = pickerWin; pickerWin = null; if (w && !w.__chosen && !windows.size) { if (IS_MAC) return; app.quit(); } });
+}
+const fromPicker = (e) => pickerWin && !pickerWin.isDestroyed() && e.sender === pickerWin.webContents;
+ipcMain.handle('picker:list', (e) => (fromPicker(e) ? { list: profiles.list(), show: profiles.pickerEnabled() } : null));
+ipcMain.handle('picker:show', (e, on) => (fromPicker(e) ? profiles.setPicker(on) : null));
+ipcMain.handle('picker:add', (e, p) => {
+  if (!fromPicker(e)) return null;
+  const made = profiles.create(p || {}); if (!made) return null;
+  pickerWin.__chosen = true; profiles.open(made.id); pickerWin.close(); if (!windows.size) app.quit();
+  return true;
+});
+ipcMain.handle('picker:choose', (e, id) => {
+  if (!fromPicker(e)) return null;
+  id = String(id || 'default');
+  pickerWin.__chosen = true;
+  const w = pickerWin;
+  if (id === 'default') { openStartupWindows([]); setTimeout(() => fadeWin(w, 0, 220, () => { if (!w.isDestroyed()) w.close(); }), 120); }
+  else { profiles.open(id); fadeWin(w, 0, 260, () => { if (!w.isDestroyed()) w.close(); if (!windows.size) setTimeout(() => app.quit(), 400); }); }
+  return true;
+});
+
 function openStartupWindows(extraUrls) {
   const s = getSettings();
   const saved = store.read('session.json', []);
@@ -1073,11 +1206,14 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
     if (IS_MAC) buildMacMenu();
     profiles.sync(s);
+    if (s.appIcon) setTimeout(applyAppIcon, 500);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
     if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
+    else if (profiles.CURRENT === 'default' && !argUrl && !pendingOpen.length && profiles.list().length > 1 && profiles.pickerEnabled() && !process.env.STUPID_SELFTEST) showProfilePicker();
     else openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
     app.on('activate', () => {
       if (windows.size) return;
+      if (pickerWin && !pickerWin.isDestroyed()) { pickerWin.focus(); return; }
       // Dock click after closing every window (macOS): start fresh like a relaunch.
       sessions.clear();
       openStartupWindows(pendingOpen.splice(0));
@@ -1086,7 +1222,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); });
+app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); if (macUpdater && updateState.status === 'ready') macUpdater.installOnQuit(); });
 app.on('window-all-closed', () => {
   // macOS keeps the app alive in the Dock; the last window's tabs are already in session.json.
   if (IS_MAC) { saveSessions(); store.flushAll(); return; }

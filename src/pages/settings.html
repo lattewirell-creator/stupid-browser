@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<style id="early-bg">html{background:#FAF9F5}@media (prefers-color-scheme: dark){html{background:#1F1E1D}}</style>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
 <title>Settings</title>
 <link rel="stylesheet" href="common.css">
@@ -18,22 +20,49 @@
     <a href="#privacy">Privacy &amp; security</a>
     <a href="#passwords">Passwords</a>
     <a href="#downloads">Downloads</a>
+    <a href="#performance">Performance</a>
     <a href="#buddy">AI buddy</a>
     <a href="#ai">AI sidebar</a>
     <a href="#sidebar">Sidebar apps</a>
     <a href="#default">Default browser</a>
+    <a href="#customize">Customize</a>
     <a href="#about">About</a>
   </nav>
   <main id="main">
     <section id="appearance"><h2>Appearance</h2><div class="card">
       <div class="row"><div class="lbl">Theme<small>Follow the system, or pick one</small></div><div class="seg" id="theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
       <div class="row"><div class="lbl">Accent color</div><div id="accent" class="swatches"></div></div>
+      <div class="row"><div class="lbl">Modern look<small>The page floats as a rounded card on a soft, tinted frame</small></div><input type="checkbox" class="toggle" id="modernLook"></div>
+      <div class="row"><div class="lbl">Vertical tabs<small>Tabs in a sidebar list instead of along the top</small></div><input type="checkbox" class="toggle" id="verticalTabs"></div>
+      <div class="row"><div class="lbl">Compact mode<small>Hide the toolbar and tabs; move the pointer to the top (or left) edge to bring them back</small></div><input type="checkbox" class="toggle" id="compactMode"></div>
+      <div class="row logo-row"><div class="lbl">Browser logo<small>Shown on new tabs and in the window corner</small></div>
+        <div class="logo-edit"><span id="logoPrev" class="logo-prev"></span>
+          <div class="seg" id="logoKind"><button data-v="ring">Classic</button><button data-v="emoji">Emoji</button><button data-v="image">Image</button><button data-v="none">None</button></div>
+          <input id="logoEmojiIn" class="input small-in" maxlength="16" placeholder="🦆">
+          <label class="btn small" id="logoUpload"><input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>Upload…</label></div></div>
+      <div class="row"><div class="lbl">Use logo as app icon<small>Your logo in the Dock / taskbar instead of the default icon</small></div><input type="checkbox" class="toggle" id="appIcon"></div>
+      <div class="row"><div class="lbl">Browser name<small>The big title on new tabs</small></div><input id="wordmarkIn" class="input" maxlength="40" placeholder="The Stupid Browser"></div>
+      <div class="row hidden" id="brandRow"><div class="lbl">Put the name &amp; logo on the app<small id="brandHint">Finder, the Dock, Launchpad and ⌘Tab will show your browser name (and your logo, if “Use logo as app icon” is on). The browser restarts.</small></div>
+        <div class="brand-btns"><button class="btn small" id="brandReset">Reset</button><button class="btn small primary" id="brandApply">Apply &amp; restart</button></div></div>
       <div class="row"><div class="lbl">Font size<small>Default text size for web pages (new tabs)</small></div><select id="fontSize" class="input"><option value="small">Small</option><option value="medium">Medium (recommended)</option><option value="large">Large</option><option value="xlarge">Very large</option></select></div>
       <div class="row"><div class="lbl">Show bookmarks bar<small>Ctrl+Shift+B</small></div><input type="checkbox" class="toggle" id="showBookmarksBar"></div>
       <div class="row"><div class="lbl">Show home button</div><input type="checkbox" class="toggle" id="showHome"></div>
       <div class="row"><div class="lbl">Music island<small>Shows what's playing when you're on another tab</small></div><input type="checkbox" class="toggle" id="musicIsland"></div>
       <div class="row"><div class="lbl">Show sidebar<small>App icons on the left (Ctrl+Shift+E)</small></div><input type="checkbox" class="toggle" id="showSidebar"></div>
       <div class="row"><div class="lbl">Your name<small>Used in the new tab greeting</small></div><input id="name" class="input" maxlength="40"></div>
+      <div class="row"><div class="lbl">Ask “Who’s browsing?” at launch<small>When you have more than one profile, pick one each time the browser opens</small></div><input type="checkbox" class="toggle" id="profilePicker"></div>
+    </div></section>
+
+    <section id="customize"><h2>Customize</h2><div class="card">
+      <div class="row"><div class="lbl">Style presets<small>One click sets theme, color, tint and shapes. Tweak anything below afterwards.</small></div><div id="presets" class="presets"></div></div>
+      <div class="row"><div class="lbl">Your own color<small>Any accent color you like</small></div><input type="color" id="accentPick" class="color-in"></div>
+      <div class="row"><div class="lbl">Interface font</div><div class="seg" id="uiFont"><button data-v="inter">Inter</button><button data-v="system">System</button><button data-v="rounded">Rounded</button><button data-v="serif">Serif</button><button data-v="mono">Mono</button></div></div>
+      <div class="row"><div class="lbl">Density<small>How roomy the toolbar and tabs are</small></div><div class="seg" id="density"><button data-v="compact">Compact</button><button data-v="comfortable">Comfy</button><button data-v="spacious">Spacious</button></div></div>
+      <div class="row"><div class="lbl">Corners</div><div class="seg" id="corners"><button data-v="sharp">Sharp</button><button data-v="rounded">Rounded</button><button data-v="round">Extra round</button></div></div>
+      <div class="row"><div class="lbl">Tab style</div><div class="seg" id="tabStyle"><button data-v="classic">Classic</button><button data-v="pills">Pills</button><button data-v="minimal">Minimal</button></div></div>
+      <div class="row"><div class="lbl">Frame tint<small>How much color the frame around the page gets (modern look)</small></div><div class="seg" id="frameTint"><button data-v="none">None</button><button data-v="soft">Soft</button><button data-v="strong">Strong</button></div></div>
+      <div class="row"><div class="lbl">Toolbar buttons<small>Choose which buttons show next to the address bar</small></div><div id="toolbarBtns" class="chips"></div></div>
+      <div class="row"><div class="lbl">24-hour clock<small>The clock on new tabs</small></div><input type="checkbox" class="toggle" id="clock24"></div>
     </div></section>
 
     <section id="startup"><h2>On startup</h2><div class="card">
@@ -71,6 +100,7 @@
     <section id="passwords"><h2>Passwords</h2>
       <div class="card">
         <div class="row"><div class="lbl">Offer to save passwords<small id="encNote"></small></div><input type="checkbox" class="toggle" id="savePasswords"></div>
+        <div class="row"><div class="lbl">Import passwords<small>From another browser’s passwords export (.csv). In Chrome: Password Manager → Settings → Export passwords. Edge: Settings → Passwords → ⋯ → Export. Safari: File → Export → Passwords. Firefox: about:logins → ⋯ → Export.</small></div><button id="pwImport" class="btn small">Import…</button></div>
       </div>
       <div class="card" id="pwList"></div>
     </section>
@@ -79,6 +109,13 @@
       <div class="row"><div class="lbl">Location<small id="dlDir"></small></div><button id="dlChange" class="btn small">Change</button></div>
       <div class="row"><div class="lbl">Ask where to save each file before downloading</div><input type="checkbox" class="toggle" id="askWhereToSave"></div>
     </div></section>
+
+    <section id="performance"><h2>Performance</h2>
+      <div class="card">
+        <div class="row"><div class="lbl">Memory saver<small>Tabs you haven’t looked at for a while go to sleep to free memory, and wake up when you click them. Tabs playing sound or with unsent text stay awake.</small></div>
+          <select id="tabSleep" class="input"><option value="5">After 5 minutes</option><option value="15">After 15 minutes</option><option value="30">After 30 minutes</option><option value="60">After 1 hour</option><option value="120">After 2 hours</option><option value="0">Never</option></select></div>
+      </div>
+    </section>
 
     <section id="buddy"><h2>AI buddy</h2>
       <div class="card">

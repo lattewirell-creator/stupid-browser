@@ -4,7 +4,7 @@ function tick() {
   const d = new Date(); const h = d.getHours();
   const part = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   $('greeting').textContent = settings.name ? `${part}, ${settings.name}` : part;
-  $('clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  $('clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: settings.clock24 === false ? 'h12' : settings.clock24 ? 'h23' : undefined });
 }
 function tile(name, url, used, onUse) {
   const a = el('a', 'tile' + (used ? ' used' : '')); a.href = url; a.title = url;
@@ -18,15 +18,20 @@ async function load() {
   try { settings = await call('settings:get'); } catch {}
   tick();
   renderLogo();
+}
+async function loadBookmarks() {
   let bms = [];
   try { bms = (await call('bookmarks:get')).filter((b) => b.type === 'bookmark').slice(0, 8); } catch {}
   $('top').innerHTML = '';
   $('topHead').classList.toggle('hidden', !bms.length);
   for (const b of bms) $('top').appendChild(tile(b.title || hostOf(b.url), b.url));
 }
-setInterval(tick, 10000);
+setInterval(() => { if (!document.hidden) tick(); }, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 load();
-S.on('settings:changed', (s) => { settings = s; load(); });
+loadBookmarks();
+S.on('settings:changed', (s) => { settings = s; tick(); renderLogo(); });
+S.on('bookmarks:changed', loadBookmarks);
 
 /* ---------------- logo, title, quotes, customize panel ---------------- */
 const QUOTES = [
@@ -64,11 +69,20 @@ const QUOTES = [
 const DEFAULT_TITLE = 'The Stupid Browser';
 const EMOJI_PICKS = ['🦆', '🦊', '🐸', '🐙', '🌙', '🔥', '⭐', '🌈', '🍕', '🚀', '👾', '💜'];
 let quoteIdx = -1;
+let lastPool = '';
+// Quotes come from the built-in list, your own lines (quotes or reminders), or both.
+function quotePool() {
+  const mine = Array.isArray(settings.myQuotes) ? settings.myQuotes : [];
+  if (settings.quoteMode === 'mine' && mine.length) return mine;
+  if (settings.quoteMode === 'mix') return [...QUOTES, ...mine];
+  return QUOTES;
+}
 function nextQuote() {
-  let i; do { i = Math.floor(Math.random() * QUOTES.length); } while (QUOTES.length > 1 && i === quoteIdx);
+  const pool = quotePool();
+  let i; do { i = Math.floor(Math.random() * pool.length); } while (pool.length > 1 && pool[i] === $('quote').textContent);
   quoteIdx = i;
-  const q = $('quote'); q.classList.add('fade');
-  setTimeout(() => { q.textContent = QUOTES[i]; q.classList.remove('fade'); }, quoteIdx >= 0 && q.textContent ? 220 : 0);
+  const q = $('quote'); const hadText = !!q.textContent; q.classList.add('fade');
+  setTimeout(() => { q.textContent = pool[i]; q.classList.remove('fade'); }, hadText ? 220 : 0);
 }
 function setLogo(node, kind) {
   node.className = 'logo ' + kind; node.textContent = ''; node.style.backgroundImage = '';
@@ -80,7 +94,8 @@ function renderLogo() {
   $('wordmark').textContent = settings.wordmark || DEFAULT_TITLE;
   document.title = settings.wordmark ? `New tab · ${settings.wordmark}` : 'New tab';
   $('quote').classList.toggle('hidden', settings.showQuotes === false);
-  if (settings.showQuotes !== false && !$('quote').textContent) nextQuote();
+  const poolKey = (settings.quoteMode || 'browser') + '|' + (settings.myQuotes || []).length;
+  if (settings.showQuotes !== false && (!$('quote').textContent || poolKey !== lastPool)) { lastPool = poolKey; nextQuote(); }
   if (!$('customize').classList.contains('hidden')) paintCustomize();
 }
 $('quote').addEventListener('click', nextQuote);
@@ -96,6 +111,13 @@ function paintCustomize() {
   if (document.activeElement !== $('czEmoji')) $('czEmoji').value = settings.logoEmoji || '';
   if (document.activeElement !== $('czTitle')) $('czTitle').value = settings.wordmark || '';
   $('czQuotes').checked = settings.showQuotes !== false;
+  $('czQuoteBox').classList.toggle('hidden', settings.showQuotes === false);
+  const qm = settings.quoteMode || 'browser';
+  $('czQuoteMode').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === qm));
+  $('czMyQuotes').classList.toggle('hidden', qm === 'browser');
+  if (document.activeElement !== $('czMyQuotes')) $('czMyQuotes').value = (settings.myQuotes || []).join('\n');
+  const n = (settings.myQuotes || []).length;
+  $('czQuoteNote').textContent = qm === 'browser' ? '' : n ? `${n} of your own · click the quote on the page to see another` : (qm === 'mine' ? 'Add at least one line — until then the browser quotes show.' : '');
 }
 function openCustomize() { $('customize').classList.remove('hidden'); paintCustomize(); }
 const save = (patch) => call('settings:set', patch).then((s) => { settings = s; renderLogo(); }).catch(() => toast('Couldn’t save that'));
@@ -110,6 +132,12 @@ for (const em of EMOJI_PICKS) { const b = el('button', null, em); b.addEventList
 $('czEmoji').addEventListener('input', () => { const v = $('czEmoji').value.trim(); if (v) save({ logo: 'emoji', logoEmoji: v }); });
 let titleT; $('czTitle').addEventListener('input', () => { clearTimeout(titleT); titleT = setTimeout(() => save({ wordmark: $('czTitle').value.trim() }), 250); });
 $('czQuotes').addEventListener('change', () => save({ showQuotes: $('czQuotes').checked }));
+$('czQuoteMode').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) save({ quoteMode: b.dataset.v }).then(() => { lastPool = ''; nextQuote(); }); });
+let quotesT;
+$('czMyQuotes').addEventListener('input', () => {
+  clearTimeout(quotesT);
+  quotesT = setTimeout(() => save({ myQuotes: $('czMyQuotes').value.split('\n').map((x) => x.trim()).filter(Boolean) }).then(() => { lastPool = ''; nextQuote(); }), 500);
+});
 $('czReset').addEventListener('click', () => save({ logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true }));
 // Uploaded images are shrunk to 256px so settings stay small.
 $('czFile').addEventListener('change', () => {

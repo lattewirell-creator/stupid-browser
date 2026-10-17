@@ -12,11 +12,42 @@ function render() {
   const acc = $('accent'); acc.innerHTML = '';
   for (const [k, c] of Object.entries(ACCENTS)) { const b = el('button', 'swatch' + ((s.accent || 'clay') === k ? ' on' : '')); b.style.background = c; b.title = k; b.onclick = () => set({ accent: k }).then(render); acc.appendChild(b); }
   bindValue('fontSize');
+  $('tabSleep').value = String(s.tabSleep == null ? 15 : s.tabSleep); $('tabSleep').onchange = () => set({ tabSleep: +$('tabSleep').value });
+  for (const k of ['modernLook', 'verticalTabs', 'compactMode']) { $(k).checked = k === 'modernLook' ? s[k] !== false : !!s[k]; $(k).onchange = () => set({ [k]: $(k).checked }); }
+  call('profiles:picker').then((p) => { $('profilePicker').checked = p.on; }).catch(() => {});
+  $('profilePicker').onchange = () => call('profiles:picker', $('profilePicker').checked);
+  paintLogo(s);
   $('musicIsland').checked = s.musicIsland !== false; $('musicIsland').onchange = (e) => set({ musicIsland: e.target.checked });
   $('showBookmarksBar').checked = s.showBookmarksBar !== false; $('showBookmarksBar').onchange = (e) => set({ showBookmarksBar: e.target.checked });
   $('showHome').checked = s.showHome !== false; $('showHome').onchange = (e) => set({ showHome: e.target.checked });
   $('showSidebar').checked = s.showSidebar !== false; $('showSidebar').onchange = (e) => set({ showSidebar: e.target.checked });
   $('name').value = s.name || ''; $('name').onchange = () => set({ name: $('name').value.trim() });
+  // customize
+  const PRESETS = [
+    ['Calm', { theme: 'light', accent: 'clay', frameTint: 'soft', corners: 'rounded', tabStyle: 'classic', uiFont: 'inter' }, '#F4EFE6', '#D97757'],
+    ['Midnight', { theme: 'dark', accent: 'sky', frameTint: 'strong', corners: 'rounded', tabStyle: 'pills', uiFont: 'inter' }, '#1D2230', '#5B87B5'],
+    ['Forest', { theme: 'dark', accent: 'sage', frameTint: 'soft', corners: 'round', tabStyle: 'classic', uiFont: 'rounded' }, '#1F2620', '#6F9161'],
+    ['Ocean', { theme: 'light', accent: '#2E8FA8', frameTint: 'strong', corners: 'round', tabStyle: 'pills', uiFont: 'system' }, '#E6F1F3', '#2E8FA8'],
+    ['Sakura', { theme: 'light', accent: '#D9779A', frameTint: 'strong', corners: 'round', tabStyle: 'pills', uiFont: 'rounded' }, '#FBEFF2', '#D9779A'],
+    ['Paper', { theme: 'light', accent: 'ink', frameTint: 'none', corners: 'sharp', tabStyle: 'minimal', uiFont: 'serif' }, '#FAF8F3', '#5A5548']
+  ];
+  const pr = $('presets'); pr.innerHTML = '';
+  for (const [name, patch, bg, fg] of PRESETS) {
+    const b = el('button', 'preset'); b.style.setProperty('--pbg', bg); b.style.setProperty('--pfg', fg); if (patch.theme === 'dark') b.style.color = '#EEE9E0';
+    b.append(el('span', 'preset-dot'), el('span', null, name)); b.onclick = () => set(patch).then(render); pr.appendChild(b);
+  }
+  $('accentPick').value = /^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : (ACCENTS[s.accent] || ACCENTS.clay);
+  $('accentPick').oninput = () => set({ accent: $('accentPick').value.toLowerCase() });
+  const DEF = { uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft' };
+  for (const k of Object.keys(DEF)) document.querySelectorAll('#' + k + ' button').forEach((b) => { b.classList.toggle('on', (s[k] || DEF[k]) === b.dataset.v); b.onclick = () => set({ [k]: b.dataset.v }).then(render); });
+  const tb = $('toolbarBtns'); tb.innerHTML = '';
+  for (const [k, label] of [['shield', 'Ad blocker'], ['pip', 'Picture-in-picture'], ['ai', 'AI'], ['grid', 'Apps'], ['profile', 'Profile']]) {
+    const hidden = (s.hideButtons || []).includes(k);
+    const c = el('button', 'chip' + (hidden ? '' : ' on'), label);
+    c.onclick = () => { const h = new Set(s.hideButtons || []); hidden ? h.delete(k) : h.add(k); set({ hideButtons: [...h] }).then(render); };
+    tb.appendChild(c);
+  }
+  $('clock24').checked = s.clock24 ?? !/[ap]m/i.test(new Date(2020, 0, 1, 15).toLocaleTimeString()); $('clock24').onchange = () => set({ clock24: $('clock24').checked });
   // startup
   document.querySelectorAll('input[name="startup"]').forEach((r) => { r.checked = r.value === (s.startup || 'continue'); r.onchange = () => set({ startup: r.value }).then(render); });
   $('pagesBox').classList.toggle('hidden', s.startup !== 'pages');
@@ -83,6 +114,13 @@ async function renderPerms() {
 
 const IS_MAC = S.platform === 'darwin';
 if (IS_MAC) $('defHint').textContent = 'macOS asks you to confirm. Choose “Use The Stupid Browser”.';
+
+$('pwImport').onclick = async () => {
+  const r = await call('import:passwords');
+  if (!r.ok) { if (r.error !== 'canceled') toast(r.error); return; }
+  toast(`Imported ${r.added} password${r.added === 1 ? '' : 's'}${r.skipped ? ` (${r.skipped} skipped)` : ''} — now delete ${r.file}, it holds your passwords in plain text`);
+  renderPasswords();
+};
 
 async function renderPasswords() {
   const enc = await call('pw:encryption');
@@ -175,6 +213,48 @@ async function renderDefault() {
 }
 $('defBtn').onclick = async () => { await call('default:set'); toast(IS_MAC ? 'Confirm in the macOS dialog that opened' : 'Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
 
+/* ---------- browser logo (+ optional app icon) ---------- */
+function paintLogo(s) {
+  const kind = s.logo || 'ring', pv = $('logoPrev');
+  pv.className = 'logo-prev ' + kind; pv.textContent = kind === 'emoji' ? (s.logoEmoji || '🦆') : ''; pv.style.backgroundImage = kind === 'image' && s.logoImage ? `url("${s.logoImage}")` : '';
+  $('logoKind').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === kind));
+  $('logoEmojiIn').classList.toggle('hidden', kind !== 'emoji'); $('logoUpload').classList.toggle('hidden', kind !== 'image');
+  if (document.activeElement !== $('logoEmojiIn')) $('logoEmojiIn').value = s.logoEmoji || '';
+  if (document.activeElement !== $('wordmarkIn')) $('wordmarkIn').value = s.wordmark || '';
+  $('appIcon').checked = !!s.appIcon;
+}
+// Draws the app icon (macOS-style rounded square) from the current logo.
+async function iconFor(s) {
+  if (!s.appIcon || !['emoji', 'image'].includes(s.logo) || (s.logo === 'image' && !s.logoImage)) return '';
+  const n = 512, c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d');
+  const r = 112, p = 32; g.beginPath(); g.roundRect(p, p, n - 2 * p, n - 2 * p, r); g.closePath(); g.save(); g.clip();
+  const acc = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#D97757';
+  if (s.logo === 'image') { const im = new Image(); im.src = s.logoImage; await im.decode().catch(() => {}); g.drawImage(im, p, p, n - 2 * p, n - 2 * p); }
+  else { const gr = g.createLinearGradient(0, p, 0, n - p); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, acc + '33'); g.fillStyle = gr; g.fillRect(0, 0, n, n); g.font = '300px "Apple Color Emoji","Segoe UI Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s.logoEmoji || '🦆', n / 2, n / 2 + 18); }
+  g.restore(); return c.toDataURL('image/png');
+}
+async function saveLogo(patch) { const s = await call('settings:set', patch); const icon = await iconFor(s); if ((s.appIconImage || '') !== icon) await call('settings:set', { appIconImage: icon }); paintLogo(await call('settings:get')); }
+$('logoKind').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.v === 'image') call('settings:get').then((s) => { if (!s.logoImage) $('logoFile').click(); }); saveLogo({ logo: b.dataset.v }); });
+let emojiT; $('logoEmojiIn').addEventListener('input', () => { clearTimeout(emojiT); emojiT = setTimeout(() => { const v = $('logoEmojiIn').value.trim(); if (v) saveLogo({ logo: 'emoji', logoEmoji: v }); }, 300); });
+// macOS: write the name + logo into the app bundle itself
+call('brand:status').then((b) => {
+  if (!b || !b.supported) return;
+  $('brandRow').classList.remove('hidden');
+  $('brandReset').classList.toggle('hidden', !b.custom);
+  if (b.custom) $('brandHint').textContent = `The app is called “${b.name}” in Finder now. Apply again after changing the name or logo, or reset to the original.`;
+  const go = (reset) => { $('brandApply').disabled = $('brandReset').disabled = true; $('brandApply').textContent = 'Restarting…'; call('brand:apply', reset).catch((e) => { $('brandApply').disabled = $('brandReset').disabled = false; $('brandApply').textContent = 'Apply & restart'; alert(String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }); };
+  $('brandApply').onclick = () => go(false); $('brandReset').onclick = () => go(true);
+}).catch(() => {});
+let wmT; $('wordmarkIn').addEventListener('input', () => { clearTimeout(wmT); wmT = setTimeout(() => call('settings:set', { wordmark: $('wordmarkIn').value.trim() }), 300); });
+$('appIcon').addEventListener('change', () => saveLogo({ appIcon: $('appIcon').checked }));
+$('logoFile').addEventListener('change', () => {
+  const f = $('logoFile').files[0]; $('logoFile').value = ''; if (!f || !/^image\//.test(f.type)) return;
+  const im = new Image(); const url = URL.createObjectURL(f);
+  im.onload = () => { const n = 256, c = document.createElement('canvas'); c.width = c.height = n; const sq = Math.min(im.width, im.height); c.getContext('2d').drawImage(im, (im.width - sq) / 2, (im.height - sq) / 2, sq, sq, 0, 0, n, n); URL.revokeObjectURL(url); saveLogo({ logo: 'image', logoImage: c.toDataURL('image/png') }); };
+  im.onerror = () => { URL.revokeObjectURL(url); toast('Couldn’t read that image'); };
+  im.src = url;
+});
+
 async function renderBuddy() {
   const s = await call('settings:get'); const st = await call('buddy:status');
   $('buddyOn').checked = st.enabled;
@@ -248,7 +328,8 @@ function renderUpdate(u) {
   if (!u) return;
   const when = u.lastCheck ? ' · checked ' + new Date(u.lastCheck).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const msg = {
-    unsupported: IS_MAC ? 'Automatic updates aren’t available on macOS yet. Download the latest .dmg from GitHub Releases to update.' : u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
+    manual: 'To get automatic updates, move The Stupid Browser into your Applications folder (drag it there from the disk image), then reopen it.',
+    unsupported: IS_MAC ? 'Automatic updates work in the installed app.' : u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
     idle: `Version ${u.current}. Updates are checked automatically every few hours.`,
     checking: 'Checking for updates…',
     none: `You’re up to date (version ${u.current})${when}.`,
@@ -260,7 +341,7 @@ function renderUpdate(u) {
   $('updBar').classList.toggle('hidden', u.status !== 'downloading');
   $('updBar').firstElementChild.style.width = (u.progress || 0) + '%';
   $('updInstall').classList.toggle('hidden', u.status !== 'ready');
-  $('updBtn').disabled = u.status === 'unsupported' || u.status === 'checking' || u.status === 'downloading';
+  $('updBtn').disabled = u.status === 'unsupported' || u.status === 'manual' || u.status === 'checking' || u.status === 'downloading';
 }
 $('updBtn').onclick = async () => renderUpdate(await call('update:check'));
 $('updInstall').onclick = () => call('update:install');

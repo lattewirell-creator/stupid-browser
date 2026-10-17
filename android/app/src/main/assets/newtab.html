@@ -1,0 +1,60 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>New tab</title>
+<style>
+@font-face { font-family: 'Newsreader'; src: url('fonts/Newsreader.ttf'); font-weight: 200 800; }
+@font-face { font-family: 'Newsreader'; src: url('fonts/Newsreader-Italic.ttf'); font-weight: 200 800; font-style: italic; }
+:root { --bg: #F7F4EE; --card: #FFFFFF; --text: #2B2824; --muted: #7D776D; --line: #E6DFD3; --accent: #D97757; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1E1C19; --card: #2A2724; --text: #EEE9E0; --muted: #A39D93; --line: #3A3631; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 20px 40px; min-height: 100%;
+  background: radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--accent) 14%, var(--bg)), var(--bg) 60%); }
+.logo { width: 54px; height: 54px; border-radius: 50%; border: 4px solid var(--accent); display: grid; place-items: center; margin-bottom: 18px; }
+.logo::after { content: ''; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); }
+h1 { font-family: 'Newsreader', Georgia, serif; font-weight: 400; font-size: 34px; line-height: 1.1; margin: 0; text-align: center; }
+h1 em { color: var(--accent); }
+.clock { font-family: 'Newsreader', Georgia, serif; font-size: 64px; font-weight: 300; letter-spacing: -1px; margin: 14px 0 4px; }
+.quote { color: var(--muted); font-style: italic; font-family: 'Newsreader', Georgia, serif; font-size: 17px; text-align: center; max-width: 340px; min-height: 2.6em; }
+form { width: 100%; max-width: 440px; margin: 26px 0 22px; }
+input { width: 100%; height: 50px; border-radius: 25px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 16px; padding: 0 20px; outline: none; box-shadow: 0 4px 18px rgba(0,0,0,.06); }
+input:focus { border-color: var(--accent); }
+.links { display: grid; grid-template-columns: repeat(4, 72px); gap: 14px 10px; justify-content: center; }
+.links a { display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--text); text-decoration: none; font-size: 12px; }
+.links span { width: 52px; height: 52px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; font-size: 22px; }
+</style></head>
+<body>
+  <div class="logo"></div>
+  <h1 id="hello">The <em>Stupid</em> Browser</h1>
+  <div class="clock" id="clock"></div>
+  <div class="quote" id="quote"></div>
+  <form id="f"><input id="q" type="search" placeholder="Search or type a web address" autocomplete="off" enterkeyhint="go"></form>
+  <div class="links">
+    <a href="https://www.youtube.com"><span>▶️</span>YouTube</a>
+    <a href="https://www.reddit.com"><span>👽</span>Reddit</a>
+    <a href="https://en.wikipedia.org"><span>📚</span>Wikipedia</a>
+    <a href="https://mail.google.com"><span>✉️</span>Gmail</a>
+    <a href="https://www.google.com/maps"><span>🗺️</span>Maps</a>
+    <a href="https://open.spotify.com"><span>🎧</span>Spotify</a>
+    <a href="https://news.ycombinator.com"><span>📰</span>News</a>
+    <a href="https://github.com"><span>🐙</span>GitHub</a>
+  </div>
+<script>
+const QUOTES = ["A browser is just a window that remembers where you’ve been.","Forty tabs open is not chaos. It’s a plan.","Every tab is a promise you made to your future self.","The back button is the most honest button on the internet.","Cookies: the only snack that follows you around.","Close one tab today. You’ll feel lighter.","The web is the world’s biggest library, and the browser is your library card.","Somewhere, a tab you opened last year is still waiting for you.","Refresh fixes more things than anyone wants to admit.","A good browser gets out of the way.","The address bar knows you better than most of your friends.","Bookmarks are tabs that made it.","“Loading…” is the internet’s way of saying “just a sec”.","Every website was once someone’s first “Hello, world”.","The first web browser was called WorldWideWeb. Naming was simpler then.","The very first website is still online at info.cern.ch.","Pinned tabs are tabs with a lease.","There is no cloud. It’s someone else’s computer, loading your tab.","Dark mode: because your eyes deserve a break too.","Every 404 is a little adventure that ended early.","History remembers. Private windows forget.","Stupid browser, smart you.","Tabs are like snacks: one more won’t hurt. (It will.)","The best search result is the one you didn’t have to scroll for.","Shields up. Ads down.","Behind every “Accept all cookies” is a tiny surrender.","The internet is forever. Your attention span isn’t.","You don’t need another tab. You need a nap.","A browser is a boat. The web is the ocean. Bring snacks.","Hyperlinks: the original rabbit holes."];
+const S = window.Stupid || { name: () => '', searchUrl: () => '' };
+const name = S.name();
+const h = new Date().getHours();
+const part = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+if (name) document.getElementById('hello').innerHTML = part + ', <em></em>'; if (name) document.querySelector('#hello em').textContent = name;
+const tick = () => { document.getElementById('clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+tick(); setInterval(tick, 10000);
+document.getElementById('quote').textContent = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+document.getElementById('f').onsubmit = (e) => {
+  e.preventDefault();
+  const q = document.getElementById('q').value.trim(); if (!q) return;
+  if (!/\s/.test(q) && /^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(q)) location.href = 'https://' + q;
+  else if (/^https?:\/\//i.test(q)) location.href = q;
+  else location.href = (S.searchUrl() || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q));
+};
+</script>
+</body></html>

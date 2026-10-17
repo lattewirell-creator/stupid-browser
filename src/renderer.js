@@ -8,7 +8,7 @@ const NEWTAB = 'stupid://newtab/';
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
 const GROUP_COLORS = { clay: '#D97757', sand: '#C9A15A', sage: '#7C9A6E', sky: '#6A8FB5', plum: '#9B6A8E', rose: '#C96A7A', teal: '#5E9A94', slate: '#8A857A', ink: '#3D3929' };
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
-const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome' };
+const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome', rewind: 'Rewind' };
 
 let info = {};
 let settings = {};
@@ -51,9 +51,20 @@ const activeTab = () => tabById(activeId);
 const faviconFor = (url) => { const h = hostOf(url); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${h}` : null; };
 function searchUrl(q) { return (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q)); }
 function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'DuckDuckGo' }).name; }
+// Community / site searches: "!r how to…" → your engine limited to Reddit, etc.
+const SCOPES = [
+  { key: 'reddit', bang: ['r', 'reddit'], name: 'Reddit', site: 'reddit.com' },
+  { key: 'quora', bang: ['q', 'quora'], name: 'Quora', site: 'quora.com' },
+  { key: 'so', bang: ['so', 'stackoverflow'], name: 'Stack Overflow', site: 'stackoverflow.com' },
+  { key: 'yt', bang: ['yt', 'youtube'], name: 'YouTube', url: 'https://www.youtube.com/results?search_query=%s' },
+  { key: 'w', bang: ['w', 'wiki'], name: 'Wikipedia', url: 'https://en.wikipedia.org/w/index.php?search=%s' }
+];
+const scopeUrl = (sc, q) => (sc.url ? sc.url.replace('%s', encodeURIComponent(q)) : searchUrl(`${q} site:${sc.site}`));
 function toUrl(text) {
   const t = String(text || '').trim();
   if (!t) return null;
+  const bang = /^!(\w+)\s+(.+)$/.exec(t);
+  if (bang) { const sc = SCOPES.find((x) => x.bang.includes(bang[1].toLowerCase())); if (sc) return scopeUrl(sc, bang[2]); }
   if (/^(https?|file|stupid|about|view-source):/i.test(t)) return t;
   if (/^localhost(:\d+)?(\/.*)?$/i.test(t) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(t)) return 'http://' + t;
   if (!/\s/.test(t) && /^[^\s/]+\.[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(t)) return 'https://' + t;
@@ -74,7 +85,7 @@ function createWebview(tab) {
   tab.internal = isInternal(tab.url);
   tab.wv = wv; tab.ready = false;
   wv.addEventListener('did-start-loading', () => { tab.loading = true; tab.crashed = false; renderTab(tab); if (tab.id === activeId) updateNav(); });
-  wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); });
+  wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); rewindSoon(tab); });
   wv.addEventListener('dom-ready', () => { tab.ready = true; tab.wcId = wv.getWebContentsId(); if (tab.muted) wv.setAudioMuted(true); readZoom(tab); if (tab.id === activeId) updateNav(); });
   wv.addEventListener('page-title-updated', (e) => { tab.title = e.title; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); });
   wv.addEventListener('page-favicon-updated', (e) => { tab.favicon = (e.favicons || []).find((f) => /^(https?|data):/.test(f)) || null; renderTab(tab); scheduleSave(); });
@@ -95,6 +106,7 @@ function createWebview(tab) {
   wv.addEventListener('enter-html-full-screen', () => document.body.classList.add('htmlfs'));
   wv.addEventListener('leave-html-full-screen', () => document.body.classList.remove('htmlfs'));
   wv.addEventListener('update-target-url', (e) => showStatus(e.url));
+  wv.addEventListener('ipc-message', (e) => { if (e.channel === 'stupid-sel' && window.onPageSelection) window.onPageSelection(tab, e.args[0]); });
   $('views').appendChild(wv);
 }
 function rebuildWebview(tab, url) {
@@ -126,9 +138,26 @@ function normalizeOrder() {
   tabs = [...pinned, ...out];
 }
 
+// A blank new tab is kept ready (hidden) so opening one is instant, like Chrome's prerendered new tab page.
+let spareTab = null, spareT = null;
+function makeSpare() {
+  clearTimeout(spareT);
+  if (spareTab || restoring) return;
+  spareTab = { id: nextId++, url: NEWTAB, title: '', favicon: null, pinned: false, groupId: null, wv: null, loading: false, muted: false, audible: false, zoom: 1, lastActive: Date.now() };
+  createWebview(spareTab);
+  spareTab.wv.classList.add('spare');   // rendered invisibly (not display:none) so it's already painted when shown
+}
+const queueSpare = () => { clearTimeout(spareT); spareT = setTimeout(makeSpare, 1200); };
 function newTab(url, opts = {}) {
   const { activate = true, pinned = false, title, favicon, lazy = false, groupId = null, index = null, muted = false, afterId = null } = opts;
-  const tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
+  let tab;
+  if (!lazy && (url || NEWTAB) === NEWTAB && spareTab && spareTab.ready && !spareTab.crashed) {
+    tab = spareTab; spareTab = null; tab.wv.classList.remove('spare');
+    Object.assign(tab, { pinned, groupId, muted, lastActive: Date.now(), title: title || tab.title });
+    if (muted) try { tab.wv.setAudioMuted(true); } catch {}
+    tab.wv.classList.add('fresh'); setTimeout(() => tab.wv && tab.wv.classList.remove('fresh'), 400);
+    queueSpare();
+  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
   if (index != null) tabs.splice(Math.min(index, tabs.length), 0, tab);
   else if (afterId != null) {
     // Chrome-like: links open right after the opener (and its other children)
@@ -140,7 +169,15 @@ function newTab(url, opts = {}) {
     if (opener && opener.groupId) tab.groupId = opener.groupId;
   } else tabs.push(tab);
   normalizeOrder();
-  if (!lazy) createWebview(tab);
+  if (!lazy && !tab.wv) {
+    createWebview(tab);
+    if (tab.url === NEWTAB) {   // stay invisible until the page has painted, then fade in (no white flash)
+      const wv = tab.wv; wv.classList.add('unpainted');
+      const reveal = () => { if (!wv.classList.contains('unpainted')) return; wv.classList.remove('unpainted'); wv.classList.add('fresh'); setTimeout(() => wv.classList.remove('fresh'), 400); };
+      wv.addEventListener('dom-ready', () => setTimeout(reveal, 30), { once: true }); setTimeout(reveal, 1500);
+      queueSpare();
+    }
+  }
   buildTabEl(tab);
   if (activate) activate_(tab.id); else renderAll();
   scheduleSave();
@@ -153,9 +190,12 @@ function activate_(id) {
   if (split && !split.includes(id)) split = null;
   if (tab.groupId && groups.get(tab.groupId) && groups.get(tab.groupId).collapsed) groups.get(tab.groupId).collapsed = false;
   const changed = activeId !== id;
+  const prev = changed && tabById(activeId); if (prev) prev.lastActive = Date.now();   // "last seen", for tab sleeping
   activeId = id;
   tab.lastActive = Date.now();
-  if (!tab.wv) createWebview(tab);
+  if (changed) rewindSoon(tab);
+  if (changed && tab.wv && !split) { tab.wv.classList.remove('switch-in'); void tab.wv.offsetWidth; tab.wv.classList.add('switch-in'); }
+  if (!tab.wv) { tab.asleep = false; createWebview(tab); }
   renderAll();
   if (changed) { closeFind(); hideAllPops(); showQueuedPrompt(); }
   if (isNewtab(tab.url)) setTimeout(() => { $('address').focus(); }, 30);
@@ -173,7 +213,10 @@ function closeTab(id, { record = true } = {}) {
   }
   tabs.splice(i, 1);
   if (tab.wv) tab.wv.remove();
-  if (tab.el) tab.el.remove();
+  if (tab.el) {   // shrink away instead of vanishing
+    const e = tab.el; e.classList.remove('entering', 'active'); e.classList.add('leaving');
+    const gone = () => e.remove(); e.addEventListener('animationend', gone, { once: true }); setTimeout(gone, 260);
+  }
   if (split && split.includes(id)) split = null;
   normalizeOrder();
   if (!tabs.length) { if (info.incognito || settings.closeWindowWithLastTab) { call('win:close'); return; } newTab(); return; }
@@ -253,7 +296,8 @@ function editGroup(gid) {
 /* ---------------- tab strip ---------------- */
 let dragId = null;
 function buildTabEl(tab) {
-  const e = el('div', 'tab');
+  const e = el('div', 'tab' + (restoring ? '' : ' entering'));   // grows into place (not on session restore)
+  e.addEventListener('animationend', (ev) => { if (ev.animationName === 'tabGrow') e.classList.remove('entering'); });
   e.dataset.id = tab.id;
   e.draggable = true;
   e.appendChild(el('span', 'fav-dot'));
@@ -279,14 +323,14 @@ function buildTabEl(tab) {
     if (dragId == null || dragId === tab.id) return;
     ev.preventDefault();
     const r = e.getBoundingClientRect();
-    const after = ev.clientX > r.left + r.width / 2;
+    const after = document.body.classList.contains('vtabs') ? ev.clientY > r.top + r.height / 2 : ev.clientX > r.left + r.width / 2;
     clearDropMarks(); e.classList.add(after ? 'drop-after' : 'drop-before');
   });
   e.addEventListener('drop', (ev) => {
     ev.preventDefault();
     const src = tabById(dragId); if (!src || src === tab) return;
     const r = e.getBoundingClientRect();
-    const after = ev.clientX > r.left + r.width / 2;
+    const after = document.body.classList.contains('vtabs') ? ev.clientY > r.top + r.height / 2 : ev.clientX > r.left + r.width / 2;
     moveTab(src, tab, after);
   });
   tab.el = e;
@@ -317,6 +361,8 @@ function renderTab(tab) {
   e.classList.toggle('sleeping', !tab.wv);
   e.classList.toggle('crashed', !!tab.crashed);
   e.classList.toggle('split', !!(split && split.includes(tab.id)));
+  e.classList.toggle('asleep', !!tab.asleep && !tab.wv);
+  if (tab.asleep && !tab.wv) e.title = (tab.title || tab.url) + ' — sleeping to save memory'; else if (e.title.endsWith(' — sleeping to save memory')) e.title = tab.title || tab.url;
   e.classList.toggle('grouped', !!tab.groupId);
   const g = tab.groupId && groups.get(tab.groupId);
   e.style.setProperty('--gc', g ? GROUP_COLORS[g.color] : 'transparent');
@@ -342,18 +388,28 @@ function renderStrip() {
   const frag = document.createDocumentFragment();
   const pinFrag = document.createDocumentFragment();
   let lastGroup = null;
+  const want = [], wantPinned = [];
   for (const t of tabs) {
-    if (t.pinned) { pinFrag.appendChild(t.el); t.el.classList.remove('collapsed-hide'); continue; }
-    if (t.groupId && t.groupId !== lastGroup) frag.appendChild(groupChip(groups.get(t.groupId)));
+    if (t.pinned) { wantPinned.push(t.el); t.el.classList.remove('collapsed-hide'); continue; }
+    if (t.groupId && t.groupId !== lastGroup) want.push(groupChip(groups.get(t.groupId)));
     lastGroup = t.groupId;
     const g = t.groupId && groups.get(t.groupId);
     t.el.classList.toggle('collapsed-hide', !!(g && g.collapsed));
     const nextT = tabs[tabs.indexOf(t) + 1];
     t.el.classList.toggle('group-end', !!t.groupId && (!nextT || nextT.groupId !== t.groupId));
-    frag.appendChild(t.el);
+    want.push(t.el);
   }
-  box.querySelectorAll('.group-chip').forEach((c) => c.remove());
-  box.appendChild(frag); pinBox.appendChild(pinFrag);
+  // Only touch the DOM when the order really changed: re-inserting a tab restarts its animations (flicker on every switch).
+  const sync = (container, nodes) => {
+    const current = [...container.children].filter((c) => !c.classList.contains('leaving'));
+    const same = current.length === nodes.length && current.every((c, k) => c === nodes[k] || (c.classList.contains('group-chip') && nodes[k].classList.contains('group-chip') && c.dataset.gid === nodes[k].dataset.gid));
+    if (same) { current.forEach((c, k) => { if (c !== nodes[k]) c.replaceWith(nodes[k]); }); return; }
+    container.querySelectorAll('.group-chip').forEach((c) => c.remove());
+    nodes.forEach((n) => { if (n.classList.contains('group-chip')) frag.appendChild(n); else frag.appendChild(n); });
+    container.appendChild(frag);
+  };
+  sync(box, want); sync(pinBox, wantPinned);
+  void pinFrag;
   // stretch: tabs shrink like Chrome
   const n = tabs.filter((t) => !t.pinned && !(t.groupId && groups.get(t.groupId).collapsed)).length;
   box.style.setProperty('--n', n);
@@ -425,7 +481,7 @@ function updateNav() {
   const z = tab.zoom || 1;
   $('zoomBtn').classList.toggle('hidden', Math.abs(z - 1) < 0.001);
   $('zoomBtn').textContent = Math.round(z * 100) + '%';
-  document.title = (!isNewtab(tab.url) ? prettyTitle(tab) + ' — ' : '') + (info.incognito ? 'Private — ' : '') + 'The Stupid Browser';
+  document.title = (!isNewtab(tab.url) ? prettyTitle(tab) + ' — ' : '') + (info.incognito ? 'Private — ' : '') + ((settings.wordmark || '').trim() || 'The Stupid Browser');
 }
 
 function navigate(text, tab = activeTab()) {
@@ -525,6 +581,7 @@ function hideAllPops() { hidePop(); hideMenus(); }
 function showMenu(target, items, x, y) {
   const m = $(target); m.innerHTML = '';
   for (const it of items) {
+    if (!it) continue;
     if (it === '-') { m.appendChild(el('div', 'sep')); continue; }
     if (it.row) { m.appendChild(it.row); continue; }
     const b = el('button', 'menu-item');
@@ -559,6 +616,8 @@ function tabMenu(tab, x, y) {
     { label: tab.muted ? 'Unmute site' : 'Mute site', fn: () => toggleMute(tab) },
     tab.id !== activeId ? { label: 'Split with current tab', fn: () => toggleSplit(tab.id) } : (split ? { label: 'Exit split view', fn: () => toggleSplit() } : { label: 'Split view', key: 'Ctrl+Shift+S', fn: () => toggleSplit() }),
     '-',
+    tab.wv && tab.id !== activeId ? { label: 'Sleep tab (free memory)', fn: () => sleepTab(tab, true) } : null,
+    { label: 'Sleep other tabs', disabled: !tabs.some((t) => t !== tab && t.wv && t.id !== activeId), fn: () => tabs.forEach((t) => { if (t !== tab) sleepTab(t, true); }) },
     { label: 'Close', key: 'Ctrl+W', fn: () => closeTab(tab.id) },
     { label: 'Close other tabs', disabled: tabs.filter((t) => !t.pinned).length < 2, fn: () => closeOthers(tab) },
     { label: 'Close tabs to the right', disabled: i === tabs.length - 1, fn: () => closeRight(tab) },
@@ -587,6 +646,7 @@ function mainMenu() {
     { label: 'New private window', key: 'Ctrl+Shift+N', fn: () => call('win:new', { incognito: true }) },
     '-',
     { label: 'History', key: 'Ctrl+H', fn: () => openInternal('history') },
+    { label: 'Rewind', key: 'Ctrl+Shift+Y', fn: () => openInternal('rewind') },
     { label: 'Downloads', key: 'Ctrl+J', fn: () => openInternal('downloads') },
     { label: 'Bookmarks', key: 'Ctrl+Shift+O', fn: () => openInternal('bookmarks') },
     { label: 'Reopen closed tab', key: 'Ctrl+Shift+T', disabled: !closedStack.length, fn: reopenClosed },
@@ -596,6 +656,8 @@ function mainMenu() {
     { label: 'Print…', key: 'Ctrl+P', fn: () => runCmd('print') },
     { label: 'Find…', key: 'Ctrl+F', fn: openFind },
     { label: 'Sound & EQ…', fn: () => openSoundPanel() },
+    { label: (settings.verticalTabs ? '✓ ' : '') + 'Vertical tabs', fn: () => window.toggleLayout('verticalTabs') },
+    { label: (settings.compactMode ? '✓ ' : '') + 'Compact mode', fn: () => window.toggleLayout('compactMode') },
     { label: 'Command bar', key: 'Ctrl+K', fn: () => openCmd() },
     { label: 'View page source', key: 'Ctrl+U', fn: () => runCmd('view-source') },
     { label: 'Developer tools', key: 'F12', fn: () => runCmd('devtools') },
@@ -809,7 +871,9 @@ async function updateSuggest(inline) {
   const lq = q.toLowerCase();
   for (const t of tabs) if (t.id !== activeId && !isInternal(t.url) && ((t.title || '').toLowerCase().includes(lq) || t.url.toLowerCase().includes(lq))) sugItems.push({ kind: 'tab', label: prettyTitle(t), sub: 'Switch to this tab', id: t.id, fav: t.favicon });
   for (const r of res) if (r.url !== go) sugItems.push({ kind: r.kind, label: r.title || r.url, sub: r.url.replace(/^https?:\/\/(www\.)?/, ''), url: r.url, fav: faviconFor(r.url) });
-  if (isSearch) sugItems.push({ kind: 'search', label: q, sub: 'Ask Claude in the AI sidebar', ai: true });
+  if (isSearch && !/^!\w+\s/.test(q)) sugItems.splice(1, 0, { kind: 'scopes', label: q, sub: '' });
+  const buddyOn = window.buddy && !(settings.buddy && settings.buddy.enabled === false);
+  if (isSearch) sugItems.push({ kind: 'search', label: q, sub: buddyOn ? `Ask ${(settings.buddyLook && settings.buddyLook.name) || 'Buddy'}` : 'Ask Claude in the AI sidebar', ai: true, buddy: buddyOn });
   sugItems = sugItems.slice(0, 9);
   sugSel = 0;
   // inline completion (Chrome-style) from the best history/bookmark prefix match
@@ -829,6 +893,18 @@ function renderSuggest() {
   const box = $('suggest'); box.innerHTML = '';
   if (!sugItems.length) { closeSuggest(); return; }
   sugItems.forEach((it, i) => {
+    if (it.kind === 'scopes') {   // one row of "search on Reddit / Quora / …" buttons
+      const r = el('div', 'sug sug-scopes' + (i === sugSel ? ' sel' : ''));
+      r.appendChild(el('span', 'sug-s', 'Search on'));
+      for (const sc of SCOPES) {
+        const b = el('button', 'scope-chip'); const im = el('img'); im.src = faviconFor(sc.url || 'https://' + sc.site); im.onerror = () => im.remove();
+        b.append(im, el('span', null, sc.name)); b.title = `Search ${sc.name} for “${it.label}”`;
+        b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); closeSuggest(); $('address').blur(); navigate(scopeUrl(sc, it.label)); });
+        r.appendChild(b);
+      }
+      r.addEventListener('mousedown', (e) => { e.preventDefault(); sugSel = i; pickSuggest(); });
+      box.appendChild(r); return;
+    }
     const r = el('div', 'sug' + (i === sugSel ? ' sel' : ''));
     if (it.fav) { const im = el('img', 'sug-ic'); im.src = it.fav; im.onerror = () => im.replaceWith(svg(ICON.globe, 'sug-ic')); r.appendChild(im); }
     else r.appendChild(svg(it.kind === 'search' ? ICON.search : it.kind === 'tab' ? ICON.tab : it.kind === 'bookmark' ? ICON.star : it.kind === 'history' ? ICON.clock : ICON.globe, 'sug-ic'));
@@ -845,6 +921,8 @@ function pickSuggest() {
   closeSuggest(); input.blur();
   if (!it) { navigate(input.value); return; }
   if (it.kind === 'tab') return activate_(it.id);
+  if (it.kind === 'scopes') return navigate(scopeUrl(SCOPES[0], it.label));
+  if (it.ai && it.buddy) { window.buddy.show().then(() => window.buddy.ask(it.label)); return; }
   if (it.ai) { navigator.clipboard && navigator.clipboard.writeText(it.label).catch(() => {}); openAI(); toast('Question copied — paste it into Claude'); return; }
   navigate(sugSel === 0 && !it.url ? input.value : it.url);
 }
@@ -1159,6 +1237,7 @@ function runCmd(cmd) {
     case 'toggle-bookmarks-bar': call('settings:set', { showBookmarksBar: settings.showBookmarksBar === false }); break;
     case 'bookmarks': openInternal('bookmarks'); break;
     case 'history': openInternal('history'); break;
+    case 'rewind': openInternal('rewind'); break;
     case 'downloads': openInternal('downloads'); break;
     case 'settings': openInternal('settings'); break;
     case 'clear-data': openUrlInternal('settings', '#clear'); break;
@@ -1197,6 +1276,42 @@ setInterval(() => {
   }
 }, 1200);
 
+/* Rewind: once a page has loaded and is on screen, ask main to remember it (main skips private/sensitive pages). */
+const rewindTimers = new Map();
+function rewindSoon(tab) {
+  if (!settings.rewind || info.incognito || !tab || !/^https?:/.test(tab.url)) return;
+  clearTimeout(rewindTimers.get(tab.id));
+  rewindTimers.set(tab.id, setTimeout(() => {
+    rewindTimers.delete(tab.id);
+    const onScreen = tab.id === activeId || (split && split.includes(tab.id));
+    if (onScreen && tab.wv && tab.ready && !tab.loading) { const b = tab.wv.getBoundingClientRect(); call('rewind:capture', tab.wv.getWebContentsId(), { x: b.left, y: b.top, width: b.width, height: b.height }).catch(() => {}); }
+  }, 1600));
+}
+
+/* ---------------- tab sleeping (Memory saver) ----------------
+   Background tabs that haven't been looked at for a while are unloaded (their webview is removed) and
+   reload instantly when clicked, like Chrome's Memory Saver. Settings → Performance sets the delay. */
+function sleepable(t) { return t.wv && t.id !== activeId && !(split && split.includes(t.id)) && !t.audible && !t.loading; }
+async function sleepTab(t, now = false) {
+  if (!sleepable(t)) return false;
+  // Don't throw away half-typed text.
+  if (!now || t.ready) {
+    let typing = false;
+    try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("input,textarea,[contenteditable=true]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 && document.activeElement === e : (e.type !== "hidden" && e.type !== "password" && e.type !== "checkbox" && e.type !== "radio" && e.value && e.value !== e.defaultValue))'); } catch {}
+    if (typing || !sleepable(t)) return false;
+  }
+  try { const u = t.wv.getURL(); if (u) t.url = u; const ti = t.wv.getTitle(); if (ti) t.title = ti; } catch {}
+  t.wv.remove(); t.wv = null; t.ready = false; t.loading = false; t.asleep = true;
+  renderTab(t);
+  return true;
+}
+setInterval(() => {
+  const mins = settings.tabSleep == null ? 15 : +settings.tabSleep;
+  if (!mins) return;
+  const cutoff = Date.now() - mins * 60000;
+  for (const t of tabs) if (sleepable(t) && (t.lastActive || 0) < cutoff) sleepTab(t);
+}, 60000);
+
 /* ---------------- session save ---------------- */
 let saveTimer;
 function scheduleSave() {
@@ -1218,8 +1333,10 @@ function scheduleSave() {
 /* ---------------- settings ---------------- */
 function applySettings() {
   const root = document.documentElement.style;
-  root.setProperty('--accent', ACCENTS[settings.accent] || ACCENTS.clay);
-  root.setProperty('--accent-soft', (ACCENTS[settings.accent] || ACCENTS.clay) + '26');
+  const acc = ACCENTS[settings.accent] || (/^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent : ACCENTS.clay);
+  root.setProperty('--accent', acc);
+  root.setProperty('--accent-soft', acc + '26');
+  if (window.applyCustomize) window.applyCustomize();
   document.body.classList.toggle('no-home', settings.showHome === false);
   document.body.classList.toggle('no-bm', settings.showBookmarksBar === false);
   $('address').placeholder = `Search ${engineName()} or type a URL`;
