@@ -52,6 +52,13 @@ if (/^https?:$/.test(location.protocol)) {
     if (!pw.value) set(pw, c.password);
     pw.style.backgroundColor = 'rgba(217,119,87,.10)';
   }
-  const start = () => { tryFill(); const mo = new MutationObserver(() => { if (!filled) tryFill(); }); mo.observe(document.documentElement, { childList: true, subtree: true }); setTimeout(() => mo.disconnect(), 15000); };
+  // No MutationObserver: watching every DOM change slowed busy pages (and every iframe) down. Instead look a few
+  // times while the page settles, and whenever a field gets focus — that's when a login form matters anyway.
+  const check = () => { if (!filled && document.querySelector('input[type="password"]')) tryFill(); };
+  const start = () => {
+    check();
+    for (const ms of [400, 1500, 4000, 10000]) setTimeout(check, ms);
+    document.addEventListener('focusin', (e) => { if (!filled && e.target && e.target.tagName === 'INPUT') check(); }, true);
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 }

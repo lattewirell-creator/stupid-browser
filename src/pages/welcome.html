@@ -16,7 +16,7 @@
     <section class="step" data-step="hello">
       <div class="hero-logo"><span></span></div>
       <h1>Welcome to<br><em>The Stupid Browser</em></h1>
-      <p class="lead">A calm little browser that does the smart stuff quietly. Let’s set it up — it takes about a minute.</p>
+      <p class="lead">A calm little browser that does the smart stuff quietly. Let’s set it up. It takes about a minute, and you can skip any step.</p>
       <label class="field"><span>What should we call you?</span>
         <input id="name" maxlength="40" placeholder="Your name" autocomplete="given-name"></label>
     </section>
@@ -25,10 +25,10 @@
     <section class="step" data-step="import">
       <div class="big-icon">📚</div>
       <h2>Bring your bookmarks</h2>
-      <p class="lead">Coming from another browser? Bring your bookmarks and history along. If you’re signed in to a Google or Mozilla account there, you get what it has synced. Nothing is changed in the other browser.</p>
-      <div class="sources" id="sources"></div>
-      <button id="importFile" class="link-btn">Import from a bookmarks file</button>
-      <button id="importPw" class="link-btn">Import passwords from an exported file (.csv)</button>
+      <p class="lead">One click brings your bookmarks and history over from the browser you use now. If you’re signed in to a Google or Mozilla account there, you get what it has synced. Nothing changes in the other browser.</p>
+      <div class="imp-main" id="impMain"></div>
+      <div class="imp-others hidden" id="impOthers"><span>Or from</span><div class="sources" id="sources"></div></div>
+      <div class="imp-links"><button id="importFile" class="link-btn">Import a bookmarks file</button><button id="importPw" class="link-btn">Import passwords (.csv)</button></div>
       <p class="note" id="importNote"></p>
     </section>
 
@@ -93,7 +93,7 @@
   <footer class="nav">
     <button id="skipAll" class="link">Skip setup</button>
     <div class="dots" id="dots"></div>
-    <div class="nav-right"><button id="back" class="btn">Back</button><button id="next" class="btn primary">Next</button></div>
+    <div class="nav-right"><button id="back" class="btn">Back</button><button id="skip" class="btn">Skip</button><button id="next" class="btn primary">Next</button></div>
   </footer>
 
   <script src="keys.js"></script>

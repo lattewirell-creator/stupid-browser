@@ -48,7 +48,8 @@ const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); 
 const internalName = (u) => { try { return new URL(u).hostname; } catch { return ''; } };
 const tabById = (id) => tabs.find((t) => t.id === id);
 const activeTab = () => tabById(activeId);
-const faviconFor = (url) => { const h = hostOf(url); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${h}` : null; };
+// The site's own icon, asked from the site itself (not a third-party icon service that would see your sites).
+const faviconFor = (url) => { const h = hostOf(url); return h ? `https://${h}/favicon.ico` : null; };
 function searchUrl(q) { return (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q)); }
 function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'DuckDuckGo' }).name; }
 // Community / site searches: "!r how to…" → your engine limited to Reddit, etc.

@@ -93,3 +93,18 @@ h2 { font-size: 36px; margin: 14px 0 10px; }
 .sources .prov { width: 150px; }
 .link-btn { margin-top: 16px; border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 13.5px; }
 .link-btn:hover { text-decoration: underline; }
+
+/* import: one big "use this one" card, the rest as small buttons */
+.imp-main { width: min(520px, 100%); }
+.imp-card { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); text-align: left; }
+.imp-card .imp-badge { width: 42px; height: 42px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 17px; }
+.imp-card .what { flex: 1; min-width: 0; }
+.imp-card .what b { display: block; font-size: 15.5px; }
+.imp-card .what small { display: block; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-card .btn { height: 40px; padding: 0 22px; flex: none; }
+.imp-card.done { border-color: var(--good); }
+.imp-card.done .btn { color: var(--good); }
+.imp-others { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.imp-others > span { color: var(--muted); font-size: 12.5px; }
+.imp-others .prov { width: auto; min-width: 130px; padding: 10px 14px; }
+.imp-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }

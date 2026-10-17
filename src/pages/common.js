@@ -8,7 +8,8 @@ function icon(inner) { const s = document.createElementNS('http://www.w3.org/200
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
 function applyAccent(s) { const c = ACCENTS[s && s.accent] || (/^#[0-9a-f]{6}$/i.test((s && s.accent) || '') ? s.accent : ACCENTS.clay); document.documentElement.style.setProperty('--accent', c); document.documentElement.style.setProperty('--accent-soft', c + '24'); }
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
-const favFor = (u) => { const h = hostOf(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${h}` : ''; };
+// The site's own icon, asked from the site itself (not a third-party icon service that would see your sites).
+const favFor = (u) => { let h = ''; try { h = new URL(u).hostname; } catch {} return h ? `https://${h}/favicon.ico` : ''; };
 function favImg(u) { const i = el('img', 'fav'); i.src = favFor(u); i.onerror = () => { i.style.visibility = 'hidden'; }; return i; }
 let toastT;
 function toast(msg) { let t = document.querySelector('.toast'); if (!t) { t = el('div', 'toast'); document.body.appendChild(t); } t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 2200); }

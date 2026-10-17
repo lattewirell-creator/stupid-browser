@@ -1,5 +1,5 @@
 'use strict';
-/* First-run welcome (stupid://welcome/). Shown once after a fresh install; every step is optional.
+/* First-run welcome (stupid://welcome/). Shown once after a fresh install; every step has a Skip button.
    Saves as you go, then marks the browser as onboarded and opens a new tab. */
 const steps = [...document.querySelectorAll('.step')];
 let i = 0;
@@ -14,15 +14,8 @@ const QUICK_AI = [
 ];
 const set = (patch) => call('settings:set', patch).then((n) => { s = n; return n; });
 
-// "Skip" when the step hasn't been used, "Next" once it has.
-function nextLabel() {
-  const st = steps[i].dataset.step;
-  if (i === steps.length - 1) return 'Start browsing';
-  if (st === 'hello') return $('name').value.trim() ? 'Next' : 'Skip';
-  if (st === 'import') return imported.size ? 'Next' : 'Skip';
-  if (st === 'buddy') return chosen ? 'Next' : 'Skip';
-  return 'Next';
-}
+// Every step has its own Skip; Next keeps what you chose on the step.
+function nextLabel() { return i === steps.length - 1 ? 'Start browsing' : 'Next'; }
 function show(n) {
   i = Math.max(0, Math.min(steps.length - 1, n));
   steps.forEach((st, k) => { st.classList.toggle('on', k === i); st.classList.toggle('past', k < i); });
@@ -30,6 +23,7 @@ function show(n) {
   $('back').classList.toggle('hidden', i === 0);
   $('next').textContent = nextLabel();
   $('skipAll').classList.toggle('hidden', i === steps.length - 1);
+  $('skip').classList.toggle('hidden', i === steps.length - 1);
   if (steps[i].dataset.step === 'hello') setTimeout(() => $('name').focus(), 350);
   if (steps[i].dataset.step === 'done') $('doneTitle').textContent = s.name ? `You’re all set, ${s.name}` : 'You’re all set';
 }
@@ -43,8 +37,8 @@ $('next').addEventListener('click', async () => {
   show(i + 1);
 });
 $('back').addEventListener('click', () => show(i - 1));
+$('skip').addEventListener('click', () => show(i + 1));
 $('skipAll').addEventListener('click', finish);
-$('name').addEventListener('input', () => { $('next').textContent = $('name').value.trim() ? 'Next' : 'Skip'; });
 $('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('next').click(); });
 
 /* ---------- look ---------- */
@@ -78,25 +72,56 @@ async function paintDefault() {
 $('makeDefault').addEventListener('click', async () => { await call('default:set'); setTimeout(paintDefault, 1500); setTimeout(paintDefault, 5000); });
 
 /* ---------- import bookmarks ---------- */
+// The browser with the most bookmarks gets the big one-click card; the others are small buttons below it.
 const imported = new Set();
+const IMP_COLORS = { chrome: '#4285F4', edge: '#0F7BC4', brave: '#E2582C', arc: '#E3435D', vivaldi: '#D93B3B', opera: '#D32635', operagx: '#C2185B', chromium: '#5B87B5', firefox: '#E66000', zen: '#6F6A63', librewolf: '#3A6FB0', safari: '#1C8FE6' };
+const srcTitle = (src) => src.name + (src.profile ? ` · ${src.profile}` : '');
+const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+async function importFrom(src) {
+  if (imported.has(src.id)) return;
+  const r = await call('import:browser', src.id);
+  if (!r.ok) { $('importNote').textContent = r.error; return; }
+  imported.add(src.id);
+  $('importNote').textContent = `✓ Added ${plural(r.added, 'bookmark', 'bookmarks')}${r.history ? ` and ${plural(r.history, 'history entry', 'history entries')}` : ''} from ${src.name}.`;
+  paintImport();
+}
+let importList = null;
 async function paintImport() {
-  let list = []; try { list = (await call('import:sources')).filter((x) => !x.needsAccess); } catch {}
-  $('sources').replaceChildren(...list.map((src) => {
+  if (!importList) { importList = []; try { importList = await call('import:sources'); } catch {} }
+  const usable = importList.filter((x) => !x.needsAccess);
+  const ranked = usable.slice().sort((a, b) => (b.count + (b.history ? 50 : 0)) - (a.count + (a.history ? 50 : 0)));
+  const main = ranked[0], safari = importList.find((x) => x.needsAccess);
+  const box = $('impMain');
+  if (main) {
+    const done = imported.has(main.id);
+    const card = el('div', 'imp-card' + (done ? ' done' : ''));
+    const badge = el('span', 'imp-badge', main.name.replace(/^(Google|Microsoft) /, '')[0]); badge.style.background = IMP_COLORS[main.browser] || 'var(--accent)';
+    const what = el('div', 'what'); what.append(el('b', null, srcTitle(main)), el('small', null, [main.account, `${plural(main.count, 'bookmark', 'bookmarks')}${main.history ? ' and your history' : ''}`].filter(Boolean).join(' · ')));
+    const go = el('button', 'btn' + (done ? '' : ' primary'), done ? '✓ Imported' : 'Import'); go.disabled = done;
+    go.addEventListener('click', async () => { go.disabled = true; go.textContent = 'Importing…'; await importFrom(main); });
+    card.append(badge, what, go); box.replaceChildren(card);
+  } else if (safari) {
+    const card = el('div', 'imp-card');
+    const badge = el('span', 'imp-badge', 'S'); badge.style.background = IMP_COLORS.safari;
+    const what = el('div', 'what'); what.append(el('b', null, 'Safari'), el('small', null, 'macOS needs your OK first: turn on The Stupid Browser under Full Disk Access, then restart it.'));
+    const go = el('button', 'btn primary', 'Allow access…'); go.addEventListener('click', () => call('import:safariAccess'));
+    card.append(badge, what, go); box.replaceChildren(card);
+  } else {
+    box.replaceChildren();
+    if (!$('importNote').textContent) $('importNote').textContent = 'No other browsers found on this computer. You can still import a bookmarks file.';
+  }
+  const rest = ranked.slice(1);
+  $('impOthers').classList.toggle('hidden', !rest.length);
+  $('sources').replaceChildren(...rest.map((src) => {
     const b = el('button', 'prov src' + (imported.has(src.id) ? ' on' : ''));
-    b.append(el('b', null, src.name + (src.profile ? ` · ${src.profile}` : '')), el('small', null, imported.has(src.id) ? '✓ Imported' : [src.account, `${src.count} bookmarks`].filter(Boolean).join(' · ')));
-    b.addEventListener('click', async () => {
-      if (imported.has(src.id)) return;
-      const r = await call('import:browser', src.id);
-      if (!r.ok) { $('importNote').textContent = r.error; return; }
-      imported.add(src.id); $('importNote').textContent = `✓ Added ${r.added} bookmarks${r.history ? ` and ${r.history} history entries` : ''} from ${src.name}.`; paintImport();
-    });
+    b.append(el('b', null, srcTitle(src)), el('small', null, imported.has(src.id) ? '✓ Imported' : (src.account || plural(src.count, 'bookmark', 'bookmarks'))));
+    b.addEventListener('click', () => importFrom(src));
     return b;
   }));
-  if (!list.length && !$('importNote').textContent) $('importNote').textContent = 'No other browsers found on this computer — you can still import a bookmarks file.';
 }
 $('importPw').addEventListener('click', async () => {
   const r = await call('import:passwords');
-  if (r.ok) { imported.add('pw'); $('importNote').textContent = `✓ Imported ${r.added} passwords. Now delete ${r.file} — it holds your passwords in plain text.`; $('next').textContent = nextLabel(); }
+  if (r.ok) { imported.add('pw'); $('importNote').textContent = `✓ Imported ${r.added} passwords. Now delete ${r.file}: it holds your passwords in plain text.`; }
   else if (r.error !== 'canceled') $('importNote').textContent = r.error;
 });
 $('importFile').addEventListener('click', async () => {
@@ -128,7 +153,7 @@ async function pickAI(p) {
   const b = Object.assign({}, s.buddy);
   if (p.id === 'off') { await set({ buddy: Object.assign(b, { enabled: false }), aiButton: 'sidebar' }); }
   else { await set({ buddy: Object.assign(b, { enabled: true, provider: p.id }), aiButton: 'buddy' }); }
-  paintBuddy(); $('next').textContent = nextLabel();
+  paintBuddy();
   if (p.key) setTimeout(() => $('key').focus(), 50);
 }
 $('saveKey').addEventListener('click', async () => {
