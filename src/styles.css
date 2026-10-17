@@ -460,7 +460,7 @@ body.rail-dragging webview { pointer-events: none; }
 
 /* 3D robot buddy */
 .bd-avatar { width: 76px; height: 82px; border: 0; padding: 0; background: none; cursor: pointer; display: grid; place-items: center; }
-.bot3d { --c1: color-mix(in srgb, var(--accent) 55%, #fff); --c2: var(--accent); --c3: color-mix(in srgb, var(--accent) 60%, #000); --glow: #7CF5FF;
+.bot3d { --b: var(--bc, var(--accent)); --c1: color-mix(in srgb, var(--b) 55%, #fff); --c2: var(--b); --c3: color-mix(in srgb, var(--b) 60%, #000);
   position: relative; display: grid; place-items: center; perspective: 260px; width: 76px; height: 82px; }
 .bot3d.mini { transform: scale(.42); margin: -24px -22px; flex: none; }
 .bot-float { position: relative; display: grid; place-items: center; transform-style: preserve-3d; animation: botFloat 3.4s ease-in-out infinite; }
@@ -504,3 +504,34 @@ body.rail-dragging webview { pointer-events: none; }
 .logo-mark { animation: brand-arrive 650ms ease-out both; }
 @keyframes brand-arrive { from { opacity: 0; transform: scale(.6) rotate(-30deg); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .logo-mark { animation: none; } }
+
+/* buddy look: glow color, picture avatar, accessories */
+.buddy { --glow: #7CF5FF; }
+.bot-photo { position: absolute; inset: 5px; border-radius: 18px; background: center / cover no-repeat; transform: translateZ(6px); display: none; box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
+.buddy.photo .bot-photo { display: block; }
+.buddy.photo .bot-visor { display: none; }
+.bot-extra { position: absolute; left: 50%; top: -16px; transform: translateX(-50%) translateZ(10px); font-size: 22px; line-height: 1; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,.25)); }
+.buddy[data-extra="headphones"] .bot-extra { top: -26px; font-size: 64px; transform: translateX(-50%) translateZ(-10px); }
+.buddy[data-extra="glasses"] .bot-extra { top: 14px; font-size: 30px; }
+.buddy[data-extra="bow"] .bot-extra { left: 78%; top: -8px; font-size: 18px; }
+.buddy[data-extra="flower"] .bot-extra { left: 82%; top: -6px; font-size: 18px; }
+.buddy[data-extra="cap"] .bot-extra, .buddy[data-extra="crown"] .bot-extra { top: -20px; }
+.buddy:not([data-extra="none"]) .bot-antenna { display: none; }
+.buddy[data-extra="glasses"] .bot-antenna, .buddy[data-extra="bow"] .bot-antenna, .buddy[data-extra="flower"] .bot-antenna { display: block; }
+.bd-head .icon-btn.on { color: var(--accent); background: var(--accent-soft); }
+.bd-custom { flex: 1; overflow-y: auto; padding: 4px 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+.bdc-preview { display: grid; place-items: center; padding: 18px 0 8px; margin: 0 -16px; background: radial-gradient(circle at 50% 70%, var(--accent-soft), transparent 70%); }
+.bdc-preview .bot3d { transform: scale(1.35); }
+.bdc-row { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 10px; }
+.bdc-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.bdc-name { min-height: 34px; }
+.bdc-swatches, .bdc-extras, .bdc-photo { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bdc-sw, .bdc-pick { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); cursor: pointer; padding: 0; transition: transform .15s; }
+.bdc-pick { -webkit-appearance: none; appearance: none; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); overflow: hidden; }
+.bdc-pick::-webkit-color-swatch-wrapper { padding: 0; } .bdc-pick::-webkit-color-swatch { border: 0; opacity: 0; }
+.bdc-sw:hover, .bdc-pick:hover { transform: scale(1.12); }
+.bdc-sw.on, .bdc-pick.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-2); }
+.bdc-ex { min-width: 34px; height: 30px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-size: 15px; cursor: pointer; color: var(--text-2); }
+.bdc-ex:first-child { font-size: 11.5px; }
+.bdc-ex.on { border-color: var(--accent); background: var(--accent-soft); }
+.bdc-done { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }

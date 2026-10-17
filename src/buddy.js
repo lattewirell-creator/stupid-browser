@@ -16,17 +16,19 @@
     const visor = el('span', 'bot-visor');
     const eyes = el('span', 'bot-eyes'); eyes.append(el('i', 'bot-eye'), el('i', 'bot-eye'));
     visor.append(eyes, el('span', 'bot-mouth'));
-    headEl.append(el('span', 'bot-ear l'), el('span', 'bot-ear r'), visor, el('span', 'bot-shine'));
+    headEl.append(el('span', 'bot-ear l'), el('span', 'bot-ear r'), visor, el('span', 'bot-photo'), el('span', 'bot-shine'), el('span', 'bot-extra'));
     fl.append(ant, headEl);
     b.append(el('span', 'bot-shadow'), fl);
     return b;
   };
   const face = () => bot('mini');
   const titleBox = el('div', 'bd-titles'); const modelLine = el('small', null, '');
-  titleBox.append(el('b', null, 'Buddy'), modelLine);
+  const nameEl = el('b', null, 'Buddy');
+  titleBox.append(nameEl, modelLine);
+  const editBtn = el('button', 'icon-btn small'); editBtn.title = 'Customize name & look'; editBtn.appendChild(svg('<path d="M4 20h4L19 9l-4-4L4 16z"/>'));
   const newBtn = el('button', 'icon-btn small'); newBtn.title = 'New chat'; newBtn.appendChild(svg('<path d="M12 5v14M5 12h14"/>'));
   const closeBtn = el('button', 'icon-btn small'); closeBtn.title = 'Hide Buddy'; closeBtn.appendChild(svg('<path d="M6 6l12 12M18 6L6 18"/>'));
-  head.append(face(), titleBox, el('div', 'grow'), newBtn, closeBtn);
+  head.append(face(), titleBox, el('div', 'grow'), editBtn, newBtn, closeBtn);
   const log = el('div', 'bd-log');
   const chips = el('div', 'bd-chips');
   const form = el('form', 'bd-form');
@@ -37,7 +39,8 @@
   const sendIcon = svg('<path d="M5 12h13M13 6l6 6-6 6"/>'); const stopIcon = svg('<rect x="7" y="7" width="10" height="10" rx="2" class="fill"/>');
   sendBtn.appendChild(sendIcon);
   form.append(lookBtn, input, sendBtn);
-  panel.append(head, log, chips, form);
+  const custom = el('div', 'bd-custom hidden');
+  panel.append(head, log, custom, chips, form);
   const avatar = el('button', 'bd-avatar'); avatar.title = 'Buddy'; avatar.appendChild(bot('big'));
   root.append(panel, avatar);
   document.getElementById('content').appendChild(root);
@@ -85,7 +88,7 @@
   function greet() {
     log.replaceChildren();
     if (!status.ready) {
-      bubble('bot', 'Hi! I’m **Buddy**. I can look at the page you’re on and answer questions about it.\n\nTo wake me up, pick an AI (Claude, ChatGPT, Gemini, Grok, a free local one with Ollama…) in Settings.');
+      bubble('bot', `Hi! I’m **${buddyName()}**. I can look at the page you’re on and answer questions about it.\n\nTo wake me up, pick an AI (Claude, ChatGPT, Gemini, Grok, a free local one with Ollama…) in Settings.`);
       note('Settings → AI buddy', { label: 'Open settings', fn: () => openUrlInternal('settings', '#buddy') });
     } else bubble('bot', 'Hi! Ask me anything — I can see the tab you’re on when the 👁 is lit.');
     renderChips();
@@ -194,5 +197,75 @@
     if (!root.classList.contains('hidden')) refreshStatus().then(() => { if (!log.querySelector('.bd-msg.me')) greet(); });
   }, 0));
   call('settings:get').then((s) => { if (s) { settings = Object.assign({}, settings, s); applyAiPrefs(); } }).catch(() => {});
+  /* ---------- name & look (Settings key buddyLook: { name, color, glow, extra, image }) ---------- */
+  const BODY = { clay: '#D97757', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
+  const GLOW = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
+  const EXTRAS = { none: 'None', headphones: '🎧', cap: '🧢', bow: '🎀', crown: '👑', glasses: '🕶️', flower: '🌼' };
+  const lookCfg = () => Object.assign({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
+  function buddyName() { return (lookCfg().name || 'Buddy').trim() || 'Buddy'; }
+  function applyLook() {
+    const L = lookCfg();
+    root.style.setProperty('--bc', BODY[L.color] || (/^#[0-9a-f]{6}$/i.test(L.color) ? L.color : BODY.clay));
+    root.style.setProperty('--glow', GLOW[L.glow] || (/^#[0-9a-f]{6}$/i.test(L.glow) ? L.glow : GLOW.cyan));
+    root.dataset.extra = EXTRAS[L.extra] ? L.extra : 'none';
+    const img = /^data:image\/(png|jpeg|webp);base64,/.test(L.image) ? L.image : '';
+    root.classList.toggle('photo', !!img);
+    root.querySelectorAll('.bot-photo').forEach((p) => { p.style.backgroundImage = img ? `url("${img}")` : ''; });
+    root.querySelectorAll('.bot-extra').forEach((x) => { x.textContent = L.extra !== 'none' && EXTRAS[L.extra] ? EXTRAS[L.extra] : ''; });
+    nameEl.textContent = buddyName(); avatar.title = buddyName();
+    input.placeholder = `Ask ${buddyName()} about this page…`;
+  }
+  let lookT;
+  const saveLook = (patch) => { settings.buddyLook = Object.assign(lookCfg(), patch); applyLook(); paintCustom(); clearTimeout(lookT); lookT = setTimeout(() => call('settings:set', { buddyLook: settings.buddyLook }), 250); };
+  function paintCustom() {
+    if (custom.classList.contains('hidden')) return;
+    const L = lookCfg();
+    custom.replaceChildren();
+    const prev = el('div', 'bdc-preview'); prev.appendChild(bot('big')); custom.appendChild(prev);
+    const nm = el('input', 'bd-input bdc-name'); nm.maxLength = 20; nm.value = L.name; nm.placeholder = 'Name';
+    nm.addEventListener('input', () => saveLook({ name: nm.value }));
+    const row = (label, node) => { const r = el('div', 'bdc-row'); r.append(el('span', 'bdc-label', label), node); custom.appendChild(r); };
+    row('Name', nm);
+    const sw = (map, cur, key) => {
+      const box = el('div', 'bdc-swatches');
+      for (const [k, c] of Object.entries(map)) { const b = el('button', 'bdc-sw' + (cur === k ? ' on' : '')); b.style.background = c; b.title = k; b.addEventListener('click', () => saveLook({ [key]: k })); box.appendChild(b); }
+      const pick = el('input'); pick.type = 'color'; pick.className = 'bdc-pick' + (/^#/.test(cur) ? ' on' : ''); pick.title = 'Any color'; pick.value = /^#[0-9a-f]{6}$/i.test(cur) ? cur : '#888888';
+      pick.addEventListener('input', () => saveLook({ [key]: pick.value })); box.appendChild(pick);
+      return box;
+    };
+    row('Color', sw(BODY, L.color, 'color'));
+    row('Eyes', sw(GLOW, L.glow, 'glow'));
+    const ex = el('div', 'bdc-extras');
+    for (const [k, v] of Object.entries(EXTRAS)) { const b = el('button', 'bdc-ex' + (L.extra === k ? ' on' : ''), v); b.title = k; b.addEventListener('click', () => saveLook({ extra: k })); ex.appendChild(b); }
+    row('Extra', ex);
+    const ph = el('div', 'bdc-photo');
+    const up = el('label', 'pill small'); const file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.hidden = true;
+    up.append(file, document.createTextNode(L.image ? 'Change picture' : 'Use a picture…'));
+    file.addEventListener('change', () => {
+      const f = file.files[0]; file.value = ''; if (!f || !/^image\//.test(f.type)) return;
+      const im = new Image(); const url = URL.createObjectURL(f);
+      im.onload = () => { const n = 160, c = document.createElement('canvas'); c.width = c.height = n; const s = Math.min(im.width, im.height); c.getContext('2d').drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, n, n); URL.revokeObjectURL(url); saveLook({ image: c.toDataURL('image/jpeg', 0.85) }); };
+      im.onerror = () => URL.revokeObjectURL(url);
+      im.src = url;
+    });
+    ph.appendChild(up);
+    if (L.image) { const rm = el('button', 'pill small', 'Use the robot'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
+    row('Picture', ph);
+    const done = el('div', 'bdc-done'); const d = el('button', 'pill solid', 'Done'); d.addEventListener('click', toggleCustom); const rs = el('button', 'pill', 'Reset');
+    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }));
+    done.append(rs, d); custom.appendChild(done);
+    applyLook();
+  }
+  function toggleCustom() {
+    const on = custom.classList.contains('hidden');
+    custom.classList.toggle('hidden', !on); log.classList.toggle('hidden', on); chips.classList.toggle('hidden', on); form.classList.toggle('hidden', on);
+    editBtn.classList.toggle('on', on);
+    if (on) paintCustom(); else { applyLook(); if (!log.querySelector('.bd-msg.me')) greet(); }
+  }
+  editBtn.addEventListener('click', toggleCustom);
+  api.on('settings:changed', () => setTimeout(applyLook, 0));
+  call('settings:get').then((s) => { if (s) { settings.buddyLook = s.buddyLook; applyLook(); } }).catch(() => {});
+  applyLook();
+
   window.buddy = { el: root, ask, show: showBuddy, hide: hideBuddy };   // for self-tests
 })();
