@@ -144,13 +144,14 @@ function makeSpare() {
   if (spareTab || restoring) return;
   spareTab = { id: nextId++, url: NEWTAB, title: '', favicon: null, pinned: false, groupId: null, wv: null, loading: false, muted: false, audible: false, zoom: 1, lastActive: Date.now() };
   createWebview(spareTab);
+  spareTab.wv.classList.add('spare');   // rendered invisibly (not display:none) so it's already painted when shown
 }
 const queueSpare = () => { clearTimeout(spareT); spareT = setTimeout(makeSpare, 1200); };
 function newTab(url, opts = {}) {
   const { activate = true, pinned = false, title, favicon, lazy = false, groupId = null, index = null, muted = false, afterId = null } = opts;
   let tab;
   if (!lazy && (url || NEWTAB) === NEWTAB && spareTab && spareTab.ready && !spareTab.crashed) {
-    tab = spareTab; spareTab = null;
+    tab = spareTab; spareTab = null; tab.wv.classList.remove('spare');
     Object.assign(tab, { pinned, groupId, muted, lastActive: Date.now(), title: title || tab.title });
     if (muted) try { tab.wv.setAudioMuted(true); } catch {}
     tab.wv.classList.add('fresh'); setTimeout(() => tab.wv && tab.wv.classList.remove('fresh'), 400);
@@ -167,7 +168,15 @@ function newTab(url, opts = {}) {
     if (opener && opener.groupId) tab.groupId = opener.groupId;
   } else tabs.push(tab);
   normalizeOrder();
-  if (!lazy && !tab.wv) { createWebview(tab); if (tab.url === NEWTAB) { tab.wv.classList.add('fresh'); setTimeout(() => tab.wv && tab.wv.classList.remove('fresh'), 400); queueSpare(); } }
+  if (!lazy && !tab.wv) {
+    createWebview(tab);
+    if (tab.url === NEWTAB) {   // stay invisible until the page has painted, then fade in (no white flash)
+      const wv = tab.wv; wv.classList.add('unpainted');
+      const reveal = () => { if (!wv.classList.contains('unpainted')) return; wv.classList.remove('unpainted'); wv.classList.add('fresh'); setTimeout(() => wv.classList.remove('fresh'), 400); };
+      wv.addEventListener('dom-ready', () => setTimeout(reveal, 30), { once: true }); setTimeout(reveal, 1500);
+      queueSpare();
+    }
+  }
   buildTabEl(tab);
   if (activate) activate_(tab.id); else renderAll();
   scheduleSave();
