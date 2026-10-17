@@ -143,6 +143,19 @@ function themeColors(incognito) {
     : { bg: '#FAF9F5', bar: '#F0EEE6', fg: '#3D3929' };
 }
 
+// Windows fade in/out instead of popping (smooth profile switches, new windows).
+function fadeWin(win, to, ms = 180, done) {
+  if (!win || win.isDestroyed() || process.env.STUPID_SELFTEST) { if (to > 0 && win && !win.isDestroyed()) { win.setOpacity(1); } if (done) done(); return; }
+  const from = win.getOpacity(), t0 = Date.now();
+  const step = () => {
+    if (win.isDestroyed()) return;
+    const k = Math.min(1, (Date.now() - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+    win.setOpacity(from + (to - from) * e);
+    if (k < 1) setTimeout(step, 12); else if (done) done();
+  };
+  step();
+}
+function showSmooth(win) { if (win.isDestroyed()) return; win.setOpacity(0); win.show(); fadeWin(win, 1); }
 const windowTitle = (incognito) => { const n = (getSettings().wordmark || '').trim() || 'The Stupid Browser'; return incognito ? `Private — ${n}` : n; };
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const partition = incognito ? `incognito-${++incognitoCounter}` : PERSIST;   // no "persist:" = in memory only
@@ -172,7 +185,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
-  win.once('ready-to-show', () => { win.show(); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
+  win.once('ready-to-show', () => { showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
@@ -1038,7 +1051,7 @@ function showProfilePicker() {
   });
   pickerWin.removeMenu();
   pickerWin.loadFile(path.join(__dirname, 'picker.html'));
-  pickerWin.once('ready-to-show', () => pickerWin.show());
+  pickerWin.once('ready-to-show', () => showSmooth(pickerWin));
   pickerWin.on('closed', () => { const w = pickerWin; pickerWin = null; if (w && !w.__chosen && !windows.size) { if (IS_MAC) return; app.quit(); } });
 }
 const fromPicker = (e) => pickerWin && !pickerWin.isDestroyed() && e.sender === pickerWin.webContents;
@@ -1054,8 +1067,9 @@ ipcMain.handle('picker:choose', (e, id) => {
   if (!fromPicker(e)) return null;
   id = String(id || 'default');
   pickerWin.__chosen = true;
-  if (id === 'default') { pickerWin.close(); openStartupWindows([]); }
-  else { profiles.open(id); pickerWin.close(); if (!windows.size) app.quit(); }
+  const w = pickerWin;
+  if (id === 'default') { openStartupWindows([]); setTimeout(() => fadeWin(w, 0, 220, () => { if (!w.isDestroyed()) w.close(); }), 120); }
+  else { profiles.open(id); fadeWin(w, 0, 260, () => { if (!w.isDestroyed()) w.close(); if (!windows.size) setTimeout(() => app.quit(), 400); }); }
   return true;
 });
 

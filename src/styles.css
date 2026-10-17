@@ -622,3 +622,10 @@ body.compact.vtabs #vtabs { position: absolute; top: 0; bottom: 0; left: 0; z-in
 body.compact.vtabs.look-modern #vtabs { background: color-mix(in srgb, var(--bar) 92%, var(--accent)); border-radius: 0 14px 14px 0; }
 body.compact.vtabs.reveal-left #vtabs { transform: none; box-shadow: 12px 0 34px rgba(0,0,0,.2); }
 @media (prefers-reduced-motion: reduce) { body.compact #topbars, body.compact.vtabs #vtabs { transition: none; } }
+/* profile switch transition */
+.switch-overlay { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(14px); opacity: 0; transition: opacity .3s cubic-bezier(.2,.8,.2,1); pointer-events: none; }
+.switch-overlay.in { opacity: 1; }
+.switch-overlay .avatar { width: 72px; height: 72px; font-size: 30px; transform: scale(.8); transition: transform .45s cubic-bezier(.2,.8,.2,1); box-shadow: 0 12px 30px rgba(0,0,0,.2); }
+.switch-overlay.in .avatar { transform: none; }
+.so-text { font-family: var(--serif); font-size: 22px; color: var(--text); }

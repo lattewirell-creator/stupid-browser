@@ -110,7 +110,7 @@ function profileCard(editing = false) {
       const b = el('button', 'menu-item pf-link');
       const a = el('span', 'avatar'); a.style.background = GROUP_COLORS[p.color] || GROUP_COLORS.clay; a.textContent = (p.name || '?')[0].toUpperCase();
       b.append(a, el('span', 'ml', p.name)); b.title = `Open ${p.name}’s browser`;
-      b.addEventListener('click', () => { hidePop(); call('profiles:open', p.id); toast(`Opening ${p.name}…`); });
+      b.addEventListener('click', () => { hidePop(); switchOverlay(p); call('profiles:open', p.id); });
       row.appendChild(b);
       if (p.id !== 'default') {
         const x = el('button', 'icon-btn small pf-del'); x.title = `Remove ${p.name}`; x.appendChild(svg('<path d="M6 6l12 12M18 6L6 18"/>'));
@@ -142,6 +142,15 @@ function profileCard(editing = false) {
     pop.appendChild(b);
   }
   anchorBelow($('profileBtn'), pop);
+}
+// A soft full-window transition while the other profile's browser opens.
+function switchOverlay(p) {
+  const o = el('div', 'switch-overlay');
+  const a = el('span', 'avatar'); a.style.background = GROUP_COLORS[p.color] || GROUP_COLORS.clay; a.textContent = (p.name || '?').trim()[0].toUpperCase();
+  o.append(a, el('div', 'so-text', `Switching to ${p.name}…`));
+  document.body.appendChild(o);
+  requestAnimationFrame(() => o.classList.add('in'));
+  setTimeout(() => { o.classList.remove('in'); setTimeout(() => o.remove(), 400); }, 1400);
 }
 function addProfileForm() {
   const pop = $('popover'); pop.innerHTML = ''; pop.className = 'pop profile-pop';
