@@ -101,6 +101,7 @@
     polling = true;
     try { await pollSource(); } finally { polling = false; }
   }
+  let pausedHere = false;   // paused from the island (vs. from the website)
   async function pollSource() {
     if (!enabled()) { hide(); return; }
     const list = sources();
@@ -121,6 +122,9 @@
     const tag = cur.key + '|' + (last.title || cur.name);
     if (dismissed && dismissed !== tag) dismissed = null;
     if (cur.visible || dismissed === tag) { hide(); return; }
+    // Only while something plays. Paused on the website → hide; paused with the island's own button → stay, so you can resume.
+    if (last.state === 'playing' || sounding) pausedHere = false;
+    else if (!pausedHere) { hide(); return; }
     render(!!info);
   }
 
@@ -197,7 +201,7 @@
   });
   const press = (a) => async (e) => {
     e.stopPropagation(); if (!cur) return;
-    if (a === 'toggle') { last.state = last.state === 'playing' ? 'paused' : 'playing'; render(true); }
+    if (a === 'toggle') { pausedHere = last.state === 'playing'; last.state = pausedHere ? 'paused' : 'playing'; render(true); }
     await act(cur.wv, a);
     setTimeout(poll, 350);
   };

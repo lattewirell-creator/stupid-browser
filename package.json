@@ -11,7 +11,8 @@
     "dist:mac": "electron-builder --mac --publish never",
     "build:adblock": "node scripts/build-adblock.js",
     "release": "bash scripts/release.sh",
-    "test": "bash scripts/selftest.sh"
+    "test": "bash scripts/selftest.sh",
+    "vendor:three": "node scripts/vendor-three.js"
   },
   "build": {
     "appId": "com.emil.stupidbrowser",
@@ -127,7 +128,8 @@
   },
   "devDependencies": {
     "electron": "^44.8.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "three": "0.169.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

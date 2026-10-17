@@ -46,6 +46,16 @@
   document.getElementById('content').appendChild(root);
 
   let status = { hasKey: false };
+  // Real 3D buddy (buddy3d.js, an ES module that loads after this script); the CSS robot stays as fallback.
+  let b3 = null;
+  function mount3d() {
+    if (b3 || !window.Buddy3D) return;
+    b3 = window.Buddy3D.create(avatar, { interactive: true });
+    if (!b3) return;
+    root.classList.add('b3d');
+    b3.setLook(look3d()); b3.setState({ sleepy: !status.ready }); b3.setVisible(!root.classList.contains('hidden'));
+  }
+  if (window.Buddy3D) setTimeout(mount3d, 0); else addEventListener('buddy3d-ready', mount3d, { once: true });
   let busy = false;
   let look = true;
   let current = null;   // bubble being streamed into
@@ -98,6 +108,7 @@
     modelLine.textContent = status.ready ? `${status.providerName.replace(/ \(.*\)/, '')} · ${status.modelName}` : 'Not set up';
     modelLine.title = modelLine.textContent;
     root.classList.toggle('nokey', !status.ready);
+    if (b3) b3.setState({ sleepy: !status.ready });
   }
 
   const ERRORS = {
@@ -138,7 +149,8 @@
     if (!current) return;
     current.classList.remove('typing');
     current.__text += d; fmt(current, current.__text); log.scrollTop = log.scrollHeight;
-    root.classList.add('talking'); clearTimeout(talkT); talkT = setTimeout(() => root.classList.remove('talking'), 400);
+    root.classList.add('talking'); clearTimeout(talkT); talkT = setTimeout(() => { root.classList.remove('talking'); if (b3) b3.setState({ talking: false }); }, 400);
+    if (b3) b3.setState({ talking: true });
   });
   let talkT, happyT;
   // Head and eyes follow the mouse while it's over the browser UI; otherwise Buddy glances around on its own.
@@ -149,6 +161,7 @@
       raf = 0;
       const r = avatar.getBoundingClientRect(); if (!r.width) return;
       const dx = (e.clientX - (r.left + r.width / 2)) / innerWidth, dy = (e.clientY - (r.top + r.height / 2)) / innerHeight;
+      if (b3) b3.lookAt(dx * 2.2, -dy * 2.2);
       root.style.setProperty('--ry', (Math.max(-1, Math.min(1, dx * 2.2)) * 28).toFixed(1) + 'deg');
       root.style.setProperty('--rx', (Math.max(-1, Math.min(1, -dy * 2.2)) * 18).toFixed(1) + 'deg');
       root.style.setProperty('--ex', (Math.max(-1, Math.min(1, dx * 3)) * 3).toFixed(1) + 'px');
@@ -158,6 +171,7 @@
   });
   function setBusy(b) {
     busy = b; root.classList.toggle('busy', b);
+    if (b3) b3.setState({ busy: b, happy: !b });
     if (!b) { root.classList.add('happy'); clearTimeout(happyT); happyT = setTimeout(() => root.classList.remove('happy'), 1800); }
     sendBtn.replaceChildren(b ? stopIcon : sendIcon); sendBtn.title = b ? 'Stop' : 'Send';
   }
@@ -168,7 +182,7 @@
   lookBtn.addEventListener('click', () => { look = !look; lookBtn.classList.toggle('on', look); lookBtn.title = look ? 'Buddy can see the current tab' : 'Buddy can’t see the tab'; call('settings:set', { buddy: Object.assign({}, settings.buddy, { look }) }); });
   newBtn.addEventListener('click', () => { call('buddy:reset'); greet(); });
   closeBtn.addEventListener('click', () => hideBuddy());
-  avatar.addEventListener('click', () => root.classList.toggle('open'));
+  avatar.addEventListener('click', () => { if (b3 && b3.canvas.dataset.dragged) return; root.classList.toggle('open'); });
 
   async function showBuddy() {
     await refreshStatus();
@@ -176,10 +190,11 @@
     const wasHidden = root.classList.contains('hidden');
     root.classList.remove('hidden'); root.classList.add('open');
     $('aiBtn').classList.add('on');
+    mount3d(); if (b3) b3.setVisible(true);
     if (wasHidden && !log.querySelector('.bd-msg.me')) greet();
     setTimeout(() => input.focus(), 50);
   }
-  function hideBuddy() { root.classList.add('hidden'); root.classList.remove('open'); $('aiBtn').classList.remove('on'); }
+  function hideBuddy() { root.classList.add('hidden'); root.classList.remove('open'); $('aiBtn').classList.remove('on'); if (b3) b3.setVisible(false); }
   window.toggleBuddy = () => (root.classList.contains('hidden') ? showBuddy() : hideBuddy());
   // The AI button does what Settings → AI button says (buddy by default); "off" hides the button.
   const buddyOn = () => !(settings.buddy && settings.buddy.enabled === false);
@@ -201,6 +216,16 @@
   const BODY = { clay: '#D97757', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
   const GLOW = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
   const EXTRAS = { none: 'None', headphones: '🎧', cap: '🧢', bow: '🎀', crown: '👑', glasses: '🕶️', flower: '🌼' };
+  const SHAPES = { round: ['⚪', 'Round'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
+  const HATS = { none: ['✖', 'None'], tophat: ['🎩', 'Top hat'], cap: ['🧢', 'Cap'], beanie: ['🧶', 'Beanie'], crown: ['👑', 'Crown'], party: ['🥳', 'Party'], cowboy: ['🤠', 'Cowboy'], headphones: ['🎧', 'Headphones'], halo: ['😇', 'Halo'] };
+  const GLASSES = { none: ['✖', 'None'], round: ['👓', 'Round'], square: ['🤓', 'Square'], shades: ['🕶️', 'Shades'], star: ['⭐', 'Stars'], heart: ['💖', 'Hearts'] };
+  // Older looks only had one "extra"; map it onto hat/glasses.
+  const look3d = () => {
+    const L = lookCfg();
+    const fromExtra = { headphones: ['headphones', null], cap: ['cap', null], crown: ['crown', null], glasses: [null, 'shades'] }[L.extra] || [null, null];
+    return { shape: SHAPES[L.shape] ? L.shape : 'round', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
+  };
+  let previewBox = null, previewB3 = null;
   const lookCfg = () => Object.assign({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
   function buddyName() { return (lookCfg().name || 'Buddy').trim() || 'Buddy'; }
   function applyLook() {
@@ -213,6 +238,7 @@
     root.querySelectorAll('.bot-photo').forEach((p) => { p.style.backgroundImage = img ? `url("${img}")` : ''; });
     root.querySelectorAll('.bot-extra').forEach((x) => { x.textContent = L.extra !== 'none' && EXTRAS[L.extra] ? EXTRAS[L.extra] : ''; });
     nameEl.textContent = buddyName(); avatar.title = buddyName();
+    if (b3) b3.setLook(look3d());
     input.placeholder = `Ask ${buddyName()} about this page…`;
   }
   let lookT;
@@ -221,7 +247,11 @@
     if (custom.classList.contains('hidden')) return;
     const L = lookCfg();
     custom.replaceChildren();
-    const prev = el('div', 'bdc-preview'); prev.appendChild(bot('big')); custom.appendChild(prev);
+    // 3D preview you can spin and poke (made once per customize session).
+    if (!previewBox) { previewBox = el('div', 'bdc-preview'); if (window.Buddy3D) { previewB3 = window.Buddy3D.create(previewBox, { interactive: true }); } if (!previewB3) previewBox.appendChild(bot('big')); }
+    if (previewB3) previewB3.setLook(look3d());
+    custom.appendChild(previewBox);
+    if (previewB3) custom.appendChild(el('div', 'bdc-hint', 'Drag to spin · click to poke'));
     const nm = el('input', 'bd-input bdc-name'); nm.maxLength = 20; nm.value = L.name; nm.placeholder = 'Name';
     nm.addEventListener('input', () => saveLook({ name: nm.value }));
     const row = (label, node) => { const r = el('div', 'bdc-row'); r.append(el('span', 'bdc-label', label), node); custom.appendChild(r); };
@@ -235,9 +265,15 @@
     };
     row('Color', sw(BODY, L.color, 'color'));
     row('Eyes', sw(GLOW, L.glow, 'glow'));
-    const ex = el('div', 'bdc-extras');
-    for (const [k, v] of Object.entries(EXTRAS)) { const b = el('button', 'bdc-ex' + (L.extra === k ? ' on' : ''), v); b.title = k; b.addEventListener('click', () => saveLook({ extra: k })); ex.appendChild(b); }
-    row('Extra', ex);
+    const chips = (map, cur, key) => {
+      const box = el('div', 'bdc-extras');
+      for (const [k, v] of Object.entries(map)) { const b = el('button', 'bdc-ex' + (cur === k ? ' on' : '')); b.title = v[1]; b.append(el('span', null, v[0]), el('small', null, v[1])); b.addEventListener('click', () => saveLook({ [key]: k })); box.appendChild(b); }
+      return box;
+    };
+    const L3 = look3d();
+    row('Shape', chips(SHAPES, L3.shape, 'shape'));
+    row('Hat', chips(HATS, L3.hat, 'hat'));
+    row('Glasses', chips(GLASSES, L3.glasses, 'glasses'));
     const ph = el('div', 'bdc-photo');
     const up = el('label', 'pill small'); const file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.hidden = true;
     up.append(file, document.createTextNode(L.image ? 'Change picture' : 'Use a picture…'));
@@ -252,7 +288,7 @@
     if (L.image) { const rm = el('button', 'pill small', 'Use the robot'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
     row('Picture', ph);
     const done = el('div', 'bdc-done'); const d = el('button', 'pill solid', 'Done'); d.addEventListener('click', toggleCustom); const rs = el('button', 'pill', 'Reset');
-    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }));
+    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'round', hat: 'none', glasses: 'none', image: '' }));
     done.append(rs, d); custom.appendChild(done);
     applyLook();
   }
@@ -260,7 +296,7 @@
     const on = custom.classList.contains('hidden');
     custom.classList.toggle('hidden', !on); log.classList.toggle('hidden', on); chips.classList.toggle('hidden', on); form.classList.toggle('hidden', on);
     editBtn.classList.toggle('on', on);
-    if (on) paintCustom(); else { applyLook(); if (!log.querySelector('.bd-msg.me')) greet(); }
+    if (on) paintCustom(); else { if (previewB3) { previewB3.destroy(); previewB3 = null; } previewBox = null; applyLook(); if (!log.querySelector('.bd-msg.me')) greet(); }
   }
   editBtn.addEventListener('click', toggleCustom);
   api.on('settings:changed', () => setTimeout(applyLook, 0));

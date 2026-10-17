@@ -539,3 +539,13 @@ body.rail-dragging webview { pointer-events: none; }
 #views webview.fresh.visible { animation: freshIn .26s cubic-bezier(.2,.8,.2,1); }
 @keyframes freshIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #views webview.fresh.visible { animation: none; } }
+/* real 3D buddy (buddy3d.js) */
+.buddy.b3d .bd-avatar { width: 116px; height: 128px; margin: -18px -16px -14px 0; }
+.buddy.b3d .bd-avatar > .bot3d { display: none; }
+.b3d-canvas { width: 100% !important; height: 100% !important; display: block; cursor: grab; touch-action: none; }
+.b3d-canvas:active { cursor: grabbing; }
+.bdc-preview .b3d-canvas { cursor: grab; }
+.buddy.b3d .bdc-preview { height: 200px; }
+.bdc-hint { text-align: center; font-size: 11px; color: var(--muted); margin-top: -6px; }
+.bdc-ex { display: inline-flex; align-items: center; gap: 5px; }
+.bdc-ex small { font-size: 11px; color: var(--text-2); }

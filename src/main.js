@@ -487,6 +487,9 @@ function cleanPatch(patch) {
       color: col(L.color, ['clay', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),
       glow: col(L.glow, ['cyan', 'green', 'pink', 'amber', 'white', 'violet'], 'cyan'),
       extra: ['none', 'headphones', 'cap', 'bow', 'crown', 'glasses', 'flower'].includes(L.extra) ? L.extra : 'none',
+      shape: ['round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'round',
+      hat: ['none', 'tophat', 'cap', 'beanie', 'crown', 'party', 'cowboy', 'headphones', 'halo'].includes(L.hat) ? L.hat : 'none',
+      glasses: ['none', 'round', 'square', 'shades', 'star', 'heart'].includes(L.glasses) ? L.glasses : 'none',
       image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : ''
     };
   }
