@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: 15, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -495,6 +495,15 @@ const ANY = ['shell', 'internal'];
 handle('win:info', ['shell'], (e) => { const w = entryFor(e.sender); const r = w.restore; w.restore = null; const u = w.pendingUrls; w.pendingUrls = null; return { incognito: w.incognito, partition: w.partition, ai: w.aiPartition, apps: w.appsPartition, restore: r, urls: u, version: app.getVersion() }; });
 handle('settings:get', ANY, () => publicSettings());
 handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(cleanPatch(patch)); return publicSettings(); });
+// macOS: write the browser name + logo into the app itself (Finder / Dock), then restart. reset=true restores the originals.
+handle('brand:status', ['internal'], () => (IS_MAC ? require('./mac-brand').status() : { supported: false }));
+handle('brand:apply', ['internal'], async (_e, reset) => {
+  const brand = require('./mac-brand'), s = getSettings();
+  await brand.apply(reset ? { name: brand.DEFAULT_NAME, iconDataUrl: null } : { name: s.wordmark || brand.DEFAULT_NAME, iconDataUrl: s.appIcon && s.appIconImage ? s.appIconImage : null });
+  setSettings({ brandBundle: !reset });
+  setTimeout(() => app.quit(), 150);
+  return true;
+});
 // Values that end up in pages or audio graphs get checked here.
 function cleanPatch(patch) {
   const p = Object.assign({}, patch);
@@ -525,7 +534,13 @@ function cleanPatch(patch) {
       image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : ''
     };
   }
-  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind']) if (k in p) p[k] = !!p[k];
+  delete p.brandBundle;   // only brand:apply sets this
+  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind', 'clock24']) if (k in p) p[k] = !!p[k];
+  const pick = (k, list) => { if (k in p && !list.includes(p[k])) delete p[k]; };
+  pick('uiFont', ['inter', 'system', 'serif', 'rounded', 'mono']); pick('density', ['compact', 'comfortable', 'spacious']);
+  pick('corners', ['sharp', 'rounded', 'round']); pick('tabStyle', ['classic', 'pills', 'minimal']); pick('frameTint', ['none', 'soft', 'strong']);
+  if ('hideButtons' in p) p.hideButtons = (Array.isArray(p.hideButtons) ? p.hideButtons : []).filter((b) => ['shield', 'pip', 'ai', 'grid', 'profile', 'home', 'sidebarBtn'].includes(b));
+  if ('accent' in p && !(/^[a-z]{2,12}$/.test(String(p.accent)) || /^#[0-9a-f]{6}$/i.test(String(p.accent)))) delete p.accent;
   if ('rewindExclude' in p) p.rewindExclude = (Array.isArray(p.rewindExclude) ? p.rewindExclude : []).map((d) => String(d).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '')).filter((d) => /^[a-z0-9.-]{3,253}$/.test(d)).slice(0, 200);
   if ('appIcon' in p) p.appIcon = !!p.appIcon;
   if ('appIconImage' in p && !(p.appIconImage === '' || (typeof p.appIconImage === 'string' && p.appIconImage.length < 1500000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.appIconImage)))) delete p.appIconImage;
@@ -748,7 +763,7 @@ let macUpdater = null;
 function initUpdater() {
   // macOS: our own updater (works without an Apple Developer ID); see mac-updater.js
   if (IS_MAC && (app.isPackaged || process.env.STUPID_UPDATE_TEST_FEED)) {
-    macUpdater = autoUpdater = require('./mac-updater')({ setUpdate, log: (m) => console.log(m) });
+    macUpdater = autoUpdater = require('./mac-updater')({ setUpdate, log: (m) => console.log(m), afterSwap: (p) => require('./mac-brand').relabelAfterUpdate(p, getSettings()) });
     setTimeout(checkForUpdates, 10000);
     setInterval(checkForUpdates, UPDATE_EVERY);
     return;

@@ -4,7 +4,7 @@ function tick() {
   const d = new Date(); const h = d.getHours();
   const part = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   $('greeting').textContent = settings.name ? `${part}, ${settings.name}` : part;
-  $('clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  $('clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: settings.clock24 === false ? 'h12' : settings.clock24 ? 'h23' : undefined });
 }
 function tile(name, url, used, onUse) {
   const a = el('a', 'tile' + (used ? ' used' : '')); a.href = url; a.title = url;

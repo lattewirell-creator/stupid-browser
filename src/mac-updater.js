@@ -16,7 +16,7 @@ const TEST_FEED = /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.STUPID_UPDATE_T
 const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, { timeout: 120000 }, (err, out) => (err ? reject(err) : resolve(String(out).trim()))));
 const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 
-module.exports = function macUpdater({ setUpdate, log = console.log }) {
+module.exports = function macUpdater({ setUpdate, log = console.log, afterSwap = () => null }) {
   const appPath = path.resolve(process.execPath, '..', '..', '..');          // …/The Stupid Browser.app
   const parent = path.dirname(appPath);
   let staged = null;    // { version, app: path to the unpacked new .app }
@@ -118,7 +118,9 @@ module.exports = function macUpdater({ setUpdate, log = console.log }) {
       `fi`,
       `rm -rf ${q(staged.stage)}`,
       `xattr -dr com.apple.quarantine ${q(appPath)} 2>/dev/null`,
-      relaunch ? `open ${q(appPath)}${udd ? ' --args ' + q(udd) : ''}` : ':'
+      ...(afterSwap(appPath) || []),   // keep a custom app name / icon (mac-brand.js)
+      `[ -n "$T" ] || T=${q(appPath)}`,
+      relaunch ? `open "$T"${udd ? ' --args ' + q(udd) : ''}` : ':'
     ].join('\n');
     spawn('/bin/sh', ['-c', script], { detached: true, stdio: 'ignore' }).unref();
     staged = null;

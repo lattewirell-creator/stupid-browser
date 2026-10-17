@@ -22,6 +22,32 @@ function render() {
   $('showHome').checked = s.showHome !== false; $('showHome').onchange = (e) => set({ showHome: e.target.checked });
   $('showSidebar').checked = s.showSidebar !== false; $('showSidebar').onchange = (e) => set({ showSidebar: e.target.checked });
   $('name').value = s.name || ''; $('name').onchange = () => set({ name: $('name').value.trim() });
+  // customize
+  const PRESETS = [
+    ['Calm', { theme: 'light', accent: 'clay', frameTint: 'soft', corners: 'rounded', tabStyle: 'classic', uiFont: 'inter' }, '#F4EFE6', '#D97757'],
+    ['Midnight', { theme: 'dark', accent: 'sky', frameTint: 'strong', corners: 'rounded', tabStyle: 'pills', uiFont: 'inter' }, '#1D2230', '#5B87B5'],
+    ['Forest', { theme: 'dark', accent: 'sage', frameTint: 'soft', corners: 'round', tabStyle: 'classic', uiFont: 'rounded' }, '#1F2620', '#6F9161'],
+    ['Ocean', { theme: 'light', accent: '#2E8FA8', frameTint: 'strong', corners: 'round', tabStyle: 'pills', uiFont: 'system' }, '#E6F1F3', '#2E8FA8'],
+    ['Sakura', { theme: 'light', accent: '#D9779A', frameTint: 'strong', corners: 'round', tabStyle: 'pills', uiFont: 'rounded' }, '#FBEFF2', '#D9779A'],
+    ['Paper', { theme: 'light', accent: 'ink', frameTint: 'none', corners: 'sharp', tabStyle: 'minimal', uiFont: 'serif' }, '#FAF8F3', '#5A5548']
+  ];
+  const pr = $('presets'); pr.innerHTML = '';
+  for (const [name, patch, bg, fg] of PRESETS) {
+    const b = el('button', 'preset'); b.style.setProperty('--pbg', bg); b.style.setProperty('--pfg', fg); if (patch.theme === 'dark') b.style.color = '#EEE9E0';
+    b.append(el('span', 'preset-dot'), el('span', null, name)); b.onclick = () => set(patch).then(render); pr.appendChild(b);
+  }
+  $('accentPick').value = /^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : (ACCENTS[s.accent] || ACCENTS.clay);
+  $('accentPick').oninput = () => set({ accent: $('accentPick').value.toLowerCase() });
+  const DEF = { uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft' };
+  for (const k of Object.keys(DEF)) document.querySelectorAll('#' + k + ' button').forEach((b) => { b.classList.toggle('on', (s[k] || DEF[k]) === b.dataset.v); b.onclick = () => set({ [k]: b.dataset.v }).then(render); });
+  const tb = $('toolbarBtns'); tb.innerHTML = '';
+  for (const [k, label] of [['shield', 'Ad blocker'], ['pip', 'Picture-in-picture'], ['ai', 'AI'], ['grid', 'Apps'], ['profile', 'Profile']]) {
+    const hidden = (s.hideButtons || []).includes(k);
+    const c = el('button', 'chip' + (hidden ? '' : ' on'), label);
+    c.onclick = () => { const h = new Set(s.hideButtons || []); hidden ? h.delete(k) : h.add(k); set({ hideButtons: [...h] }).then(render); };
+    tb.appendChild(c);
+  }
+  $('clock24').checked = s.clock24 ?? !/[ap]m/i.test(new Date(2020, 0, 1, 15).toLocaleTimeString()); $('clock24').onchange = () => set({ clock24: $('clock24').checked });
   // startup
   document.querySelectorAll('input[name="startup"]').forEach((r) => { r.checked = r.value === (s.startup || 'continue'); r.onchange = () => set({ startup: r.value }).then(render); });
   $('pagesBox').classList.toggle('hidden', s.startup !== 'pages');
@@ -210,6 +236,15 @@ async function iconFor(s) {
 async function saveLogo(patch) { const s = await call('settings:set', patch); const icon = await iconFor(s); if ((s.appIconImage || '') !== icon) await call('settings:set', { appIconImage: icon }); paintLogo(await call('settings:get')); }
 $('logoKind').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.v === 'image') call('settings:get').then((s) => { if (!s.logoImage) $('logoFile').click(); }); saveLogo({ logo: b.dataset.v }); });
 let emojiT; $('logoEmojiIn').addEventListener('input', () => { clearTimeout(emojiT); emojiT = setTimeout(() => { const v = $('logoEmojiIn').value.trim(); if (v) saveLogo({ logo: 'emoji', logoEmoji: v }); }, 300); });
+// macOS: write the name + logo into the app bundle itself
+call('brand:status').then((b) => {
+  if (!b || !b.supported) return;
+  $('brandRow').classList.remove('hidden');
+  $('brandReset').classList.toggle('hidden', !b.custom);
+  if (b.custom) $('brandHint').textContent = `The app is called “${b.name}” in Finder now. Apply again after changing the name or logo, or reset to the original.`;
+  const go = (reset) => { $('brandApply').disabled = $('brandReset').disabled = true; $('brandApply').textContent = 'Restarting…'; call('brand:apply', reset).catch((e) => { $('brandApply').disabled = $('brandReset').disabled = false; $('brandApply').textContent = 'Apply & restart'; alert(String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }); };
+  $('brandApply').onclick = () => go(false); $('brandReset').onclick = () => go(true);
+}).catch(() => {});
 let wmT; $('wordmarkIn').addEventListener('input', () => { clearTimeout(wmT); wmT = setTimeout(() => call('settings:set', { wordmark: $('wordmarkIn').value.trim() }), 300); });
 $('appIcon').addEventListener('change', () => saveLogo({ appIcon: $('appIcon').checked }));
 $('logoFile').addEventListener('change', () => {

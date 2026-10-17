@@ -1333,8 +1333,10 @@ function scheduleSave() {
 /* ---------------- settings ---------------- */
 function applySettings() {
   const root = document.documentElement.style;
-  root.setProperty('--accent', ACCENTS[settings.accent] || ACCENTS.clay);
-  root.setProperty('--accent-soft', (ACCENTS[settings.accent] || ACCENTS.clay) + '26');
+  const acc = ACCENTS[settings.accent] || (/^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent : ACCENTS.clay);
+  root.setProperty('--accent', acc);
+  root.setProperty('--accent-soft', acc + '26');
+  if (window.applyCustomize) window.applyCustomize();
   document.body.classList.toggle('no-home', settings.showHome === false);
   document.body.classList.toggle('no-bm', settings.showBookmarksBar === false);
   $('address').placeholder = `Search ${engineName()} or type a URL`;
