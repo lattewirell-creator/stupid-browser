@@ -53,11 +53,7 @@ function renderWidgets() {
       g.addEventListener('click', () => openWidgetEditor(w));
       tools.appendChild(g);
     }
-    if (w.pos) {
-      const b = el('button', 'w-tool'); b.title = 'Put back in the grid'; b.appendChild(svgIcon(ICO.back));
-      b.addEventListener('click', () => { delete w.pos; saveWidgets(true); renderWidgets(); });
-      tools.appendChild(b);
-    }
+    if (w.pos) tools.appendChild(putBackButton(card, w));
     const x = el('button', 'w-tool'); x.title = 'Remove widget'; x.appendChild(svgIcon(ICO.x));
     x.addEventListener('click', () => { widgets.splice(i, 1); saveWidgets(true); renderWidgets(); paintWidgetPicker(); });
     tools.appendChild(x);
@@ -73,6 +69,24 @@ function renderWidgets() {
     else box.appendChild(card);
     void i;
   });
+}
+// "Put back": glide the card back into the grid (no re-render, so widgets keep their state).
+function putBackButton(card, w) {
+  const b = el('button', 'w-tool w-putback'); b.title = 'Put back in the grid'; b.appendChild(svgIcon(ICO.back));
+  b.addEventListener('click', () => {
+    const box = $('widgets');
+    delete w.pos;
+    const order = widgets.filter((x) => !x.pos).map((x) => x.id);
+    const before = [...box.children].find((c) => order.indexOf(c.dataset.id) > order.indexOf(w.id)) || null;
+    flip([card, ...box.children], () => {
+      box.classList.remove('hidden');
+      card.classList.remove('floating'); card.style.left = card.style.top = card.style.width = '';
+      box.insertBefore(card, before);
+    });
+    b.remove();
+    saveWidgets(true);
+  });
+  return b;
 }
 function flip(nodes, mutate) {
   const first = new Map(nodes.map((n) => [n, n.getBoundingClientRect()]));
@@ -125,14 +139,16 @@ function startDrag(e, card, w, head) {
     card.classList.remove('dragging'); card.classList.add('settling');
     card.style.transform = `translate3d(${fx - d.base.x}px, ${fy - d.base.y}px, 0) rotate(0deg) scale(1)`;
     const done = () => {
-      card.classList.remove('settling'); card.style.transform = '';
-      card.style.left = Math.round(fx) + 'px'; card.style.top = Math.round(fy) + 'px';
+      // pin with left/top in the same frame the transform is cleared, so nothing jumps
+      card.style.transition = 'none';
+      card.style.left = Math.round(fx) + 'px'; card.style.top = Math.round(fy) + 'px'; card.style.transform = '';
+      card.classList.remove('settling'); void card.offsetWidth; card.style.transition = '';
       w.pos = { x: +(fx / innerWidth).toFixed(4), y: +(fy / innerHeight).toFixed(4), w: Math.round(d.w) };
-      saveWidgets(true);
-      if (d.fromGrid) renderWidgets();   // adds its "Put back" button
+      if (d.fromGrid && !card.querySelector('.w-putback')) card.querySelector('.w-tools').appendChild(putBackButton(card, w));
+      requestIdleCallback(() => saveWidgets(true), { timeout: 500 });   // save after the animation, off the busy frame
     };
     let fired = false; const once = () => { if (!fired) { fired = true; done(); } };
-    card.addEventListener('transitionend', once, { once: true }); setTimeout(once, 450);
+    card.addEventListener('transitionend', (ev) => { if (ev.propertyName === 'transform') once(); }); setTimeout(once, 320);
   };
   // window-level listeners: moving the card into the floating layer would drop pointer capture
   addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);

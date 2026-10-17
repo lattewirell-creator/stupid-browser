@@ -12,7 +12,7 @@
 .widget.floating { position: absolute; pointer-events: auto; width: 260px; box-shadow: 0 14px 40px rgba(20,15,5,.18); }
 .widget.floating[data-size="s"] { width: 210px; } .widget.floating[data-size="l"] { width: 440px; }
 .widget.dragging { box-shadow: 0 28px 70px rgba(20,15,5,.3); transition: box-shadow .2s; cursor: grabbing; z-index: 10; will-change: transform; animation: none; }
-.widget.settling { transition: transform .4s cubic-bezier(.2,1.2,.3,1), box-shadow .4s; z-index: 10; animation: none; }
+.widget.settling { transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s; z-index: 10; animation: none; }
 .widget.floating:hover { transform: none; }
 .w-head { display: flex; align-items: center; gap: 6px; height: 24px; margin-bottom: 8px; cursor: grab; touch-action: none; user-select: none; }
 .w-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--wmut); }
