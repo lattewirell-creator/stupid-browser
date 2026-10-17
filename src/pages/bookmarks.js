@@ -97,9 +97,10 @@ call('bookmarks:get').then((b) => { all = b; render(); });
 $('importBtn').onclick = async () => {
   const box = $('importList');
   if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
-  let list = []; try { list = await call('import:sources'); } catch {}
+  let list = []; try { list = (await call('import:sources')).filter((x) => !x.needsAccess && x.count > 0); } catch {}
   const done = (r) => { if (r.ok) toast(`Added ${r.added} bookmarks`); else if (r.error !== 'canceled') toast(r.error); box.classList.add('hidden'); };
-  box.replaceChildren(...list.map((src) => { const b = el('button', 'btn small', `${src.name} (${src.count})`); b.onclick = async () => done(await call('import:browser', src.id)); return b; }));
-  const f = el('button', 'btn small', 'From a file (Safari, Firefox…)'); f.onclick = async () => done(await call('import:file'));
-  box.appendChild(f); box.classList.remove('hidden');
+  box.replaceChildren(...list.map((src) => { const b = el('button', 'btn small', `${src.name}${src.profile ? ` · ${src.profile}` : ''}${src.account ? ` · ${src.account}` : ''} (${src.count})`); b.onclick = async () => done(await call('import:browser', src.id)); return b; }));
+  const f = el('button', 'btn small', 'From a bookmarks file'); f.onclick = async () => done(await call('import:file'));
+  const more = el('a', 'btn small', 'More options…'); more.href = 'stupid://settings/#import';
+  box.append(f, more); box.classList.remove('hidden');
 };

@@ -1,34 +1,11 @@
 'use strict';
-// Bookmark import: Chromium-based browsers on this computer (read their Bookmarks JSON), or any
-// browser's exported bookmarks HTML file (Safari, Firefox, … all export the Netscape HTML format).
-const { app, dialog, BrowserWindow } = require('electron');
+// Bookmark + history import from other browsers' profiles on this computer (see import-sources.js), or any
+// browser's exported bookmarks HTML file (the Netscape HTML format every browser can export).
+const { app, dialog, BrowserWindow, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
-const home = os.homedir();
-const local = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-const roaming = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-const mac = (p) => path.join(home, 'Library', 'Application Support', p);
-const SOURCES = {
-  darwin: [['chrome', 'Google Chrome', mac('Google/Chrome/Default/Bookmarks')], ['edge', 'Microsoft Edge', mac('Microsoft Edge/Default/Bookmarks')],
-    ['brave', 'Brave', mac('BraveSoftware/Brave-Browser/Default/Bookmarks')], ['arc', 'Arc', mac('Arc/User Data/Default/Bookmarks')],
-    ['vivaldi', 'Vivaldi', mac('Vivaldi/Default/Bookmarks')], ['opera', 'Opera', mac('com.operasoftware.Opera/Bookmarks')]],
-  win32: [['chrome', 'Google Chrome', path.join(local, 'Google/Chrome/User Data/Default/Bookmarks')], ['edge', 'Microsoft Edge', path.join(local, 'Microsoft/Edge/User Data/Default/Bookmarks')],
-    ['brave', 'Brave', path.join(local, 'BraveSoftware/Brave-Browser/User Data/Default/Bookmarks')], ['vivaldi', 'Vivaldi', path.join(local, 'Vivaldi/User Data/Default/Bookmarks')],
-    ['opera', 'Opera', path.join(roaming, 'Opera Software/Opera Stable/Bookmarks')]],
-  linux: [['chrome', 'Google Chrome', path.join(home, '.config/google-chrome/Default/Bookmarks')], ['chromium', 'Chromium', path.join(home, '.config/chromium/Default/Bookmarks')],
-    ['brave', 'Brave', path.join(home, '.config/BraveSoftware/Brave-Browser/Default/Bookmarks')], ['edge', 'Microsoft Edge', path.join(home, '.config/microsoft-edge/Default/Bookmarks')]]
-}[process.platform] || [];
-
-// Tree node: { title, url } or { title, children: [...] }
-function readChromium(file) {
-  const j = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const conv = (n) => (n.type === 'folder' ? { title: n.name || 'Folder', children: (n.children || []).map(conv) } : { title: n.name || '', url: n.url || '' });
-  const r = j.roots || {};
-  return { bar: (r.bookmark_bar && r.bookmark_bar.children || []).map(conv), other: [...(r.other && r.other.children || []), ...(r.synced && r.synced.children || [])].map(conv) };
-}
-const count = (nodes) => nodes.reduce((n, x) => n + (x.children ? count(x.children) : (/^https?:/i.test(x.url) ? 1 : 0)), 0);
+const src = require('./import-sources');
 const decodeEntities = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 // Netscape bookmark HTML: <DT><H3>Folder</H3><DL><p> … <DT><A HREF="…">Title</A> … </DL>
 function readHtml(text) {
@@ -48,23 +25,6 @@ function readHtml(text) {
   return { bar, other: root.children };
 }
 
-// Chromium history lives next to Bookmarks in an SQLite file; copy it first (the browser may have it locked).
-function readChromiumHistory(bookmarksFile, limit = 5000) {
-  const src = path.join(path.dirname(bookmarksFile), 'History');
-  if (!fs.existsSync(src)) return [];
-  const tmp = path.join(app.getPath('temp'), `stupid-import-history-${Date.now()}`);
-  try {
-    fs.copyFileSync(src, tmp);
-    const { DatabaseSync } = require('node:sqlite');
-    const db = new DatabaseSync(tmp, { readOnly: true });
-    const rows = db.prepare('SELECT url, title, last_visit_time / 1000 AS t FROM urls WHERE hidden = 0 AND url LIKE \'http%\' ORDER BY last_visit_time DESC LIMIT ?').all(limit);
-    db.close();
-    // WebKit time is microseconds since 1601 (too big for JS numbers), so SQL turns it into ms first
-    return rows.map((r) => ({ url: String(r.url).slice(0, 4000), title: String(r.title || r.url).slice(0, 300), ts: Math.round(Number(r.t) - 11644473600000) }))
-      .filter((r) => r.ts > 0 && r.ts <= Date.now() + 864e5);
-  } catch (e) { console.error('history import failed', e.message); return []; }
-  finally { try { fs.rmSync(tmp, { force: true }); } catch {} }
-}
 // CSV exported by Chrome/Edge (name,url,username,password), Safari (Title,URL,Username,Password,…) or Firefox (url,username,password,…)
 function parseCsv(text) {
   const rows = []; let row = [], cell = '', q = false;
@@ -122,18 +82,23 @@ module.exports = function setupImport({ handle, store, getBookmarks, broadcast, 
     return { ok: true, added };
   }
 
-  handle('import:sources', ['internal'], () => SOURCES.filter(([, , f]) => fs.existsSync(f)).map(([id, name, f]) => {
-    let n = 0; try { const t = readChromium(f); n = count(t.bar) + count(t.other); } catch {}
-    return { id, name, count: n };
-  }).filter((s) => s.count > 0));
-  handle('import:browser', ['internal'], (_e, id) => {
-    const src = SOURCES.find(([sid]) => sid === id);
-    if (!src || !fs.existsSync(src[2])) return { ok: false, error: 'Couldn’t find that browser’s bookmarks.' };
-    let res;
-    try { res = addTree(readChromium(src[2]), src[1]); } catch { return { ok: false, error: 'Couldn’t read those bookmarks.' }; }
-    res.history = addHistoryRows(readChromiumHistory(src[2]));
+  src.setTempDir(app.getPath('temp'));
+  handle('import:sources', ['internal'], () => src.discover().map(src.summary).filter((s) => s.needsAccess || s.count > 0 || s.history));
+  // what: { bookmarks, history } (both by default). The id is looked up again here, so pages never pass paths.
+  handle('import:browser', ['internal'], (_e, id, what) => {
+    const s = src.discover().find((x) => x.id === id);
+    if (!s) return { ok: false, error: 'Couldn’t find that browser on this computer any more.' };
+    if (s.needsAccess) return { ok: false, error: 'macOS hasn’t given The Stupid Browser access to Safari yet.' };
+    const want = { bookmarks: true, history: true, ...(what && typeof what === 'object' ? what : {}) };
+    let res = { ok: true, added: 0 };
+    if (want.bookmarks) {
+      try { res = addTree(src.readBookmarks(s), src.labelOf(s)); } catch (e) { console.error('bookmark import failed', e.message); return { ok: false, error: 'Couldn’t read those bookmarks. If that browser is open, quit it and try again.' }; }
+    }
+    res.history = want.history ? addHistoryRows(src.readHistory(s)) : 0;
     return res;
   });
+  // Safari: open System Settings → Privacy & Security → Full Disk Access.
+  handle('import:safariAccess', ['internal'], () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles').then(() => true, () => false));
   handle('import:file', ['internal'], async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender.hostWebContents || e.sender);
     const r = await dialog.showOpenDialog(win, { title: 'Import bookmarks', buttonLabel: 'Import', properties: ['openFile'], filters: [{ name: 'Bookmarks file', extensions: ['html', 'htm'] }], defaultPath: app.getPath('downloads') });
@@ -170,4 +135,3 @@ module.exports = function setupImport({ handle, store, getBookmarks, broadcast, 
 };
 module.exports.readHtml = readHtml;
 module.exports.parseCsv = parseCsv;
-module.exports.readChromiumHistory = readChromiumHistory;
