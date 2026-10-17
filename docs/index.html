@@ -459,27 +459,24 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   addEventListener('resize', () => { if (wrap.classList.contains('loose') && !held) { pos.x = Math.min(pos.x, innerWidth - size); pos.y = Math.min(pos.y, innerHeight - size); place(); } });
 
   // ten clicks: it warns you a few times, then calls its friends
-  let pokes = 0, pokeT, waves = 0;
-  const WARN = { 4: 'Okay, that’s four.', 6: 'Stop poking me.', 8: 'I’m warning you.', 9: 'One more and I call my friends.' };
-  const WAVE_LINES = ['You asked for it.', 'I have more friends.', 'Okay, now it’s the whole family.', 'You really don’t learn, do you?', 'ALL OF THEM. 👁️👁️👁️'];
+  let pokes = 0, pokeT;
   const tell = (line, ms) => { bubble.textContent = line; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), ms); };
   function poked() {
+    if (cv) { say('click'); return; }   // the eyes are already out
     clearTimeout(pokeT); pokeT = setTimeout(() => { pokes = 0; }, 6000);
     pokes++;
-    if (pokes % 10 === 0) { tell(WAVE_LINES[Math.min(waves, WAVE_LINES.length - 1)], 2600); waves++; storm(waves); return; }
-    const n = pokes % 10;
-    if (waves === 0 && WARN[n]) tell(WARN[n], 2200); else say('click');
+    if (pokes === 9) tell('Want to see something cool?', 2600);
+    else if (pokes >= 10) { pokes = 0; tell('Ta-da!', 2000); storm(); }
+    else say('click');
   }
   // a rain of little googly eyes that pile up at the bottom, all watching your pointer; click near them to kick them.
-  // Each wave is bigger than the last; the pile clears itself 14 s after the latest wave.
+  // They clear themselves after 14 s.
   let balls = [], stormEnd = 0, stormRaf = 0, cv = null;
-  function storm(wave) {
+  function storm() {
     if (reduce) return;
-    const room = 260 - balls.length;
-    const n = Math.max(0, Math.min(room, Math.round(innerWidth * innerHeight / 22000 * (0.6 + wave * 0.5))));
-    for (let i = 0; i < n; i++) { const r = 14 + Math.random() * (24 + Math.min(wave, 4) * 4); balls.push({ r, x: r + Math.random() * (innerWidth - 2 * r), y: -r - Math.random() * innerHeight * 1.2 - i * 4, vx: (Math.random() - .5) * 6, vy: Math.random() * 4, px: 0, py: 0 }); }
+    const n = Math.min(46, Math.round(innerWidth * innerHeight / 22000));
+    for (let i = 0; i < n; i++) { const r = 16 + Math.random() * 30; balls.push({ r, x: r + Math.random() * (innerWidth - 2 * r), y: -r - Math.random() * innerHeight * 1.2 - i * 6, vx: (Math.random() - .5) * 6, vy: Math.random() * 4, px: 0, py: 0 }); }
     stormEnd = performance.now() + 14000;
-    if (cv) { cv.style.opacity = '1'; return; }
     cv = document.createElement('canvas'); cv.setAttribute('aria-hidden', 'true');
     cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:60;transition:opacity 1s';
     document.body.appendChild(cv);
@@ -517,7 +514,6 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
       balls.forEach(draw);
       if (now > stormEnd && !fading) { fading = true; cv.style.opacity = '0'; }
-      if (fading && now < stormEnd) { fading = false; }   // a new wave arrived while fading
       if (fading && now > stormEnd + 1000) {
         cv.remove(); cv = null; balls = []; removeEventListener('pointermove', track); removeEventListener('pointerdown', kick); removeEventListener('resize', fit); return;
       }
