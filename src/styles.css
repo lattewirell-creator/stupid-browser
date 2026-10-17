@@ -464,6 +464,9 @@ body.rail-dragging webview { pointer-events: none; }
 .bot3d { --b: var(--bc, var(--accent)); --c1: color-mix(in srgb, var(--b) 55%, #fff); --c2: var(--b); --c3: color-mix(in srgb, var(--b) 60%, #000);
   position: relative; display: grid; place-items: center; perspective: 260px; width: 76px; height: 82px; }
 .bot3d.mini { transform: scale(.42); margin: -24px -22px; flex: none; }
+.bd-face { flex: none; display: grid; place-items: center; }
+.bd-face.pic { position: relative; display: block; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: var(--surface-2); }
+.bd-face.pic img { position: absolute; left: -18px; top: -12px; width: 70px; max-width: none; }   /* the snapshot is the whole character: zoom in on head and scarf */
 .bot-float { position: relative; display: grid; place-items: center; transform-style: preserve-3d; animation: botFloat 3.4s ease-in-out infinite; }
 .bot-head { position: relative; width: 62px; height: 54px; border-radius: 22px 22px 20px 20px; transform-style: preserve-3d;
   transform: rotateY(var(--ry, 0deg)) rotateX(var(--rx, 0deg)); transition: transform .35s cubic-bezier(.2,.8,.2,1);
