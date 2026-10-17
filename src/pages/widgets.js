@@ -39,6 +39,7 @@ function renderWidgets() {
   box.classList.toggle('hidden', !widgets.some((w) => !w.pos));
   widgets.forEach((w, i) => {
     const card = el('article', 'widget wt-' + w.type + (w.pos ? ' floating' : '')); card.dataset.id = w.id;
+    card.addEventListener('animationend', (e) => { if (e.target === card) card.classList.add('risen'); });
     if (w.type === 'custom' && typeof styleCustomCard === 'function') styleCustomCard(card, w);
     const head = el('div', 'w-head');
     head.appendChild(el('span', 'w-title', w.config.title || WIDGETS[w.type].name));
@@ -120,7 +121,7 @@ function startDrag(e, card, w, head) {
       const others = [...box.children].filter((c) => c !== card);
       flip(others, () => {
         card.style.width = d.w + 'px'; card.style.left = d.base.x + 'px'; card.style.top = d.base.y + 'px';
-        card.classList.add('floating', 'dragging'); layer.appendChild(card);
+        card.classList.add('floating', 'dragging', 'risen'); layer.appendChild(card);
         box.classList.toggle('hidden', !box.children.length);
       });
     }
