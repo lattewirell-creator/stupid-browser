@@ -381,8 +381,10 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     renderer.dispose(); canvas.remove();
   }
+  // A still picture of the character as it looks right now (used for the little face in the chat header).
+  function snapshot() { if (!canvas.width || !canvas.height) return ''; renderer.render(scene, camera); return canvas.toDataURL('image/png'); }
   resize(); setLook({}); kick();
-  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas, land };
+  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas, land, snapshot };
 }
 window.Buddy3D = { create: createBuddy };
 window.dispatchEvent(new Event('buddy3d-ready'));

@@ -21,14 +21,26 @@
     b.append(el('span', 'bot-shadow'), fl);
     return b;
   };
-  const face = () => bot('mini');
+  // Header face: a picture of the 3D character you've equipped (the CSS robot only if 3D isn't available).
+  const faceBox = el('span', 'bd-face'); faceBox.appendChild(bot('mini'));
+  let faceT;
+  const paintFace = (delay = 120) => {   // after setLook rebuilds the model, so the picture shows the new look
+    clearTimeout(faceT);
+    faceT = setTimeout(() => {
+      if (!b3 || !b3.snapshot) return;
+      const url = b3.snapshot(); if (!url) return;
+      let img = faceBox.querySelector('img');
+      if (!img) { img = el('img'); img.alt = ''; faceBox.replaceChildren(img); faceBox.classList.add('pic'); }
+      img.src = url;
+    }, delay);
+  };
   const titleBox = el('div', 'bd-titles'); const modelLine = el('small', null, '');
   const nameEl = el('b', null, 'Buddy');
   titleBox.append(nameEl, modelLine);
   const editBtn = el('button', 'icon-btn small'); editBtn.title = 'Customize name & look'; editBtn.appendChild(svg('<path d="M4 20h4L19 9l-4-4L4 16z"/>'));
   const newBtn = el('button', 'icon-btn small'); newBtn.title = 'New chat'; newBtn.appendChild(svg('<path d="M12 5v14M5 12h14"/>'));
   const closeBtn = el('button', 'icon-btn small'); closeBtn.title = 'Hide Buddy'; closeBtn.appendChild(svg('<path d="M6 6l12 12M18 6L6 18"/>'));
-  head.append(face(), titleBox, el('div', 'grow'), editBtn, newBtn, closeBtn);
+  head.append(faceBox, titleBox, el('div', 'grow'), editBtn, newBtn, closeBtn);
   const log = el('div', 'bd-log');
   const chips = el('div', 'bd-chips');
   const form = el('form', 'bd-form');
@@ -54,6 +66,7 @@
     if (!b3) return;
     root.classList.add('b3d');
     b3.setLook(look3d()); b3.setState({ sleepy: !status.ready }); b3.setVisible(!root.classList.contains('hidden'));
+    paintFace(300);
   }
   if (window.Buddy3D) setTimeout(mount3d, 0); else addEventListener('buddy3d-ready', mount3d, { once: true });
   let busy = false;
@@ -77,9 +90,28 @@
       node.appendChild(row);
     }
   }
+  // Buddy's text types itself out like the "Ask Buddy" speech bubble: a few letters per frame, faster when
+  // a lot is still waiting (so long answers don't drag). b.__full is everything received so far.
+  const instant = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function typeInto(b) {
+    if (instant) { fmt(b, b.__full || ''); log.scrollTop = log.scrollHeight; return; }
+    if (b.__raf) return;
+    const step = () => {
+      b.__raf = 0;
+      const full = b.__full || '', n = b.__shown || 0;
+      if (n >= full.length) return;
+      b.__shown = Math.min(full.length, n + Math.max(1, Math.round((full.length - n) / 30)));
+      let part = full.slice(0, b.__shown);
+      if ((part.split('**').length - 1) % 2) part = part.replace(/\*\*(?!.*\*\*)/s, '');   // a **bold** that isn't finished yet
+      fmt(b, part);
+      if (log.scrollHeight - log.scrollTop - log.clientHeight < 80) log.scrollTop = log.scrollHeight;
+      b.__raf = requestAnimationFrame(step);
+    };
+    b.__raf = requestAnimationFrame(step);
+  }
   function bubble(who, text) {
     const b = el('div', 'bd-msg ' + who);
-    if (who === 'bot') fmt(b, text); else b.textContent = text;
+    if (who === 'bot') { b.__full = text; b.__shown = 0; typeInto(b); } else b.textContent = text;
     log.appendChild(b); log.scrollTop = log.scrollHeight;
     return b;
   }
@@ -149,7 +181,7 @@
   api.on('buddy:delta', (d) => {
     if (!current) return;
     current.classList.remove('typing');
-    current.__text += d; fmt(current, current.__text); log.scrollTop = log.scrollHeight;
+    current.__text += d; current.__full = current.__text; typeInto(current);
     root.classList.add('talking'); clearTimeout(talkT); talkT = setTimeout(() => { root.classList.remove('talking'); if (b3) b3.setState({ talking: false }); }, 400);
     if (b3) b3.setState({ talking: true });
   });
@@ -188,6 +220,7 @@
     if (b3) b3.poke();
     if (window.buddyPlay && window.buddyPlay.isFree()) { await window.buddyPlay.goHome(); root.classList.add('open'); return; }
     root.classList.toggle('open');
+    paintFace();
   });
 
   async function showBuddy(opts = {}) {
@@ -196,7 +229,7 @@
     const wasHidden = root.classList.contains('hidden');
     root.classList.remove('hidden'); if (opts.panel !== false) root.classList.add('open');
     $('aiBtn').classList.add('on');
-    mount3d(); if (b3) b3.setVisible(true);
+    mount3d(); if (b3) { b3.setVisible(true); paintFace(200); }
     if (wasHidden && !log.querySelector('.bd-msg.me')) greet();
     if (opts.panel !== false) setTimeout(() => input.focus(), 50);
   }
@@ -247,7 +280,7 @@
     root.querySelectorAll('.bot-photo').forEach((p) => { p.style.backgroundImage = img ? `url("${img}")` : ''; });
     root.querySelectorAll('.bot-extra').forEach((x) => { x.textContent = L.extra !== 'none' && EXTRAS[L.extra] ? EXTRAS[L.extra] : ''; });
     nameEl.textContent = buddyName(); avatar.title = buddyName();
-    if (b3) b3.setLook(look3d());
+    if (b3) { b3.setLook(look3d()); paintFace(); }
     input.placeholder = `Ask ${buddyName()} about this page…`;
   }
   let lookT;
