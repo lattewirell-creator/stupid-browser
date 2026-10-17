@@ -14,7 +14,14 @@ const BUNDLE_ID = 'com.emil.stupidbrowser';
 // Self-tests can point at a local feed (loopback only).
 const TEST_FEED = /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.STUPID_UPDATE_TEST_FEED || '') ? process.env.STUPID_UPDATE_TEST_FEED : null;
 const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, { timeout: 120000 }, (err, out) => (err ? reject(err) : resolve(String(out).trim()))));
-const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+// Is version a newer than b? Understands test builds: 1.3.2-beta.1 is newer than 1.3.1 but older than 1.3.2.
+const newer = (a, b) => {
+  const parse = (v) => { const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/); return m ? { n: [+m[1], +m[2], +m[3]], pre: m[4] || '' } : { n: [0, 0, 0], pre: '' }; };
+  const x = parse(a), y = parse(b);
+  for (let i = 0; i < 3; i++) if (x.n[i] !== y.n[i]) return x.n[i] > y.n[i];
+  if (!x.pre !== !y.pre) return !x.pre;   // same numbers: the real release beats its test build
+  return x.pre > y.pre;
+};
 
 module.exports = function macUpdater({ setUpdate, log = console.log, afterSwap = () => null }) {
   const appPath = path.resolve(process.execPath, '..', '..', '..');          // …/The Stupid Browser.app
