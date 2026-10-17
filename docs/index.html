@@ -51,13 +51,22 @@ h1, h2, h3 { font-family: var(--display); font-weight: 750; letter-spacing: -.02
 .top nav a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
 
 /* hero: the googly eye */
-.hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: center; gap: 24px; padding: 56px 0 40px; }
+.hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: center; gap: 24px; min-height: calc(100vh - 68px); min-height: calc(100svh - 68px); padding: 24px 0 48px; }
 .hero h1 { font-size: clamp(52px, 8.4vw, 118px); line-height: .9; font-variation-settings: 'wdth' 82; font-weight: 800; letter-spacing: -.04em; }
 .hero p.lead { font-size: clamp(19px, 1.8vw, 23px); max-width: 30em; color: var(--ink-2); margin: 28px 0 32px; }
-.eye-box { position: relative; justify-self: end; width: min(560px, 46vw); aspect-ratio: 1; margin-right: -40px; }
-#eye { width: 100%; height: 100%; cursor: pointer; overflow: visible; }
-#eye .lid { transform-origin: 256px 256px; transition: transform .09s ease-in; }
-#eye.blink .lid { transform: scaleY(.06); }
+.eye-box { position: relative; justify-self: end; width: min(560px, 46vw); aspect-ratio: 1; }
+.eye-wrap { position: absolute; inset: 0; touch-action: none; }
+.eye-wrap.loose { position: fixed; inset: auto; z-index: 40; will-change: transform; }
+.eye-wrap.held #eye { cursor: grabbing; }
+#eye { display: block; width: 100%; height: 100%; cursor: grab; overflow: visible; transition: transform .12s var(--ease); }
+.eye-wrap.loose #eye { filter: drop-shadow(0 18px 24px rgba(60,40,15,.28)); }
+.bubble { position: absolute; left: 50%; bottom: calc(100% - 6%); transform: translate(-50%, 6px) scale(.9); transform-origin: 50% 100%; margin: 0; width: max-content; max-width: min(300px, 80vw);
+  padding: 12px 18px; border-radius: 22px; background: var(--ink); color: var(--paper); font: 700 18px/1.25 var(--display); text-align: center; opacity: 0; pointer-events: none; transition: opacity .18s, transform .25s var(--ease); z-index: 2; }
+.bubble::after { content: ''; position: absolute; left: 50%; top: 100%; margin-left: -9px; border: 9px solid transparent; border-top-color: var(--ink); }
+.bubble.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.eye-home { position: absolute; inset: 0; margin: auto; width: max-content; height: 48px; padding: 0 22px; border-radius: 999px; border: 2px dashed var(--line); background: none; color: var(--ink-2); font: 700 17px var(--display); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .3s; }
+.eye-box.empty .eye-home { opacity: 1; pointer-events: auto; }
+.eye-box.empty .eye-hint { display: none; }
 #pupil { transition: r .25s var(--ease); }
 .eye-hint { position: absolute; bottom: -6px; right: 52px; font: italic 16px var(--text); color: var(--ink-2); opacity: 0; transition: opacity .3s; }
 .eye-box:hover .eye-hint { opacity: 1; }
@@ -67,7 +76,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 750; letter-spacing: -.02
 .btn small { font-weight: 500; font-size: 13.5px; opacity: .9; }
 .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 0 var(--clay-deep); }
 .btn:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--clay-deep); }
-.cta .alt { font-family: var(--display); font-size: 16px; color: var(--ink-2); text-underline-offset: 4px; }
+.also { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn2 { display: inline-flex; align-items: center; gap: 10px; min-height: 60px; padding: 0 26px 0 22px; border-radius: 999px; background: var(--clay); color: #fff; text-decoration: none; font: 700 20px var(--display); box-shadow: 0 2px 0 var(--clay-deep); transition: transform .15s var(--ease), box-shadow .15s var(--ease); }
+.btn2 svg { width: 22px; height: 22px; flex: none; }
+.btn2:hover { transform: translateY(-2px); box-shadow: 0 5px 0 var(--clay-deep); }
+.btn2:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--clay-deep); }
+.free { width: 100%; margin: 4px 0 0; font-size: 16px; color: var(--ink-2); }
 
 /* the real thing */
 .shot { margin: 40px 0 120px; }
@@ -147,7 +161,7 @@ footer .brand { color: var(--ink); }
 footer a { text-underline-offset: 3px; }
 
 @media (max-width: 900px) {
-  .hero { grid-template-columns: 1fr; padding-top: 24px; }
+  .hero { grid-template-columns: 1fr; align-content: center; padding-top: 12px; }
   .eye-box { order: -1; justify-self: center; width: min(300px, 70vw); margin: 0; }
   .eye-hint { display: none; }
   .sleep { grid-template-columns: 1fr; gap: 32px; }
@@ -181,12 +195,19 @@ footer a { text-underline-offset: 3px; }
       <h1>A stupid name for a really good browser.</h1>
       <p class="lead">It blocks ads, puts idle tabs to sleep and keeps your history on your own computer. It’s free, there’s no account, and it works on Mac, Windows and Android.</p>
       <div class="cta">
-        <a class="btn" id="heroBtn" href="#download">Download<small id="heroSmall">Free, for Mac, Windows and Android</small></a>
-        <a class="alt" id="heroAlt" href="#download">Other computers and phones</a>
+        <span class="also" id="heroAlso">
+          <a class="btn2" data-os="mac" href="#mac"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.2-2.8.8-3.5.8s-1.8-.8-3-.8C7 7.2 5.5 8.1 4.7 9.6c-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.9-3.9zM14.1 5.5c.6-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z"/></svg>Mac</a>
+          <a class="btn2" data-os="win" data-asset="Setup.exe" href="https://github.com/lattewirell-creator/stupid-browser/releases/latest/download/StupidBrowser-Setup.exe"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 5.5 10.4 4.5v7H3zm8.4-1.1L21 3v8.5h-9.6zM3 12.5h7.4v7L3 18.5zm8.4 0H21V21l-9.6-1.4z"/></svg>Windows</a>
+          <a class="btn2" data-os="android" data-asset="android.apk" href="#android"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7.2 3.3a.5.5 0 0 1 .7.1l1.4 2.2a7 7 0 0 1 5.4 0l1.4-2.2a.5.5 0 1 1 .8.6L15.6 6A6.5 6.5 0 0 1 19 11H5a6.5 6.5 0 0 1 3.4-5L7.1 4a.5.5 0 0 1 .1-.7zM9 8.3a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8zm6 0a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8zM5 12h14v6.5a1.5 1.5 0 0 1-1.5 1.5H6.5A1.5 1.5 0 0 1 5 18.5z"/></svg>Android</a>
+        </span>
+        <p class="free" id="heroSmall">Free. No account. About a minute to install.</p>
       </div>
     </div>
-    <div class="eye-box">
-      <svg id="eye" viewBox="0 0 512 512" role="img" aria-label="The Stupid Browser logo, a googly eye that looks at your mouse">
+    <div class="eye-box" id="eyeBox">
+      <button type="button" class="eye-home" id="eyeHome">Put the eye back</button>
+      <div class="eye-wrap" id="eyeWrap">
+      <p class="bubble" id="bubble" aria-live="polite"></p>
+      <svg id="eye" viewBox="0 0 512 512" role="img" aria-label="The Stupid Browser logo, a googly eye. Drag it to throw it, click it to make it talk.">
         <g class="lid">
           <circle cx="256" cy="256" r="240" fill="#DB7656"/>
           <circle cx="256" cy="256" r="181" fill="#FFFDF8"/>
@@ -194,7 +215,8 @@ footer a { text-underline-offset: 3px; }
           <circle id="pupil" cx="287" cy="215" r="36" fill="#33321F"/>
         </g>
       </svg>
-      <span class="eye-hint">It’s watching. Click it.</span>
+      </div>
+      <span class="eye-hint">It’s watching. Click it, or throw it.</span>
     </div>
   </section>
 
@@ -324,26 +346,122 @@ footer a { text-underline-offset: 3px; }
 (() => {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* the eye follows the pointer and blinks when clicked */
+  /* the eye: looks at the pointer, talks when clicked, and can be picked up and thrown */
   const eye = document.getElementById('eye'), pupil = document.getElementById('pupil');
+  const box = document.getElementById('eyeBox'), wrap = document.getElementById('eyeWrap'), bubble = document.getElementById('bubble');
   let target = { x: 31, y: -41 }, cur = { x: 31, y: -41 }, raf = 0;
   const step = () => {
     cur.x += (target.x - cur.x) * (reduce ? 1 : 0.18); cur.y += (target.y - cur.y) * (reduce ? 1 : 0.18);
     pupil.setAttribute('cx', (256 + cur.x).toFixed(1)); pupil.setAttribute('cy', (256 + cur.y).toFixed(1));
     raf = Math.abs(target.x - cur.x) + Math.abs(target.y - cur.y) > 0.2 ? requestAnimationFrame(step) : 0;
   };
+  const aim = (dx, dy, reach) => { const d = Math.hypot(dx, dy) || 1; target = { x: dx / d * reach, y: dy / d * reach }; if (!raf) raf = requestAnimationFrame(step); };
   const look = (cx, cy) => {
+    if (held || flying) return;
     const r = eye.getBoundingClientRect(); if (!r.width) return;
-    const ex = r.left + r.width / 2, ey = r.top + r.height / 2, dx = cx - ex, dy = cy - ey;
-    const d = Math.hypot(dx, dy) || 1, reach = Math.min(76, d / r.width * 512 * 0.35 + 8);
-    target = { x: dx / d * reach, y: dy / d * reach };
-    if (!raf) raf = requestAnimationFrame(step);
+    const dx = cx - (r.left + r.width / 2), dy = cy - (r.top + r.height / 2);
+    aim(dx, dy, Math.min(76, Math.hypot(dx, dy) / r.width * 512 * 0.35 + 8));
   };
   addEventListener('pointermove', (e) => look(e.clientX, e.clientY), { passive: true });
-  addEventListener('touchstart', (e) => { const t = e.touches[0]; if (t) look(t.clientX, t.clientY); }, { passive: true });
-  const blink = () => { eye.classList.add('blink'); setTimeout(() => eye.classList.remove('blink'), 130); };
-  eye.addEventListener('click', () => { blink(); pupil.setAttribute('r', '54'); setTimeout(() => pupil.setAttribute('r', '36'), 700); });
-  if (!reduce) (function idle() { setTimeout(() => { if (!document.hidden) blink(); idle(); }, 3500 + Math.random() * 4500); })();
+
+  // talking
+  const LINES = {
+    click: ['Hi. I’m the logo.', 'Stop staring. That’s my job.', 'Yes, it’s really free.', 'I watch your tabs so you don’t have to.', 'Ads? Never heard of them.',
+      'Download me. I’ll behave.', 'Go on, throw me. I dare you.', 'I’m not stupid. The name is.', 'Your other browser has never looked back at you.', 'I only have one eye, but it’s on you.'],
+    grab: ['Whoa, put me down!', 'Careful, I bruise easily.', 'Where are we going?', 'Hey! Personal space!'],
+    fly: ['Wheeeee!', 'I can see my house!', 'Aaaaaah!', 'Best. Day. Ever.'],
+    bonk: ['Ow.', 'My pupil!', 'Ouch, the edge of the screen.', 'That one’s going to leave a mark.', 'Bonk.'],
+    land: ['I’ll just live down here now.', 'Again! Again!', 'Okay. I’m dizzy.', 'Nailed the landing.'],
+    home: ['Home sweet home.', 'Thanks. It was getting lonely down there.']
+  };
+  let sayT, lastLine = '';
+  const say = (kind, ms = 2400) => {
+    const list = LINES[kind]; let line; do { line = list[Math.floor(Math.random() * list.length)]; } while (line === lastLine && list.length > 1);
+    lastLine = line; bubble.textContent = line; bubble.classList.add('on');
+    clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), ms);
+  };
+
+  // picking up and throwing
+  let held = null, flying = false, pos = { x: 0, y: 0 }, vel = { x: 0, y: 0 }, size = 0, lastBonk = 0, flyRaf = 0;
+  const SMALL = () => Math.min(200, box.getBoundingClientRect().width || 200);
+  const place = (squash = 1) => { wrap.style.transform = `translate3d(${pos.x}px, ${pos.y}px, 0)`; eye.style.transform = squash === 1 ? '' : `scale(${1 / squash}, ${squash})`; };
+  const loosen = (startRect) => {
+    if (wrap.classList.contains('loose')) return;
+    size = SMALL(); wrap.classList.add('loose'); box.classList.add('empty');
+    wrap.style.left = '0px'; wrap.style.top = '0px'; wrap.style.width = wrap.style.height = size + 'px';
+    pos = { x: startRect.left + startRect.width / 2 - size / 2, y: startRect.top + startRect.height / 2 - size / 2 }; place();
+  };
+  wrap.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    cancelAnimationFrame(flyRaf); flying = false;
+    const r = wrap.getBoundingClientRect();
+    held = { sx: e.clientX, sy: e.clientY, moved: false, grabX: (e.clientX - r.left) / r.width, grabY: (e.clientY - r.top) / r.height, hist: [], r };
+    wrap.setPointerCapture(e.pointerId);
+  });
+  wrap.addEventListener('pointermove', (e) => {
+    if (!held) return;
+    if (!held.moved) {
+      if (Math.hypot(e.clientX - held.sx, e.clientY - held.sy) < 6) return;
+      held.moved = true; wrap.classList.add('held'); loosen(held.r); say('grab', 1600);
+    }
+    pos = { x: e.clientX - size * 0.5, y: e.clientY - size * 0.5 }; place();
+    held.hist.push([e.clientX, e.clientY, performance.now()]); if (held.hist.length > 6) held.hist.shift();
+    const h = held.hist; if (h.length > 1) aim(h[h.length - 1][0] - h[0][0], h[h.length - 1][1] - h[0][1], 70);
+  });
+  const release = (e) => {
+    if (!held) return;
+    const h = held.hist, was = held; held = null; wrap.classList.remove('held');
+    if (!was.moved) { say('click'); pupil.setAttribute('r', '54'); setTimeout(() => pupil.setAttribute('r', '36'), 700); return; }
+    let vx = 0, vy = 0;
+    if (h.length > 1) { const [x0, y0, t0] = h[0], [x1, y1, t1] = h[h.length - 1]; const dt = Math.max(16, t1 - t0); vx = (x1 - x0) / dt * 16; vy = (y1 - y0) / dt * 16; }
+    vel = { x: Math.max(-60, Math.min(60, vx)), y: Math.max(-60, Math.min(60, vy)) };
+    if (Math.hypot(vel.x, vel.y) > 12) say('fly', 1400);
+    if (reduce) { vel = { x: 0, y: 0 }; }
+    fly();
+  };
+  wrap.addEventListener('pointerup', release); wrap.addEventListener('pointercancel', release);
+
+  // gravity, walls and a floor at the bottom of the window; the eye squashes a little when it hits
+  function fly() {
+    flying = true; let still = 0, squash = 1;
+    const frame = () => {
+      const W = innerWidth, H = innerHeight;
+      vel.y += 1.1; vel.x *= 0.995;
+      pos.x += vel.x; pos.y += vel.y;
+      let hit = 0;
+      if (pos.x < 0) { pos.x = 0; hit = Math.abs(vel.x); vel.x = -vel.x * 0.62; }
+      if (pos.x > W - size) { pos.x = W - size; hit = Math.abs(vel.x); vel.x = -vel.x * 0.62; }
+      if (pos.y < 0) { pos.y = 0; hit = Math.abs(vel.y); vel.y = -vel.y * 0.62; }
+      if (pos.y > H - size) { pos.y = H - size; hit = Math.max(hit, Math.abs(vel.y)); vel.y = -vel.y * 0.55; vel.x *= 0.86; if (Math.abs(vel.y) < 2.2) vel.y = 0; }
+      if (hit > 4) squash = Math.max(0.72, 1 - hit / 70);
+      squash += (1 - squash) * 0.25;
+      if (hit > 16 && performance.now() - lastBonk > 900) { lastBonk = performance.now(); say('bonk', 1500); }
+      aim(vel.x, vel.y, Math.min(70, Math.hypot(vel.x, vel.y) * 4));
+      place(squash);
+      const onFloor = pos.y >= H - size - 0.5 && vel.y === 0;
+      still = onFloor && Math.abs(vel.x) < 0.3 ? still + 1 : 0;
+      if (still > 20) { flying = false; place(); say('land', 2200); return; }
+      flyRaf = requestAnimationFrame(frame);
+    };
+    flyRaf = requestAnimationFrame(frame);
+  }
+  addEventListener('resize', () => { if (wrap.classList.contains('loose') && !held) { pos.x = Math.min(pos.x, innerWidth - size); pos.y = Math.min(pos.y, innerHeight - size); place(); } });
+
+  // put it back where it lives
+  document.getElementById('eyeHome').addEventListener('click', () => {
+    cancelAnimationFrame(flyRaf); flying = false;
+    const r = box.getBoundingClientRect(), to = { x: r.left + r.width / 2 - size / 2, y: r.top + r.height / 2 - size / 2 };
+    const from = { ...pos }, t0 = performance.now(), dur = reduce ? 1 : 650;
+    const go = (now) => {
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      pos = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e - Math.sin(k * Math.PI) * 120 }; place();
+      if (k < 1) return requestAnimationFrame(go);
+      wrap.classList.remove('loose'); box.classList.remove('empty'); wrap.removeAttribute('style'); eye.style.transform = '';
+      say('home', 2000);
+    };
+    requestAnimationFrame(go);
+  });
 
   /* light / dark screenshot */
   const frame = document.getElementById('frame');
@@ -378,19 +496,15 @@ footer a { text-underline-offset: 3px; }
   let intelMac = false;
   if (isMac) { try { const gl = document.createElement('canvas').getContext('webgl'); const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
     const r = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''; intelMac = /Intel|AMD|Radeon/i.test(r) && !/Apple/i.test(r); } catch (e) {} }
-  const hero = document.getElementById('heroBtn'), small = document.getElementById('heroSmall'), alt = document.getElementById('heroAlt');
-  const pick = isAndroid ? ['android.apk', 'Download for Android', 'Free, about 1.5 MB']
-    : isMac ? (intelMac ? ['x64.dmg', 'Download for Mac', 'Free, for Intel Macs'] : ['arm64.dmg', 'Download for Mac', 'Free, for Macs with an Apple chip'])
-    : isWin ? ['Setup.exe', 'Download for Windows', 'Free, for Windows 10 and 11'] : null;
-  if (pick) { hero.firstChild.textContent = pick[1]; small.textContent = pick[2]; }
-  if (isIOS) small.textContent = 'Not on iPhone yet. Get it for your computer';
-
+  // this device's button goes first; a Mac gets the file for its chip
+  const mine = isAndroid ? 'android' : isMac ? 'mac' : isWin ? 'win' : '';
+  const also = document.getElementById('heroAlso'), macBtn = also.querySelector('[data-os="mac"]');
+  if (mine) also.prepend(also.querySelector(`[data-os="${mine}"]`));
+  if (isMac) macBtn.dataset.asset = intelMac ? 'x64.dmg' : 'arm64.dmg';
+  if (isIOS) document.getElementById('heroSmall').textContent = 'Not on iPhone or iPad yet. Get it for your computer.';
   const links = [...document.querySelectorAll('[data-asset]')];
-  const setHero = () => { if (!pick) return; const a = links.find((l) => l.dataset.asset === pick[0]); if (a && !/releases\/latest$/.test(a.href)) hero.href = a.href; };
-  setHero();
   fetch('https://api.github.com/repos/lattewirell-creator/stupid-browser/releases/latest').then((r) => (r.ok ? r.json() : Promise.reject())).then((rel) => {
     for (const a of links) { const asset = (rel.assets || []).find((x) => x.name.endsWith(a.dataset.asset)); if (asset) a.href = asset.browser_download_url; }
-    setHero();
     const v = String(rel.tag_name || '').replace(/^v/, '');
     if (v) document.getElementById('ver').innerHTML = `Version ${v}. See <a href="${rel.html_url}">what’s new</a> and all versions on GitHub.`;
   }).catch(() => {});
