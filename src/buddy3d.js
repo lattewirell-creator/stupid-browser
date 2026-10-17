@@ -5,7 +5,17 @@ import * as THREE from './vendor/three.module.min.js';
 import { RoundedBoxGeometry } from './vendor/RoundedBoxGeometry.js';
 import { RoomEnvironment } from './vendor/RoomEnvironment.js';
 
-const COLORS = { clay: '#D97757', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
+const COLORS = { cream: '#EBC39D', clay: '#D97757', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3', cocoa: '#8B5E45', olive: '#6E7B4E' };
+// The browser's eye logo, drawn once as a jacket patch.
+function logoPatch() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.fillStyle = '#F5F1E8'; g.beginPath(); g.arc(64, 64, 62, 0, 7); g.fill();
+  g.fillStyle = '#D97757'; g.beginPath(); g.arc(64, 64, 48, 0, 7); g.fill();
+  g.fillStyle = '#F5F1E8'; g.beginPath(); g.arc(64, 64, 36, 0, 7); g.fill();
+  g.fillStyle = '#D97757'; g.beginPath(); g.arc(64, 64, 24, 0, 7); g.fill();
+  g.fillStyle = '#3D3929'; g.beginPath(); g.arc(70, 56, 7, 0, 7); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 const GLOWS = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
 const hex = (v, map, d) => map[v] || (/^#[0-9a-f]{6}$/i.test(v || '') ? v : map[d]);
 let envTexture = null;   // shared reflection map
@@ -57,6 +67,10 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   const faceMat = new THREE.MeshBasicMaterial({ color: 0x2a221c });
   const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const blushMat = new THREE.MeshBasicMaterial({ color: 0xff8a8a, transparent: true, opacity: 0.45, depthWrite: false });
+  const pantsMat = new THREE.MeshStandardMaterial({ color: 0x3d3929, roughness: 0.85 });
+  const bootMat = new THREE.MeshStandardMaterial({ color: 0x6b4630, roughness: 0.7 });
+  const soleMat = new THREE.MeshStandardMaterial({ color: 0x2a221c, roughness: 0.9 });
+  const scarfColor = 0xc9963f;
 
   // ---- rig: root (spin) > floater (bob) > head + body + hands
   const root = new THREE.Group(); scene.add(root);
@@ -71,7 +85,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = -1.45; scene.add(shadow);
 
   let shell = null, parts = null, hatObj = null, glassesObj = null, face = null;
-  const look = { shape: 'hiker', hat: 'none', glasses: 'none', color: 'clay', glow: 'cyan', image: '', eyes: 'dot', mouth: 'smile', outfit: 'sky', backpack: true, scarf: true };
+  const look = { shape: 'hiker', hat: 'none', glasses: 'none', color: 'cream', glow: 'cyan', image: '', eyes: 'dot', mouth: 'smile', outfit: 'clay', backpack: true, scarf: true };
 
   // Head shapes: each returns the head mesh and where its face is.
   function buildShell(shape) {
@@ -141,7 +155,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   function hikerParts() {
     const P = new THREE.Group();
     const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.815, 0.82, 0.62, 40, 1, true), outfitMat); jacket.position.y = -0.62; jacket.scale.z = 0.93; P.add(jacket);
-    const hem = new THREE.Mesh(new THREE.SphereGeometry(0.82, 40, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), outfitMat); hem.position.y = -0.92; hem.scale.z = 0.93; P.add(hem);
+    const hem = new THREE.Mesh(new THREE.SphereGeometry(0.82, 40, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), outfitMat); hem.position.y = -0.4; hem.scale.z = 0.93; P.add(hem);
     const zip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.6, 0.02), packMat); zip.position.set(0, -0.6, 0.77); P.add(zip);
     const arms = [-1, 1].map((sx) => {
       const pivot = new THREE.Group(); pivot.position.set(sx * 0.72, -0.25, 0);
@@ -150,8 +164,24 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
       pivot.add(sleeve, mitt); P.add(pivot); return pivot;
     });
     P.userData.armR = arms[1]; P.userData.armL = arms[0];
+    // short legs with hiking boots
+    const legs = [-1, 1].map((sx) => {
+      const pivot = new THREE.Group(); pivot.position.set(sx * 0.32, -1.0, 0);
+      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.22, 6, 14), pantsMat); leg.position.y = -0.22;
+      const boot = new THREE.Mesh(new RoundedBoxGeometry(0.36, 0.22, 0.5, 3, 0.09), bootMat); boot.position.set(0, -0.5, 0.08);
+      const sole = new THREE.Mesh(new RoundedBoxGeometry(0.38, 0.07, 0.52, 2, 0.03), soleMat); sole.position.set(0, -0.6, 0.08);
+      const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.045, 8, 20), new THREE.MeshStandardMaterial({ color: 0xf5f1e8, roughness: 0.9 })); cuff.rotation.x = Math.PI / 2; cuff.position.y = -0.4;
+      pivot.add(leg, boot, sole, cuff); P.add(pivot); return pivot;
+    });
+    P.userData.legL = legs[0]; P.userData.legR = legs[1];
+    // the browser's logo as a patch on the jacket
+    const patch = new THREE.Mesh(new THREE.CircleGeometry(0.15, 32), new THREE.MeshBasicMaterial({ map: logoPatch() }));
+    patch.position.set(-0.32, -0.5, 0.71); patch.rotation.y = -0.42; P.add(patch);
+    // a silly hair curl (hidden under hats)
+    const curl = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.035, 8, 24, Math.PI * 1.5), new THREE.MeshStandardMaterial({ color: 0x8b5e45, roughness: 0.6 }));
+    curl.position.set(0.05, 1.27, 0.1); curl.rotation.set(0.2, 0.4, 0.6); P.add(curl); P.userData.curl = curl;
     if (look.scarf !== false) {
-      const scarfMat = new THREE.MeshStandardMaterial({ color: 0xf2c14e, roughness: 0.9 });
+      const scarfMat = new THREE.MeshStandardMaterial({ color: scarfColor, roughness: 0.9 });
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.13, 12, 40), scarfMat); ring.rotation.x = Math.PI / 2; ring.position.y = -0.08; ring.scale.set(1, 0.93, 1); P.add(ring);
       const tail = new THREE.Mesh(new RoundedBoxGeometry(0.2, 0.5, 0.08, 2, 0.04), scarfMat); tail.position.set(0.32, -0.38, 0.74); tail.rotation.z = 0.15; P.add(tail);
       P.userData.scarfMat = scarfMat;
@@ -181,6 +211,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   }
   function buildHat(kind, dim) {
     if (hatObj) { head.remove(hatObj); hatObj.traverse((o) => o.geometry && o.geometry.dispose()); hatObj = null; }
+    if (parts && parts.userData.curl) parts.userData.curl.visible = true;
     if (!kind || kind === 'none') return;
     const g = new THREE.Group(); const y = dim.top;
     const m = (geo, mat, x = 0, yy = 0, z = 0) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, yy, z); g.add(o); return o; };
@@ -193,6 +224,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     else if (kind === 'headphones') { const band = m(new THREE.TorusGeometry(dim.w * 1.05, 0.06, 10, 40, Math.PI), accentMat, 0, 0.05); band.position.y = 0.05; for (const sx of [-1, 1]) { const cup = m(new THREE.CylinderGeometry(0.3, 0.3, 0.22, 28), accentMat, sx * (dim.w * 1.05 + 0.05), 0, 0); cup.rotation.z = Math.PI / 2; m(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 24), glowMat, sx * (dim.w * 1.05 + 0.17), 0, 0).rotation.z = Math.PI / 2; } }
     else if (kind === 'halo') { const h = m(new THREE.TorusGeometry(0.55, 0.05, 12, 48), new THREE.MeshBasicMaterial({ color: 0xfff2a8, toneMapped: false }), 0, y + 0.55); h.rotation.x = Math.PI / 2 - 0.25; g.userData.halo = h; }
     head.add(g); hatObj = g;
+    if (parts && parts.userData.curl) parts.userData.curl.visible = !kind || kind === 'none' || kind === 'halo' || kind === 'headphones';
     if (parts && parts.userData.stem) { const hidesAntenna = !['headphones', 'halo', 'none'].includes(kind); parts.userData.stem.visible = parts.userData.bulb.visible = !hidesAntenna && look.shape !== 'tv'; }
   }
   function buildGlasses(kind, dim) {
@@ -221,7 +253,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     const faceChanged = next.shape === 'hiker' && ['eyes', 'mouth', 'backpack', 'scarf'].some((k) => next[k] !== look[k]);
     Object.assign(look, next);
     const hiker = look.shape === 'hiker';
-    head.position.y = hiker ? 0.12 : 0.55;
+    head.position.y = hiker ? 0.22 : 0.55;
     torso.visible = belly.visible = handL.visible = handR.visible = !hiker;
     outfitMat.color.set(hex(look.outfit, COLORS, 'clay'));
     bodyMat.color.set(hex(look.color, COLORS, 'clay'));
@@ -237,7 +269,12 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   }
 
   // ---- behaviour state
-  const st = { busy: false, talking: false, happyUntil: 0, sleepy: false };
+  const st = { busy: false, talking: false, happyUntil: 0, sleepy: false, held: false, walking: false, dizzyUntil: 0 };
+  let squash = 0;
+  // dizzy: stars circling the head
+  const stars = new THREE.Group(); stars.visible = false; head.add(stars);
+  for (let i = 0; i < 3; i++) { const sm = new THREE.Mesh(new THREE.ExtrudeGeometry(starShape(0.22, 0.09, 5), { depth: 0.05, bevelEnabled: false }), new THREE.MeshBasicMaterial({ color: 0xffd23f, toneMapped: false })); stars.add(sm); }
+  function land(impact) { squash = Math.min(1, impact); if (impact > 0.75) st.dizzyUntil = performance.now() + 1800; kick(); }
   let target = { x: 0, y: 0 }, lastPointer = 0, spin = 0, spinVel = 0, hop = 0, hopVel = 0, wave = 0, nextBlink = 1.5, blinkT = -1, glance = { x: 0, y: 0, until: 0 };
   function lookAt(nx, ny) { target = { x: Math.max(-1, Math.min(1, nx)), y: Math.max(-1, Math.min(1, ny)) }; lastPointer = performance.now(); kick(); }
   function poke() { hopVel = 3.2; wave = 1; st.happyUntil = performance.now() + 1400; kick(); }
@@ -275,7 +312,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   function tick(now) {
     raf = 0;
     if (!visible || document.hidden) return;
-    const busy = st.busy || st.talking || now < activeUntil || hopVel !== 0 || Math.abs(spinVel) > 0.01;
+    const busy = st.busy || st.talking || st.held || st.walking || squash > 0 || now < st.dizzyUntil || now < activeUntil || hopVel !== 0 || Math.abs(spinVel) > 0.01;
     raf = requestAnimationFrame(tick);
     if (!busy && (++frame % 2)) return;        // idle: ~30 fps
     const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now; const t = now / 1000;
@@ -298,10 +335,24 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     head.rotation.x += (-gy * 0.35 - head.rotation.x) * Math.min(1, dt * 6);
     head.rotation.z = Math.sin(t * 0.9) * 0.03;
     // eyes: look, blink, happy, sleepy
-    const happyNow = now < st.happyUntil;
+    const happyNow = now < st.happyUntil && !st.held;
+    const dizzy = now < st.dizzyUntil;
+    // landing squash, held dangle, walking legs
+    if (squash > 0) { squash = Math.max(0, squash - dt * 3.2); const k = Math.sin(squash * Math.PI) * 0.28; floater.scale.set(1 + k * 0.6, 1 - k, 1 + k * 0.6); }
+    if (parts && parts.userData.legL) {
+      const L = parts.userData.legL, R = parts.userData.legR;
+      if (st.held) { L.rotation.x = Math.sin(t * 13) * 0.7; R.rotation.x = -Math.sin(t * 13) * 0.7; }
+      else if (st.walking) { L.rotation.x = Math.sin(t * 11) * 0.55; R.rotation.x = -Math.sin(t * 11) * 0.55; }
+      else { L.rotation.x *= 0.8; R.rotation.x *= 0.8; }
+      if (st.held && parts.userData.armR) { parts.userData.armR.rotation.z = 2.5 + Math.sin(t * 15) * 0.3; parts.userData.armL.rotation.z = -2.5 - Math.sin(t * 15 + 1) * 0.3; }
+    }
+    stars.visible = dizzy;
+    if (dizzy) { const top = (head.userData.dim && head.userData.dim.top) || 1; stars.children.forEach((sm, i) => { const a = t * 4 + i * 2.1; sm.position.set(Math.cos(a) * 0.6, top + 0.25 + Math.sin(t * 6 + i) * 0.05, Math.sin(a) * 0.6); sm.rotation.y = a; }); }
     nextBlink -= dt; if (nextBlink <= 0 && blinkT < 0) { blinkT = 0; nextBlink = 2 + Math.random() * 3.5; }
     let lid = 1; if (blinkT >= 0) { blinkT += dt; lid = Math.abs(Math.cos(Math.min(1, blinkT / 0.16) * Math.PI)); if (blinkT > 0.16) blinkT = -1; }
     if (st.sleepy) lid = face.hiker ? 0.6 : 0.25;
+    if (st.held) lid = 1.25;              // surprised!
+    if (dizzy) lid = 0.15;
     face.eyes.forEach((e, i) => {
       e.visible = !happyNow && !e.userData.hideForPhoto;
       e.scale.y = Math.max(0.12, lid);
@@ -317,7 +368,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     // hands float, and wave when poked
     handL.position.y = -0.72 + Math.sin(t * 1.7 + 1) * 0.05; handR.position.y = -0.72 + Math.sin(t * 1.7 + 2) * 0.05;
     if (wave > 0) { wave -= dt * 0.8; handR.position.y = -0.3 + Math.sin(t * 16) * 0.12; handR.position.x = 0.8; } else handR.position.x = 0.72;
-    if (parts && parts.userData.armR) {   // hiker: wave the right arm, swing gently otherwise
+    if (parts && parts.userData.armR && !st.held) {   // hiker: wave the right arm, swing gently otherwise
       parts.userData.armR.rotation.z = wave > 0 ? 2.3 + Math.sin(t * 14) * 0.35 : Math.sin(t * 1.7) * 0.06;
       parts.userData.armL.rotation.z = -Math.sin(t * 1.7 + 1) * 0.06;
     }
@@ -331,7 +382,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     renderer.dispose(); canvas.remove();
   }
   resize(); setLook({}); kick();
-  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas };
+  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas, land };
 }
 window.Buddy3D = { create: createBuddy };
 window.dispatchEvent(new Event('buddy3d-ready'));

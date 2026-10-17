@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: 15, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -265,6 +265,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Highlighted text → "Ask Buddy" button in the browser UI (tabs only).
+  if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'select-preload.js') });
   // Music island: lets the browser UI read "now playing" and press play/pause/next (all web sessions).
   ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'media-preload.js') });
   if (tabs) {
@@ -510,13 +512,13 @@ function cleanPatch(patch) {
     const col = (v, keys, d) => (keys.includes(v) || /^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : d);
     p.buddyLook = {
       name: String(L.name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 20) || 'Buddy',
-      color: col(L.color, ['clay', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),
+      color: col(L.color, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'cream'),
       glow: col(L.glow, ['cyan', 'green', 'pink', 'amber', 'white', 'violet'], 'cyan'),
       extra: ['none', 'headphones', 'cap', 'bow', 'crown', 'glasses', 'flower'].includes(L.extra) ? L.extra : 'none',
       shape: ['hiker', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'hiker',
       eyes: ['dot', 'round', 'sleepy', 'wide', 'lash'].includes(L.eyes) ? L.eyes : 'dot',
       mouth: ['smile', 'grin', 'flat', 'open', 'cat'].includes(L.mouth) ? L.mouth : 'smile',
-      outfit: col(L.outfit, ['clay', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'sky'),
+      outfit: col(L.outfit, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),
       backpack: L.backpack !== false, scarf: L.scarf !== false,
       hat: ['none', 'tophat', 'cap', 'beanie', 'crown', 'party', 'cowboy', 'headphones', 'halo'].includes(L.hat) ? L.hat : 'none',
       glasses: ['none', 'round', 'square', 'shades', 'star', 'heart'].includes(L.glasses) ? L.glasses : 'none',

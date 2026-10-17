@@ -106,6 +106,7 @@ function createWebview(tab) {
   wv.addEventListener('enter-html-full-screen', () => document.body.classList.add('htmlfs'));
   wv.addEventListener('leave-html-full-screen', () => document.body.classList.remove('htmlfs'));
   wv.addEventListener('update-target-url', (e) => showStatus(e.url));
+  wv.addEventListener('ipc-message', (e) => { if (e.channel === 'stupid-sel' && window.onPageSelection) window.onPageSelection(tab, e.args[0]); });
   $('views').appendChild(wv);
 }
 function rebuildWebview(tab, url) {

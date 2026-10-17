@@ -632,3 +632,28 @@ body.compact.vtabs.reveal-left #vtabs { transform: none; box-shadow: 12px 0 34px
 /* no white flash: the prepared new tab renders invisibly behind the page; fresh tabs stay hidden until painted */
 #views webview.spare { display: flex !important; position: absolute; inset: 0; opacity: 0; pointer-events: none; z-index: -1; }
 #views webview.unpainted { opacity: 0 !important; }
+/* ---- Buddy at play (buddy-play.js) ---- */
+.buddy.free { right: auto; bottom: auto; }
+.buddy.free .bd-panel { display: none !important; }
+.buddy.free .bd-avatar, .buddy.held .bd-avatar { cursor: grabbing; }
+.buddy .bd-avatar { cursor: grab; transition: transform .12s; }
+body.buddy-held webview { pointer-events: none; }
+.ask-pill { position: absolute; z-index: 46; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 10px; border-radius: 999px; border: 0;
+  background: var(--text); color: var(--bg); font-size: 12.5px; box-shadow: 0 8px 24px rgba(0,0,0,.25); cursor: pointer; }
+.ask-pill b { font-weight: 600; }
+.ask-pill:hover { transform: translateY(-1px); }
+.ask-pill.pop { animation: pillPop .28s cubic-bezier(.2,.8,.2,1); }
+.ask-dot { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, var(--accent) 60%); }
+@keyframes pillPop { from { opacity: 0; transform: translateY(6px) scale(.9); } }
+.bd-speech { position: absolute; z-index: 47; padding: 16px 18px 12px; border-radius: 18px; background: var(--surface); color: var(--text); border: 2.5px solid var(--text);
+  box-shadow: 0 6px 0 var(--text), 0 18px 40px rgba(0,0,0,.25); font-size: 14px; line-height: 1.5; animation: speechIn .3s cubic-bezier(.2,.8,.2,1); }
+.bd-speech::after { content: ''; position: absolute; left: var(--tail, 50%); bottom: -13px; width: 18px; height: 18px; margin-left: -9px; background: var(--surface); border-right: 2.5px solid var(--text); border-bottom: 2.5px solid var(--text); transform: rotate(45deg); }
+.bd-speech.below::after { bottom: auto; top: -12px; transform: rotate(225deg); }
+.bs-name { position: absolute; top: -14px; left: 16px; padding: 2px 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 700; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; border: 2px solid var(--text); }
+.bs-text { min-height: 42px; white-space: pre-wrap; }
+.bs-text.thinking:empty::after { content: '…'; display: inline-block; animation: bsThink 1s steps(4) infinite; width: 0; overflow: hidden; }
+@keyframes bsThink { to { width: 1.2em; } }
+.bs-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.bs-btn { border: 2px solid var(--text); background: var(--accent); color: #fff; border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.bs-btn.ghost { background: transparent; color: var(--text); }
+@keyframes speechIn { from { opacity: 0; transform: translateY(10px) scale(.94); } }

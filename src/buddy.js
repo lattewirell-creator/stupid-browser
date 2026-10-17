@@ -50,7 +50,7 @@
   let b3 = null;
   function mount3d() {
     if (b3 || !window.Buddy3D) return;
-    b3 = window.Buddy3D.create(avatar, { interactive: true });
+    b3 = window.Buddy3D.create(avatar, { interactive: false });   // buddy-play.js handles pick-up and throw
     if (!b3) return;
     root.classList.add('b3d');
     b3.setLook(look3d()); b3.setState({ sleepy: !status.ready }); b3.setVisible(!root.classList.contains('hidden'));
@@ -183,17 +183,22 @@
   lookBtn.addEventListener('click', () => { look = !look; lookBtn.classList.toggle('on', look); lookBtn.title = look ? 'Buddy can see the current tab' : 'Buddy can’t see the tab'; call('settings:set', { buddy: Object.assign({}, settings.buddy, { look }) }); });
   newBtn.addEventListener('click', () => { call('buddy:reset'); greet(); });
   closeBtn.addEventListener('click', () => hideBuddy());
-  avatar.addEventListener('click', () => { if (b3 && b3.canvas.dataset.dragged) return; root.classList.toggle('open'); });
+  avatar.addEventListener('click', async () => {
+    if (avatar.dataset.dragged) return;
+    if (b3) b3.poke();
+    if (window.buddyPlay && window.buddyPlay.isFree()) { await window.buddyPlay.goHome(); root.classList.add('open'); return; }
+    root.classList.toggle('open');
+  });
 
-  async function showBuddy() {
+  async function showBuddy(opts = {}) {
     await refreshStatus();
     look = !(settings.buddy && settings.buddy.look === false); lookBtn.classList.toggle('on', look);
     const wasHidden = root.classList.contains('hidden');
-    root.classList.remove('hidden'); root.classList.add('open');
+    root.classList.remove('hidden'); if (opts.panel !== false) root.classList.add('open');
     $('aiBtn').classList.add('on');
     mount3d(); if (b3) b3.setVisible(true);
     if (wasHidden && !log.querySelector('.bd-msg.me')) greet();
-    setTimeout(() => input.focus(), 50);
+    if (opts.panel !== false) setTimeout(() => input.focus(), 50);
   }
   function hideBuddy() { root.classList.add('hidden'); root.classList.remove('open'); $('aiBtn').classList.remove('on'); if (b3) b3.setVisible(false); }
   window.toggleBuddy = () => (root.classList.contains('hidden') ? showBuddy() : hideBuddy());
@@ -214,7 +219,7 @@
   }, 0));
   call('settings:get').then((s) => { if (s) { settings = Object.assign({}, settings, s); applyAiPrefs(); } }).catch(() => {});
   /* ---------- name & look (Settings key buddyLook: { name, color, glow, extra, image }) ---------- */
-  const BODY = { clay: '#D97757', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
+  const BODY = { cream: '#EBC39D', clay: '#D97757', cocoa: '#8B5E45', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
   const GLOW = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
   const EXTRAS = { none: 'None', headphones: '🎧', cap: '🧢', bow: '🎀', crown: '👑', glasses: '🕶️', flower: '🌼' };
   const SHAPES = { hiker: ['🎒', 'Hiker'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
@@ -226,11 +231,11 @@
   const look3d = () => {
     const L = lookCfg();
     const fromExtra = { headphones: ['headphones', null], cap: ['cap', null], crown: ['crown', null], glasses: [null, 'shades'] }[L.extra] || [null, null];
-    return { eyes: EYES[L.eyes] ? L.eyes : 'dot', mouth: MOUTHS[L.mouth] ? L.mouth : 'smile', outfit: L.outfit || 'sky', backpack: L.backpack !== false, scarf: L.scarf !== false,
+    return { eyes: EYES[L.eyes] ? L.eyes : 'dot', mouth: MOUTHS[L.mouth] ? L.mouth : 'smile', outfit: L.outfit || 'clay', backpack: L.backpack !== false, scarf: L.scarf !== false,
       shape: SHAPES[L.shape] ? L.shape : 'hiker', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
   };
   let previewBox = null, previewB3 = null;
-  const lookCfg = () => Object.assign({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
+  const lookCfg = () => Object.assign({ name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
   function buddyName() { return (lookCfg().name || 'Buddy').trim() || 'Buddy'; }
   function applyLook() {
     const L = lookCfg();
@@ -301,7 +306,7 @@
     if (L.image) { const rm = el('button', 'pill small', 'Use the robot'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
     row('Picture', ph);
     const done = el('div', 'bdc-done'); const d = el('button', 'pill solid', 'Done'); d.addEventListener('click', toggleCustom); const rs = el('button', 'pill', 'Reset');
-    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'hiker', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'sky', backpack: true, scarf: true }));
+    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'hiker', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'clay', backpack: true, scarf: true, color: 'cream' }));
     done.append(rs, d); custom.appendChild(done);
     applyLook();
   }
@@ -316,5 +321,5 @@
   call('settings:get').then((s) => { if (s) { settings.buddyLook = s.buddyLook; applyLook(); } }).catch(() => {});
   applyLook();
 
-  window.buddy = { el: root, ask, show: showBuddy, hide: hideBuddy };   // for self-tests
+  window.buddy = { el: root, ask, show: showBuddy, hide: hideBuddy, b3: () => b3 };   // for self-tests
 })();
