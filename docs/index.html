@@ -159,6 +159,8 @@ footer { padding: 40px 0 56px; color: var(--ink-2); font-size: 16px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; }
 footer .brand { color: var(--ink); }
 footer a { text-underline-offset: 3px; }
+footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--clay-deep); }
+@media (max-width: 600px) { footer .made { margin-left: 0; } }
 
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; align-content: center; padding-top: 12px; }
@@ -339,6 +341,7 @@ footer a { text-underline-offset: 3px; }
     <span>Free and open source under the MIT license.</span>
     <a href="https://github.com/lattewirell-creator/stupid-browser">Source code</a>
     <a href="https://github.com/lattewirell-creator/stupid-browser/issues">Report a problem</a>
+    <span class="made">Made by Claude</span>
   </div>
 </footer>
 
@@ -367,7 +370,9 @@ footer a { text-underline-offset: 3px; }
   // talking
   const LINES = {
     click: ['Hi. I’m the logo.', 'Stop staring. That’s my job.', 'Yes, it’s really free.', 'I watch your tabs so you don’t have to.', 'Ads? Never heard of them.',
-      'Download me. I’ll behave.', 'Go on, throw me. I dare you.', 'I’m not stupid. The name is.', 'Your other browser has never looked back at you.', 'I only have one eye, but it’s on you.'],
+      'Download me. I’ll behave.', 'Go on, throw me. I dare you.', 'I’m not stupid. The name is.', 'Your other browser has never looked back at you.', 'I only have one eye, but it’s on you.',
+      'Half the memory of a normal browser. Just saying.', 'I block ads before they even load.', 'Five tabs, 738 MB. Beat that.', 'Honestly? Best browser I’ve ever been the logo of.',
+      'Sleeping tabs. Shield. Buddy. Rewind. I’m kind of a big deal.', 'Your history stays on your computer. I don’t peek. Much.', 'Free on Mac, Windows and Android. Pick one.'],
     grab: ['Whoa, put me down!', 'Careful, I bruise easily.', 'Where are we going?', 'Hey! Personal space!'],
     fly: ['Wheeeee!', 'I can see my house!', 'Aaaaaah!', 'Best. Day. Ever.'],
     bonk: ['Ow.', 'My pupil!', 'Ouch, the edge of the screen.', 'That one’s going to leave a mark.', 'Bonk.'],
@@ -412,7 +417,7 @@ footer a { text-underline-offset: 3px; }
   const release = (e) => {
     if (!held) return;
     const h = held.hist, was = held; held = null; wrap.classList.remove('held');
-    if (!was.moved) { say('click'); pupil.setAttribute('r', '54'); setTimeout(() => pupil.setAttribute('r', '36'), 700); return; }
+    if (!was.moved) { poked(); pupil.setAttribute('r', '54'); setTimeout(() => pupil.setAttribute('r', '36'), 700); return; }
     let vx = 0, vy = 0;
     if (h.length > 1) { const [x0, y0, t0] = h[0], [x1, y1, t1] = h[h.length - 1]; const dt = Math.max(16, t1 - t0); vx = (x1 - x0) / dt * 16; vy = (y1 - y0) / dt * 16; }
     vel = { x: Math.max(-60, Math.min(60, vx)), y: Math.max(-60, Math.min(60, vy)) };
@@ -447,6 +452,67 @@ footer a { text-underline-offset: 3px; }
     flyRaf = requestAnimationFrame(frame);
   }
   addEventListener('resize', () => { if (wrap.classList.contains('loose') && !held) { pos.x = Math.min(pos.x, innerWidth - size); pos.y = Math.min(pos.y, innerHeight - size); place(); } });
+
+  // ten clicks: it warns you a few times, then calls its friends
+  let pokes = 0, pokeT, storming = false;
+  const WARN = { 4: 'Okay, that’s four.', 6: 'Stop poking me.', 8: 'I’m warning you.', 9: 'One more and I call my friends.' };
+  function poked() {
+    if (storming) { say('click'); return; }
+    clearTimeout(pokeT); pokeT = setTimeout(() => { pokes = 0; }, 6000);
+    pokes++;
+    if (pokes >= 10) { pokes = 0; bubble.textContent = 'You asked for it.'; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), 2600); storm(); return; }
+    if (WARN[pokes]) { bubble.textContent = WARN[pokes]; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), 2200); }
+    else say('click');
+  }
+  // a rain of little googly eyes that pile up at the bottom, all watching your pointer; click near them to kick them
+  function storm() {
+    if (reduce) return;
+    storming = true;
+    const cv = document.createElement('canvas'); cv.setAttribute('aria-hidden', 'true');
+    cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:60;transition:opacity 1s';
+    document.body.appendChild(cv);
+    const ctx = cv.getContext('2d'), dpr = Math.min(2, devicePixelRatio || 1);
+    const fit = () => { cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; };
+    fit(); addEventListener('resize', fit);
+    let mx = innerWidth / 2, my = innerHeight / 2;
+    const track = (e) => { mx = e.clientX; my = e.clientY; };
+    const kick = (e) => { for (const b of balls) { const dx = b.x - e.clientX, dy = b.y - e.clientY, d = Math.hypot(dx, dy); if (d < 170) { const f = (170 - d) / 170; b.vx += dx / (d || 1) * 22 * f; b.vy += -14 - 18 * f; } } };
+    addEventListener('pointermove', track, { passive: true }); addEventListener('pointerdown', kick);
+    const N = Math.min(46, Math.round(innerWidth * innerHeight / 22000));
+    const balls = Array.from({ length: N }, (_, i) => { const r = 16 + Math.random() * 30; return { r, x: r + Math.random() * (innerWidth - 2 * r), y: -r - Math.random() * innerHeight * 1.2 - i * 6, vx: (Math.random() - .5) * 6, vy: Math.random() * 4, px: 0, py: 0 }; });
+    const t0 = performance.now(); let raf, fading = false;
+    const draw = (b) => {
+      ctx.fillStyle = '#DB7656'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
+      ctx.fillStyle = '#FFFDF8'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * .754, 0, 7); ctx.fill();
+      ctx.fillStyle = '#DB7656'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * .5, 0, 7); ctx.fill();
+      const dx = mx - b.x, dy = my - b.y, d = Math.hypot(dx, dy) || 1, reach = b.r * .3;
+      b.px += (dx / d * reach - b.px) * .2; b.py += (dy / d * reach - b.py) * .2;
+      ctx.fillStyle = '#33321F'; ctx.beginPath(); ctx.arc(b.x + b.px, b.y + b.py, b.r * .15, 0, 7); ctx.fill();
+    };
+    const frame = (now) => {
+      const W = innerWidth, H = innerHeight;
+      for (const b of balls) {
+        b.vy += .7; b.vx *= .995; b.x += b.vx; b.y += b.vy;
+        if (b.x < b.r) { b.x = b.r; b.vx = -b.vx * .6; } if (b.x > W - b.r) { b.x = W - b.r; b.vx = -b.vx * .6; }
+        if (b.y > H - b.r) { b.y = H - b.r; b.vy = -b.vy * .45; b.vx *= .9; }
+      }
+      // eyes push each other apart, so they pile up instead of overlapping
+      for (let i = 0; i < balls.length; i++) for (let j = i + 1; j < balls.length; j++) {
+        const a = balls[i], b = balls[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = a.r + b.r;
+        if (d > 0 && d < min) {
+          const nx = dx / d, ny = dy / d, push = (min - d) / 2; a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+          const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny; if (rel < 0) { const k = rel * .8; a.vx += k * nx; a.vy += k * ny; b.vx -= k * nx; b.vy -= k * ny; }
+        }
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+      balls.forEach(draw);
+      if (now - t0 < 14000) raf = requestAnimationFrame(frame);
+      else if (!fading) { fading = true; cv.style.opacity = '0'; setTimeout(() => { cancelAnimationFrame(raf); cv.remove(); removeEventListener('pointermove', track); removeEventListener('pointerdown', kick); removeEventListener('resize', fit); storming = false; }, 1000); raf = requestAnimationFrame(frame); }
+      else raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    setTimeout(() => { bubble.textContent = 'Click near them. They love it.'; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), 3000); }, 3200);
+  }
 
   // put it back where it lives
   document.getElementById('eyeHome').addEventListener('click', () => {
