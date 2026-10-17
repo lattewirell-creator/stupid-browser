@@ -249,7 +249,8 @@ function renderUpdate(u) {
   if (!u) return;
   const when = u.lastCheck ? ' · checked ' + new Date(u.lastCheck).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const msg = {
-    unsupported: IS_MAC ? 'Automatic updates aren’t available on macOS yet. Download the latest .dmg from GitHub Releases to update.' : u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
+    manual: 'To get automatic updates, move The Stupid Browser into your Applications folder (drag it there from the disk image), then reopen it.',
+    unsupported: IS_MAC ? 'Automatic updates work in the installed app.' : u.portable ? 'You’re using the portable version, which can’t update itself. Download the new installer (StupidBrowser-Setup.exe) to get automatic updates.' : 'Automatic updates only work in the installed Windows version.',
     idle: `Version ${u.current}. Updates are checked automatically every few hours.`,
     checking: 'Checking for updates…',
     none: `You’re up to date (version ${u.current})${when}.`,
@@ -261,7 +262,7 @@ function renderUpdate(u) {
   $('updBar').classList.toggle('hidden', u.status !== 'downloading');
   $('updBar').firstElementChild.style.width = (u.progress || 0) + '%';
   $('updInstall').classList.toggle('hidden', u.status !== 'ready');
-  $('updBtn').disabled = u.status === 'unsupported' || u.status === 'checking' || u.status === 'downloading';
+  $('updBtn').disabled = u.status === 'unsupported' || u.status === 'manual' || u.status === 'checking' || u.status === 'downloading';
 }
 $('updBtn').onclick = async () => renderUpdate(await call('update:check'));
 $('updInstall').onclick = () => call('update:install');

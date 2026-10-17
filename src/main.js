@@ -690,7 +690,15 @@ const UPDATE_EVERY = 4 * 60 * 60 * 1000;
 const updateState = { status: 'idle', version: null, progress: 0, error: null, lastCheck: null, current: app.getVersion(), portable: IS_PORTABLE, packaged: app.isPackaged };
 let autoUpdater = null;
 function setUpdate(patch) { Object.assign(updateState, patch); broadcast('update:status', Object.assign({}, updateState)); }
+let macUpdater = null;
 function initUpdater() {
+  // macOS: our own updater (works without an Apple Developer ID); see mac-updater.js
+  if (IS_MAC && (app.isPackaged || process.env.STUPID_UPDATE_TEST_FEED)) {
+    macUpdater = autoUpdater = require('./mac-updater')({ setUpdate, log: (m) => console.log(m) });
+    setTimeout(checkForUpdates, 10000);
+    setInterval(checkForUpdates, UPDATE_EVERY);
+    return;
+  }
   if (!app.isPackaged || IS_PORTABLE || process.platform !== 'win32') {
     setUpdate({ status: 'unsupported' });
     return;
@@ -712,7 +720,7 @@ function initUpdater() {
 function checkForUpdates() {
   if (!autoUpdater) return Object.assign({}, updateState);
   if (['checking', 'downloading', 'ready'].includes(updateState.status)) return Object.assign({}, updateState);
-  autoUpdater.checkForUpdates().catch((err) => setUpdate({ status: 'error', error: String(err && err.message || err).split('\n')[0].slice(0, 200) }));
+  Promise.resolve(autoUpdater.checkForUpdates()).catch((err) => setUpdate({ status: 'error', error: String(err && err.message || err).split('\n')[0].slice(0, 200) }));
   return Object.assign({}, updateState);
 }
 handle('update:status', ANY, () => Object.assign({}, updateState));
@@ -1089,7 +1097,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); });
+app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); if (macUpdater && updateState.status === 'ready') macUpdater.installOnQuit(); });
 app.on('window-all-closed', () => {
   // macOS keeps the app alive in the Dock; the last window's tabs are already in session.json.
   if (IS_MAC) { saveSessions(); store.flushAll(); return; }

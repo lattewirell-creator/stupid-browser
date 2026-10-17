@@ -65,3 +65,10 @@ Self-test: STUPID_SELFTEST=/tmp/s.png STUPID_SELFTEST_STEPS="quit@170000" STUPID
   can see the current tab (screenshot + text). AI button opens it; Settings → AI buddy can switch back to the sidebar.
   "Ask an AI" tiles removed from the new tab.
 - Easter egg: Konami code opens the Zelda secret sound on YouTube (main.js, before-input-event).
+
+## 1.3.0 (in progress)
+- Mac auto-updates without a Developer ID (src/mac-updater.js): GitHub Releases → zip for this chip → SHA-512 check
+  against latest-mac.yml → swap on restart/quit. Needs the app in a writable folder (e.g. /Applications).
+  Tested end to end (1.2.0 → 1.2.1 swap + relaunch) and with a tampered zip (rejected).
+- Memory saver: sleeping background tabs (Settings → Performance). 5 tabs: 1577 MB → 738 MB, idle CPU 2.1% → 0.1%.
+- New-tab quotes: browser quotes, your own lines/reminders, or both.

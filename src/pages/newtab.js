@@ -18,15 +18,20 @@ async function load() {
   try { settings = await call('settings:get'); } catch {}
   tick();
   renderLogo();
+}
+async function loadBookmarks() {
   let bms = [];
   try { bms = (await call('bookmarks:get')).filter((b) => b.type === 'bookmark').slice(0, 8); } catch {}
   $('top').innerHTML = '';
   $('topHead').classList.toggle('hidden', !bms.length);
   for (const b of bms) $('top').appendChild(tile(b.title || hostOf(b.url), b.url));
 }
-setInterval(tick, 10000);
+setInterval(() => { if (!document.hidden) tick(); }, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 load();
-S.on('settings:changed', (s) => { settings = s; load(); });
+loadBookmarks();
+S.on('settings:changed', (s) => { settings = s; tick(); renderLogo(); });
+S.on('bookmarks:changed', loadBookmarks);
 
 /* ---------------- logo, title, quotes, customize panel ---------------- */
 const QUOTES = [

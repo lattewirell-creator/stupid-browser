@@ -95,7 +95,13 @@
   let dismissed = null;    // "key|title" the user closed
   const enabled = () => settings.musicIsland !== false;
 
+  let polling = false;
   async function poll() {
+    if (polling || document.hidden) return;
+    polling = true;
+    try { await pollSource(); } finally { polling = false; }
+  }
+  async function pollSource() {
     if (!enabled()) { hide(); return; }
     const list = sources();
     const live = list.filter((s) => audible(s.wv));
@@ -103,7 +109,9 @@
     // Follow whatever is actually making sound now; keep a paused source so you can resume it.
     if (live.length && (!cur || !live.some((s) => s.key === cur.key))) { cur = live[0]; idle = 0; }
     if (!cur) { hide(); return; }
-    const info = await readInfo(cur.wv);
+    const source = cur;
+    const info = await readInfo(source.wv);
+    if (!source.wv.isConnected || cur !== source) return;
     const sounding = audible(cur.wv);
     const hasMedia = info && (info.title || info.state === 'playing' || info.state === 'paused');
     if (!sounding && !hasMedia) { if (++idle > 4) { cur = null; hide(); } return; }
