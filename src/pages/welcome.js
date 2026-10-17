@@ -88,12 +88,17 @@ async function paintImport() {
       if (imported.has(src.id)) return;
       const r = await call('import:browser', src.id);
       if (!r.ok) { $('importNote').textContent = r.error; return; }
-      imported.add(src.id); $('importNote').textContent = `✓ Added ${r.added} bookmarks from ${src.name}.`; paintImport();
+      imported.add(src.id); $('importNote').textContent = `✓ Added ${r.added} bookmarks${r.history ? ` and ${r.history} history entries` : ''} from ${src.name}.`; paintImport();
     });
     return b;
   }));
   if (!list.length && !$('importNote').textContent) $('importNote').textContent = 'No other browsers found on this computer — you can still import a bookmarks file.';
 }
+$('importPw').addEventListener('click', async () => {
+  const r = await call('import:passwords');
+  if (r.ok) { imported.add('pw'); $('importNote').textContent = `✓ Imported ${r.added} passwords. Now delete ${r.file} — it holds your passwords in plain text.`; $('next').textContent = nextLabel(); }
+  else if (r.error !== 'canceled') $('importNote').textContent = r.error;
+});
 $('importFile').addEventListener('click', async () => {
   const r = await call('import:file');
   if (r.ok) $('importNote').textContent = `✓ Added ${r.added} bookmarks from the file.`;

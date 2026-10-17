@@ -671,7 +671,7 @@ handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
 handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
 handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
 require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
-require('./import-bookmarks')({ handle, store, getBookmarks, broadcast });
+require('./import-bookmarks')({ handle, store, getBookmarks, broadcast, getHistory, getPasswords, enc });
 
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
 handle('default:set', ['internal'], async () => {

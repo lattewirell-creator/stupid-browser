@@ -86,6 +86,13 @@ async function renderPerms() {
 const IS_MAC = S.platform === 'darwin';
 if (IS_MAC) $('defHint').textContent = 'macOS asks you to confirm. Choose “Use The Stupid Browser”.';
 
+$('pwImport').onclick = async () => {
+  const r = await call('import:passwords');
+  if (!r.ok) { if (r.error !== 'canceled') toast(r.error); return; }
+  toast(`Imported ${r.added} password${r.added === 1 ? '' : 's'}${r.skipped ? ` (${r.skipped} skipped)` : ''} — now delete ${r.file}, it holds your passwords in plain text`);
+  renderPasswords();
+};
+
 async function renderPasswords() {
   const enc = await call('pw:encryption');
   $('encNote').textContent = enc ? (IS_MAC ? 'Passwords are encrypted with a key kept in your macOS Keychain and stay on this computer.' : 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.') : 'Warning: system encryption is not available, passwords are only obfuscated.';
