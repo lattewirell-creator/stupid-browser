@@ -312,14 +312,14 @@ function buildTabEl(tab) {
     if (dragId == null || dragId === tab.id) return;
     ev.preventDefault();
     const r = e.getBoundingClientRect();
-    const after = ev.clientX > r.left + r.width / 2;
+    const after = document.body.classList.contains('vtabs') ? ev.clientY > r.top + r.height / 2 : ev.clientX > r.left + r.width / 2;
     clearDropMarks(); e.classList.add(after ? 'drop-after' : 'drop-before');
   });
   e.addEventListener('drop', (ev) => {
     ev.preventDefault();
     const src = tabById(dragId); if (!src || src === tab) return;
     const r = e.getBoundingClientRect();
-    const after = ev.clientX > r.left + r.width / 2;
+    const after = document.body.classList.contains('vtabs') ? ev.clientY > r.top + r.height / 2 : ev.clientX > r.left + r.width / 2;
     moveTab(src, tab, after);
   });
   tab.el = e;
@@ -644,6 +644,8 @@ function mainMenu() {
     { label: 'Print…', key: 'Ctrl+P', fn: () => runCmd('print') },
     { label: 'Find…', key: 'Ctrl+F', fn: openFind },
     { label: 'Sound & EQ…', fn: () => openSoundPanel() },
+    { label: (settings.verticalTabs ? '✓ ' : '') + 'Vertical tabs', fn: () => window.toggleLayout('verticalTabs') },
+    { label: (settings.compactMode ? '✓ ' : '') + 'Compact mode', fn: () => window.toggleLayout('compactMode') },
     { label: 'Command bar', key: 'Ctrl+K', fn: () => openCmd() },
     { label: 'View page source', key: 'Ctrl+U', fn: () => runCmd('view-source') },
     { label: 'Developer tools', key: 'F12', fn: () => runCmd('devtools') },

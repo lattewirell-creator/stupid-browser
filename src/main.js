@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: 15, modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -505,6 +505,7 @@ function cleanPatch(patch) {
       image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : ''
     };
   }
+  for (const k of ['modernLook', 'verticalTabs', 'compactMode']) if (k in p) p[k] = !!p[k];
   if ('appIcon' in p) p.appIcon = !!p.appIcon;
   if ('appIconImage' in p && !(p.appIconImage === '' || (typeof p.appIconImage === 'string' && p.appIconImage.length < 1500000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.appIconImage)))) delete p.appIconImage;
   if ('tabSleep' in p && ![0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
@@ -666,6 +667,8 @@ handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, ori
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
 handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
+// Compact mode hides the macOS traffic lights while the top bar is tucked away.
+handle('win:trafficLights', ['shell'], (e, on) => { const w = BrowserWindow.fromWebContents(e.sender); if (IS_MAC && w && w.setWindowButtonVisibility) w.setWindowButtonVisibility(!!on); return true; });
 handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
 handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
 handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
