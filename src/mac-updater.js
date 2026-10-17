@@ -95,7 +95,7 @@ module.exports = function macUpdater({ setUpdate, log = console.log, afterSwap =
       const id = await run('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', '-o', '-', plist]);
       const ver = await run('/usr/bin/plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', plist]);
       if (id !== BUNDLE_ID || ver !== version) throw new Error('Update is not The Stupid Browser ' + version);
-      // (No codesign check: builds without a Developer ID only carry a linker signature. The SHA-512 above is the integrity check.)
+      // (No codesign check: an ad-hoc signature says nothing about who built it. The SHA-512 above is the integrity check.)
       fs.rmSync(work, { recursive: true, force: true });
       staged = { version, app: newApp, stage };
       setUpdate({ status: 'ready', version, progress: 100, lastCheck: Date.now() });

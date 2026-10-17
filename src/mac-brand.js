@@ -2,8 +2,8 @@
 // macOS: make Settings → Browser name / app icon permanent by writing them into the app bundle
 // (Finder, the Dock and ⌘Tab then show them even when the browser isn't running).
 // The bundle is edited by a small shell script after the browser quits, then the app reopens.
-// Builds without a Developer ID only carry a linker signature on the executable, so editing
-// Info.plist and Resources/ doesn't invalidate anything.
+// Editing Info.plist and Resources/ breaks the bundle's ad-hoc signature, so the script re-signs it
+// (ad-hoc, like the build does) — otherwise macOS may call the app "damaged".
 const { app, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -60,6 +60,7 @@ function scriptLines(target, { name, icns }) {
       // Rename the .app folder too (that's what Finder and the Dock label), unless something already has that name.
       finalPath !== target ? `if [ ! -e ${q(finalPath)} ]; then mv ${q(target)} ${q(finalPath)}; fi` : ':',
       `T=${q(finalPath)}; [ -d "$T" ] || T=${q(target)}`,
+      `xattr -cr "$T" 2>/dev/null; /usr/bin/codesign --force --deep --sign - "$T" >/dev/null 2>&1`,
       `touch "$T"`,
       `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$T" >/dev/null 2>&1`,
       `killall Dock 2>/dev/null; :`

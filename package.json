@@ -44,7 +44,9 @@
       "signAndEditExecutable": true,
       "executableName": "StupidBrowser"
     },
+    "afterPack": "scripts/adhoc-sign.js",
     "mac": {
+      "identity": null,
       "target": [
         {
           "target": "dmg",

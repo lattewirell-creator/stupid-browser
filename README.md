@@ -19,6 +19,6 @@ history, downloads, bookmarks, passwords, private windows and auto-updates.
 
 ## macOS notes
 - Shortcuts follow Chrome for Mac (⌘T, ⌘W, ⌘Y history, ⌘[ / ⌘] back/forward, ⌥⌘I dev tools …), and there's a normal menu bar.
-- The build isn't signed with an Apple Developer ID, so the first launch is blocked by Gatekeeper.
-  Right-click the app → **Open**, or run `xattr -dr com.apple.quarantine "/Applications/The Stupid Browser.app"`.
+- The build is ad-hoc signed (scripts/adhoc-sign.js) but not with an Apple Developer ID, so macOS asks once on first launch.
+  Open it, then go to **System Settings → Privacy & Security** and click **Open Anyway** (or right-click the app → **Open**).
 - Automatic updates work on Mac too, once the app is in your Applications folder (drag it there from the .dmg).

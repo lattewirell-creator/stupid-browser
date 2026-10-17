@@ -22,7 +22,16 @@ FILES=(release/StupidBrowser-Setup.exe release/StupidBrowser-Setup.exe.blockmap 
 
 # On a Mac, also build the macOS app. The zips + latest-mac.yml are what installed Macs auto-update from.
 if [ "$(uname)" = "Darwin" ]; then
-  npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+  # Built outside the repo: iCloud-synced folders (like Desktop) tag files with Finder info, which a strict
+  # signature check (and so Gatekeeper) rejects inside the dmg. scripts/adhoc-sign.js signs the app.
+  MACOUT="$HOME/Library/Caches/stupid-browser-release"; rm -rf "$MACOUT"
+  npx electron-builder --mac dmg zip --arm64 --x64 --publish never -c.directories.output="$MACOUT"
+  cp "$MACOUT"/StupidBrowser-"$VERSION"-*.dmg "$MACOUT"/StupidBrowser-"$VERSION"-*.zip "$MACOUT"/latest-mac.yml release/
+  for a in arm64 x64; do
+    MNT=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "release/StupidBrowser-$VERSION-$a.dmg" >/dev/null
+    codesign --verify --deep --strict "$MNT"/*.app || { hdiutil detach "$MNT" >/dev/null; echo "The $a app in the dmg isn't properly signed" >&2; exit 1; }
+    hdiutil detach "$MNT" >/dev/null
+  done
   for a in arm64 x64; do
     for f in "release/StupidBrowser-$VERSION-$a.dmg" "release/StupidBrowser-$VERSION-$a.zip"; do [ -f "$f" ] || { echo "Missing $f" >&2; exit 1; }; done
     grep -q "url: StupidBrowser-$VERSION-$a.zip" release/latest-mac.yml || { echo "latest-mac.yml is missing the $a zip" >&2; exit 1; }
