@@ -86,7 +86,7 @@ function createWebview(tab) {
   tab.wv = wv; tab.ready = false;
   wv.addEventListener('did-start-loading', () => { tab.loading = true; tab.crashed = false; renderTab(tab); if (tab.id === activeId) updateNav(); });
   wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); rewindSoon(tab); });
-  wv.addEventListener('dom-ready', () => { tab.ready = true; tab.wcId = wv.getWebContentsId(); if (tab.muted) wv.setAudioMuted(true); readZoom(tab); if (tab.id === activeId) updateNav(); });
+  wv.addEventListener('dom-ready', () => { tab.ready = true; tab.wcId = wv.getWebContentsId(); if (tab.muted) wv.setAudioMuted(true); applySiteZoom(tab); readZoom(tab); if (tab.id === activeId) updateNav(); });
   wv.addEventListener('page-title-updated', (e) => { tab.title = e.title; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); });
   wv.addEventListener('page-favicon-updated', (e) => { tab.favicon = (e.favicons || []).find((f) => /^(https?|data):/.test(f)) || null; renderTab(tab); scheduleSave(); });
   const onNav = (e) => {
@@ -106,7 +106,10 @@ function createWebview(tab) {
   wv.addEventListener('enter-html-full-screen', () => document.body.classList.add('htmlfs'));
   wv.addEventListener('leave-html-full-screen', () => document.body.classList.remove('htmlfs'));
   wv.addEventListener('update-target-url', (e) => showStatus(e.url));
-  wv.addEventListener('ipc-message', (e) => { if (e.channel === 'stupid-sel' && window.onPageSelection) window.onPageSelection(tab, e.args[0]); });
+  wv.addEventListener('ipc-message', (e) => {
+    if (e.channel === 'stupid-sel' && window.onPageSelection) window.onPageSelection(tab, e.args[0]);
+    if (e.channel === 'stupid-nav') { if (e.args[0] === 'back' && wv.canGoBack()) wv.goBack(); if (e.args[0] === 'forward' && wv.canGoForward()) wv.goForward(); }
+  });
   $('views').appendChild(wv);
 }
 function rebuildWebview(tab, url) {
@@ -510,6 +513,17 @@ function openInternal(name) {
 }
 
 /* ---------------- zoom ---------------- */
+// Zoom is remembered per site (like Chrome), across restarts.
+const siteZooms = (() => { try { return JSON.parse(localStorage.getItem('siteZoom') || '{}'); } catch { return {}; } })();
+function applySiteZoom(tab) {
+  const z = siteZooms[hostOf(tab.url)];
+  try { if (z && Math.abs(tab.wv.getZoomFactor() - z) > 0.001) tab.wv.setZoomFactor(z); } catch {}
+}
+function rememberZoom(host, z) {
+  if (!host) return;
+  if (Math.abs(z - 1) < 0.001) delete siteZooms[host]; else siteZooms[host] = z;
+  try { localStorage.setItem('siteZoom', JSON.stringify(siteZooms)); } catch {}
+}
 function readZoom(tab) {
   if (!tab.wv || !tab.ready) return;
   try { tab.zoom = tab.wv.getZoomFactor(); } catch { tab.zoom = 1; }
@@ -525,6 +539,7 @@ function zoom(dir) {
   // same-site tabs share zoom in Chromium; refresh them
   for (const t of tabs) if (t.wv && t.ready && hostOf(t.url) === hostOf(tab.url)) setTimeout(() => readZoom(t), 60);
   tab.zoom = next; updateNav();
+  if (!info.incognito) rememberZoom(hostOf(tab.url), next);
   toast('Zoom ' + Math.round(next * 100) + '%');
 }
 
@@ -600,6 +615,10 @@ document.addEventListener('mousedown', (e) => {
 });
 addEventListener('blur', () => { hideMenus(); hideHoverCard(); });
 
+function copyLink(tab) {
+  if (!tab || !tab.url || isNewtab(tab.url)) return;
+  call('clipboard:write', tab.url).then(() => toast('Link copied')).catch(() => toast('Couldn’t copy the link'));
+}
 function tabMenu(tab, x, y) {
   const i = tabs.indexOf(tab);
   const otherGroups = [...groups.values()].filter((g) => g.id !== tab.groupId);
@@ -612,6 +631,7 @@ function tabMenu(tab, x, y) {
   items.push('-',
     { label: 'Reload', key: 'Ctrl+R', fn: () => { if (tab.wv) tab.wv.reload(); else activate_(tab.id); } },
     { label: 'Duplicate', fn: () => newTab(tab.url, { index: i + 1, groupId: tab.groupId }) },
+    { label: 'Copy link', disabled: !tab.url || isNewtab(tab.url), fn: () => copyLink(tab) },
     { label: tab.pinned ? 'Unpin' : 'Pin', fn: () => togglePin(tab) },
     { label: tab.muted ? 'Unmute site' : 'Mute site', fn: () => toggleMute(tab) },
     tab.id !== activeId ? { label: 'Split with current tab', fn: () => toggleSplit(tab.id) } : (split ? { label: 'Exit split view', fn: () => toggleSplit() } : { label: 'Split view', key: 'Ctrl+Shift+S', fn: () => toggleSplit() }),
@@ -935,6 +955,8 @@ $('address').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
     if (e.altKey) { newTab(toUrl($('address').value)); closeSuggest(); return; }
+    const word = $('address').value.trim();
+    if ((e.ctrlKey || e.metaKey) && /^[a-z0-9-]+$/i.test(word)) { navigate('https://www.' + word + '.com'); closeSuggest(); $('address').blur(); return; }
     if (sugItems.length) pickSuggest(); else { navigate($('address').value); $('address').blur(); }
   } else if (e.key === 'ArrowDown' && sugItems.length) { e.preventDefault(); sugSel = Math.min(sugSel + 1, sugItems.length - 1); renderSuggest(); }
   else if (e.key === 'ArrowUp' && sugItems.length) { e.preventDefault(); sugSel = Math.max(sugSel - 1, 0); renderSuggest(); }
@@ -944,6 +966,8 @@ $('address').addEventListener('keydown', (e) => {
   }
 });
 $('address').addEventListener('focus', () => setTimeout(() => $('address').select(), 0));
+$('address').addEventListener('contextmenu', (e) => { e.preventDefault(); const a = $('address'); call('shell:editMenu', { go: true, hasSelection: a.selectionStart !== a.selectionEnd }).catch(() => {}); });
+api.on('paste-go', (text) => { if (text) { closeSuggest(); navigate(text); $('address').blur(); } });
 $('address').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('address')) { closeSuggest(); const t = activeTab(); if (t) $('address').value = displayUrl(t.url); } }, 120));
 
 /* ---------------- left sidebar (Opera-style) ---------------- */
@@ -1226,6 +1250,7 @@ function runCmd(cmd) {
     case 'close-tab': if (t) closeTab(t.id); break;
     case 'close-window': call('win:close'); break;
     case 'reopen-tab': reopenClosed(); break;
+    case 'copy-url': copyLink(t); break;
     case 'focus-address': $('address').focus(); $('address').select(); break;
     case 'command-bar': openCmd(); break;
     case 'reload': if (wv) wv.reload(); break;

@@ -186,6 +186,8 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
   win.once('ready-to-show', () => { showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
+  win.webContents.on('context-menu', (_e, p) => { if (p.isEditable) shellEditMenu(win.webContents, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
+  win.on('swipe', (_e, dir) => { if (dir === 'left' || dir === 'right') win.webContents.send('shortcut', dir === 'left' ? 'back' : 'forward'); });   // macOS trackpad swipe
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
@@ -845,6 +847,7 @@ function shortcutFor(input) {
   if (!ctrl) return null;
   if (shift) {
     if (k === 't') return 'reopen-tab';
+    if (k === 'c') return 'copy-url';
     if (k === 'n') return 'new-incognito';
     if (k === 'w') return 'close-window';
     if (k === 'a') return 'toggle-ai';
@@ -943,6 +946,22 @@ function hookShortcuts(wc) {
 /* =========================================================================
    Web page context menu
    ========================================================================= */
+// Text fields in the browser UI (address bar, find, command bar…): the usual edit menu.
+// The address bar adds "Paste and go" (the renderer asks for it via shell:editMenu).
+async function shellEditMenu(shellWc, p, withGo) {
+  const win = BrowserWindow.fromWebContents(shellWc);
+  const clip = String((await clipboard.readText()) || '').trim();
+  const T = [
+    { label: 'Undo', role: 'undo', enabled: p.canUndo }, { label: 'Redo', role: 'redo', enabled: p.canRedo }, { type: 'separator' },
+    { label: 'Cut', role: 'cut', enabled: p.hasSelection }, { label: 'Copy', role: 'copy', enabled: p.hasSelection }, { label: 'Paste', role: 'paste', enabled: !!clip }
+  ];
+  if (withGo) T.push({ label: 'Paste and go', enabled: !!clip, click: () => shellWc.send('paste-go', clip.slice(0, 4000)) });
+  T.push({ type: 'separator' }, { label: 'Select all', role: 'selectAll' });
+  Menu.buildFromTemplate(T).popup({ window: win });
+}
+handle('clipboard:write', ['shell'], (_e, text) => { clipboard.writeText(String(text || '').slice(0, 10000)); return true; });   // works even when focus is in a web page
+handle('shell:editMenu', ['shell'], async (e, info) => { await shellEditMenu(e.sender, { hasSelection: !!(info && info.hasSelection), canUndo: true, canRedo: true }, !!(info && info.go)); return true; });
+
 function pageContextMenu(wc, p) {
   const shellWc = shellFor(wc); if (!shellWc) return;
   const win = BrowserWindow.fromWebContents(shellWc);
@@ -1148,6 +1167,7 @@ function buildMacMenu() {
       { label: 'New Window', accelerator: 'Cmd+N', registerAccelerator: false, click: () => createWindow() },
       { label: 'New Private Window', accelerator: 'Cmd+Shift+N', registerAccelerator: false, click: () => createWindow({ incognito: true }) },
       { label: 'Reopen Closed Tab', accelerator: 'Cmd+Shift+T', registerAccelerator: false, click: send('reopen-tab') },
+      { label: 'Copy Link', accelerator: 'Cmd+Shift+C', registerAccelerator: false, click: send('copy-url') },
       { type: 'separator' },
       { label: 'Open Location…', accelerator: 'Cmd+L', registerAccelerator: false, click: send('focus-address') },
       { label: 'Close Tab', accelerator: 'Cmd+W', registerAccelerator: false, click: send('close-tab') },
