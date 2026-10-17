@@ -19,6 +19,7 @@
     <a href="#search">Search engine</a>
     <a href="#privacy">Privacy &amp; security</a>
     <a href="#passwords">Passwords</a>
+    <a href="#import">Import from another browser</a>
     <a href="#downloads">Downloads</a>
     <a href="#performance">Performance</a>
     <a href="#buddy">AI buddy</a>
@@ -103,6 +104,15 @@
         <div class="row"><div class="lbl">Import passwords<small>From another browser’s passwords export (.csv). In Chrome: Password Manager → Settings → Export passwords. Edge: Settings → Passwords → ⋯ → Export. Safari: File → Export → Passwords. Firefox: about:logins → ⋯ → Export.</small></div><button id="pwImport" class="btn small">Import…</button></div>
       </div>
       <div class="card" id="pwList"></div>
+    </section>
+
+    <section id="import"><h2>Import from another browser</h2>
+      <p class="muted section-note">Bookmarks and history come from the browsers on this computer. If you’re signed in to a Google or Mozilla account there, you get everything that account has synced. Nothing is changed in the other browser.</p>
+      <div class="card" id="importSources"></div>
+      <div class="card">
+        <div class="row"><div class="lbl">From a bookmarks file<small>Any browser can export its bookmarks as an .html file.</small></div><button id="importHtml" class="btn small">Choose file…</button></div>
+        <div class="row"><div class="lbl">Passwords<small>Browsers lock saved passwords to their own app, so export them there first, then import the .csv file under <a href="#passwords">Passwords</a>.</small></div></div>
+      </div>
     </section>
 
     <section id="downloads"><h2>Downloads</h2><div class="card">

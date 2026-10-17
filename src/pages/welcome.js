@@ -80,10 +80,10 @@ $('makeDefault').addEventListener('click', async () => { await call('default:set
 /* ---------- import bookmarks ---------- */
 const imported = new Set();
 async function paintImport() {
-  let list = []; try { list = await call('import:sources'); } catch {}
+  let list = []; try { list = (await call('import:sources')).filter((x) => !x.needsAccess); } catch {}
   $('sources').replaceChildren(...list.map((src) => {
     const b = el('button', 'prov src' + (imported.has(src.id) ? ' on' : ''));
-    b.append(el('b', null, src.name), el('small', null, imported.has(src.id) ? '✓ Imported' : `${src.count} bookmarks`));
+    b.append(el('b', null, src.name + (src.profile ? ` · ${src.profile}` : '')), el('small', null, imported.has(src.id) ? '✓ Imported' : [src.account, `${src.count} bookmarks`].filter(Boolean).join(' · ')));
     b.addEventListener('click', async () => {
       if (imported.has(src.id)) return;
       const r = await call('import:browser', src.id);

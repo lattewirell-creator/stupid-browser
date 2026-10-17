@@ -373,3 +373,46 @@ S.on('perms:changed', renderPerms);
 S.on('passwords:changed', renderPasswords);
 S.on('bots:changed', renderBots);
 S.on('sidebar:changed', renderSide);
+
+/* import from another browser */
+const IMP_COLORS = { chrome: '#4285F4', edge: '#0F7BC4', brave: '#E2582C', arc: '#E3435D', vivaldi: '#D93B3B', opera: '#D32635', operagx: '#C2185B', chromium: '#5B87B5', firefox: '#E66000', zen: '#6F6A63', librewolf: '#3A6FB0', safari: '#1C8FE6' };
+async function renderImport() {
+  const box = $('importSources');
+  let list = []; try { list = await call('import:sources'); } catch {}
+  if (!list.length) { box.replaceChildren(el('div', 'row muted', 'No other browsers found on this computer. You can still import a bookmarks file below.')); return; }
+  box.replaceChildren(...list.map((src) => {
+    const row = el('div', 'row imp-row');
+    const badge = el('span', 'imp-badge', src.name.replace(/^(Google|Microsoft) /, '')[0]); badge.style.background = IMP_COLORS[src.browser] || 'var(--accent)';
+    const title = src.name + (src.profile ? ` · ${src.profile}` : '');
+    const bits = [src.account, src.needsAccess ? '' : `${src.count} bookmark${src.count === 1 ? '' : 's'}`, src.history ? 'history' : ''].filter(Boolean);
+    const lbl = el('div', 'lbl', title); lbl.appendChild(el('small', null, src.needsAccess ? 'macOS needs your permission first: turn on The Stupid Browser under Full Disk Access, then restart it.' : bits.join(' · ')));
+    row.append(badge, lbl);
+    if (src.needsAccess) {
+      const b = el('button', 'btn small', 'Allow access…'); b.onclick = () => call('import:safariAccess');
+      const again = el('button', 'btn small', 'Check again'); again.onclick = renderImport;
+      row.append(b, again); return row;
+    }
+    const what = el('div', 'imp-what'); const boxes = {};
+    for (const [k, t, on] of [['bookmarks', 'Bookmarks', src.count > 0], ['history', 'History', src.history]]) {
+      const l = el('label'); const c = el('input'); c.type = 'checkbox'; c.checked = on; c.disabled = !on; boxes[k] = c; l.append(c, document.createTextNode(t)); what.appendChild(l);
+    }
+    const go = el('button', 'btn small primary', 'Import');
+    let shown = what;   // the checkboxes, then the result of the last import
+    const sync = () => { go.disabled = !boxes.bookmarks.checked && !boxes.history.checked; };
+    boxes.bookmarks.onchange = boxes.history.onchange = sync; sync();
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = 'Importing…';
+      const r = await call('import:browser', src.id, { bookmarks: boxes.bookmarks.checked, history: boxes.history.checked });
+      if (!r.ok) { toast(r.error); go.textContent = 'Import'; go.disabled = false; return; }
+      const parts = [boxes.bookmarks.checked ? `${r.added} new bookmark${r.added === 1 ? '' : 's'}` : '', boxes.history.checked ? `${r.history} history entr${r.history === 1 ? 'y' : 'ies'}` : ''].filter(Boolean);
+      const msg = el('span', 'imp-done', '✓ ' + parts.join(' and ')); shown.replaceWith(msg); shown = msg;
+      go.textContent = 'Import again'; go.classList.remove('primary'); go.disabled = false;
+    };
+    row.append(what, go); return row;
+  }));
+}
+$('importHtml').onclick = async () => {
+  const r = await call('import:file');
+  if (r.ok) toast(`Added ${r.added} bookmark${r.added === 1 ? '' : 's'} from the file`); else if (r.error !== 'canceled') toast(r.error);
+};
+renderImport();
