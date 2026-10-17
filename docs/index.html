@@ -102,19 +102,39 @@ h1, h2, h3 { font-family: var(--display); font-weight: 750; letter-spacing: -.02
 .tabs { display: flex; gap: 8px; margin-bottom: 26px; }
 .tabs span { flex: 1; height: 44px; border-radius: 12px; background: var(--paper); border: 1px solid var(--line); display: grid; place-items: center; font: 600 15px var(--display); color: var(--ink-2); transition: opacity .4s var(--ease), background .4s; }
 .tabs span:first-child { background: var(--clay); color: #fff; border-color: transparent; }
-.meter.asleep .tabs span:not(:first-child) { opacity: .45; }
-.meter.asleep .tabs span:not(:first-child)::after { content: 'z'; font-style: italic; }
+.meter.asleep .tabs span:nth-child(n+3) { opacity: .45; }
+.meter.asleep .tabs span:nth-child(n+3)::after { content: 'z'; font-style: italic; }
+.tabs span:nth-child(2)::after { content: ' ♪'; }
 .bar-row { display: flex; align-items: baseline; justify-content: space-between; font-family: var(--display); }
 .bar-row b { font-size: clamp(44px, 6vw, 76px); font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .bar { height: 16px; border-radius: 999px; background: var(--line); margin: 6px 0 22px; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 100%; background: var(--clay); border-radius: inherit; transition: width .8s var(--ease), background .8s; }
-.meter.asleep .bar i { width: 46.8%; background: var(--sage); }
+.meter.asleep .bar i { width: 61.1%; background: var(--sage); }
 .switch { display: flex; align-items: center; gap: 12px; font-family: var(--display); font-size: 17px; cursor: pointer; user-select: none; }
 .switch input { appearance: none; -webkit-appearance: none; width: 52px; height: 30px; border-radius: 999px; background: var(--line); position: relative; margin: 0; cursor: pointer; transition: background .2s; }
 .switch input::after { content: ''; position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .25s var(--ease); }
 .switch input:checked { background: var(--sage); }
 .switch input:checked::after { transform: translateX(22px); }
 .fine { font-size: 14.5px; color: var(--ink-2); margin: 16px 0 0; }
+
+/* tested against Chrome and Safari */
+.bench { padding: 72px 0; border-top: 1px solid var(--line); }
+.bench h2 { font-size: clamp(36px, 4.4vw, 56px); line-height: 1; margin-bottom: 40px; max-width: 14em; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.chart { margin: 0; padding: 26px 28px; border-radius: 28px; background: var(--sand); }
+.chart figcaption { color: var(--ink-2); font-size: 17px; margin-bottom: 18px; }
+.chart figcaption b { color: var(--ink); font-family: var(--display); font-size: 22px; display: block; }
+.chart .row { display: grid; grid-template-columns: minmax(0, 11em) minmax(0, 1fr) 5.2em; align-items: center; gap: 12px; padding: 7px 0; font-size: 16px; }
+.chart .who { color: var(--ink-2); line-height: 1.25; }
+.chart .row.me .who { color: var(--ink); font-weight: 600; }
+.chart .track { height: 14px; border-radius: 999px; background: var(--paper); overflow: hidden; }
+.chart .track i { display: block; height: 100%; width: var(--v); border-radius: inherit; background: var(--ink-2); opacity: .45; }
+.chart .row.me .track i { background: var(--clay); opacity: 1; }
+.chart .row b { font: 700 17px var(--display); text-align: right; font-variant-numeric: tabular-nums; }
+.chart-note { margin: 14px 0 0; font-size: 15.5px; color: var(--ink-2); }
+.bench > .fine { max-width: 62em; margin-top: 22px; }
+@media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .chart { padding: 22px 18px; } .chart .row { grid-template-columns: 1fr 4.6em; } .chart .track { grid-column: 1 / -1; order: 3; } }
 
 /* what else */
 .more { padding: 72px 0 40px; border-top: 1px solid var(--line); }
@@ -235,16 +255,37 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
 
   <section class="wrap sleep" id="features">
     <div>
-      <h2>Half the memory, same tabs.</h2>
-      <p>Tabs you haven’t looked at in a while fall asleep. They stay where they are and wake up the moment you click them, while your computer gets its memory back.</p>
+      <h2>Lighter than Chrome. Even lighter asleep.</h2>
+      <p>Tabs you haven’t looked at in a while fall asleep. They stay where they are and wake up the moment you click them, while your computer gets its memory back. Tabs playing music or video stay awake.</p>
     </div>
     <div class="meter" id="meter">
       <div class="tabs" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
-      <div class="bar-row"><b id="mb">1,577 MB</b><span>five tabs open</span></div>
+      <div class="bar-row"><b id="mb">900 MB</b><span>five sites open</span></div>
       <div class="bar"><i></i></div>
       <label class="switch"><input type="checkbox" id="sleepToggle"> Let idle tabs sleep</label>
-      <p class="fine">Measured on The Stupid Browser with five tabs: 1,577 MB awake, 738 MB with four asleep. Idle CPU dropped from 2.1% to 0.1%.</p>
+      <p class="fine">Measured in The Stupid Browser with the same five sites as the test below: about 900 MB with every tab awake, 550 MB with the idle ones asleep.</p>
     </div>
+  </section>
+
+  <section class="wrap bench" aria-labelledby="benchTitle">
+    <h2 id="benchTitle">We tested it against Chrome and Safari.</h2>
+    <div class="charts">
+      <figure class="chart">
+        <figcaption><b>Memory</b> with the same five sites open. Less is better.</figcaption>
+        <div class="row me"><span class="who">The Stupid Browser, idle tabs asleep</span><span class="track"><i style="--v: 36.9%"></i></span><b>550 MB</b></div>
+        <div class="row me"><span class="who">The Stupid Browser</span><span class="track"><i style="--v: 60.4%"></i></span><b>900 MB</b></div>
+        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 69.1%"></i></span><b>1,030 MB</b></div>
+        <div class="row"><span class="who">Safari</span><span class="track"><i style="--v: 100%"></i></span><b>1,490 MB</b></div>
+      </figure>
+      <figure class="chart">
+        <figcaption><b>Speed</b> in Speedometer 3.1, the test browser makers use. More is better.</figcaption>
+        <div class="row"><span class="who">Safari</span><span class="track"><i style="--v: 100%"></i></span><b>48.2</b></div>
+        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 88.8%"></i></span><b>42.8</b></div>
+        <div class="row me"><span class="who">The Stupid Browser</span><span class="track"><i style="--v: 88%"></i></span><b>42.4</b></div>
+        <p class="chart-note">As fast as Chrome, because it runs the same engine. On a Mac, Safari wins this one: Apple makes both the engine and the chip.</p>
+      </figure>
+    </div>
+    <p class="fine">Tested on 17 October 2026 on a Mac mini with an M4 chip and 16 GB of memory, each browser with a fresh profile. Sites: Wikipedia, YouTube, Reddit, GitHub and The Verge. Memory is the total of all the browser’s processes, measured with Apple’s footprint tool. Speedometer scores are the average of 10 rounds and vary by about ±2.5 between runs.</p>
   </section>
 
   <section class="wrap more">
@@ -258,7 +299,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
       <div class="feat">
         <svg class="mark" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="20" cy="17" r="10"/><path d="M13 33h14M20 27v6"/><circle cx="16.5" cy="16" r="1.5" fill="currentColor"/><circle cx="23.5" cy="16" r="1.5" fill="currentColor"/></svg>
         <h3>Buddy</h3>
-        <p>A little AI hiker that can read the tab you’re on. Highlight any text and ask about it. Works with Claude, ChatGPT, Gemini or Ollama.</p>
+        <p>A little AI hiker that can read the tab you’re on. Highlight any text, click Ask Buddy (or whatever you named it), and ask away. Works with Claude, ChatGPT, Gemini or Ollama.</p>
       </div>
       <div class="feat">
         <svg class="mark" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20a13 13 0 1 0 4-9.4"/><path d="M7 5v6h6"/><path d="M20 13v8l5 3"/></svg>
@@ -374,7 +415,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   const LINES = {
     click: ['Hi. I’m the logo.', 'Stop staring. That’s my job.', 'Yes, it’s really free.', 'I watch your tabs so you don’t have to.', 'Ads? Never heard of them.',
       'Download me. I’ll behave.', 'Go on, throw me. I dare you.', 'I’m not stupid. The name is.', 'Your other browser has never looked back at you.', 'I only have one eye, but it’s on you.',
-      'Sleeping tabs cut my memory in half. Just saying.', 'I block ads before they even load.', 'Five tabs, 738 MB. Beat that.', 'Honestly? Best browser I’ve ever been the logo of.',
+      'Less memory than Chrome. Just saying.', 'I block ads before they even load.', 'Five sites, 550 MB with sleeping tabs. Beat that.', 'Honestly? Best browser I’ve ever been the logo of.',
       'Sleeping tabs. Shield. Buddy. Rewind. I’m kind of a big deal.', 'Your history stays on your computer. I don’t peek. Much.', 'Free on Mac, Windows and Android. Pick one.',
       'This is fine. 🔥', 'One does not simply close all the tabs.', 'Such browser. Very calm. Wow.', 'Task failed successfully.', 'Stonks. 📈', 'It’s over 9000 tabs!',
       'Me: one more tab. Also me: 47 tabs.', 'Ah yes, the internet. Made of internet.', 'Nobody: … Me: 👁️', 'Big brain time.', 'Not all who wander are lost. Some just have 40 tabs open.',
@@ -552,7 +593,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   const meter = document.getElementById('meter'), mb = document.getElementById('mb');
   document.getElementById('sleepToggle').addEventListener('change', (e) => {
     const on = e.target.checked; meter.classList.toggle('asleep', on);
-    const from = on ? 1577 : 738, to = on ? 738 : 1577, t0 = performance.now(), dur = reduce ? 1 : 800;
+    const from = on ? 900 : 550, to = on ? 550 : 900, t0 = performance.now(), dur = reduce ? 1 : 800;
     const tick = (now) => { const k = Math.min(1, (now - t0) / dur), v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
       mb.textContent = v.toLocaleString('en-US') + ' MB'; if (k < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
