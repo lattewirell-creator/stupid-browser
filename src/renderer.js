@@ -51,9 +51,20 @@ const activeTab = () => tabById(activeId);
 const faviconFor = (url) => { const h = hostOf(url); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${h}` : null; };
 function searchUrl(q) { return (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q)); }
 function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'DuckDuckGo' }).name; }
+// Community / site searches: "!r how to…" → your engine limited to Reddit, etc.
+const SCOPES = [
+  { key: 'reddit', bang: ['r', 'reddit'], name: 'Reddit', site: 'reddit.com' },
+  { key: 'quora', bang: ['q', 'quora'], name: 'Quora', site: 'quora.com' },
+  { key: 'so', bang: ['so', 'stackoverflow'], name: 'Stack Overflow', site: 'stackoverflow.com' },
+  { key: 'yt', bang: ['yt', 'youtube'], name: 'YouTube', url: 'https://www.youtube.com/results?search_query=%s' },
+  { key: 'w', bang: ['w', 'wiki'], name: 'Wikipedia', url: 'https://en.wikipedia.org/w/index.php?search=%s' }
+];
+const scopeUrl = (sc, q) => (sc.url ? sc.url.replace('%s', encodeURIComponent(q)) : searchUrl(`${q} site:${sc.site}`));
 function toUrl(text) {
   const t = String(text || '').trim();
   if (!t) return null;
+  const bang = /^!(\w+)\s+(.+)$/.exec(t);
+  if (bang) { const sc = SCOPES.find((x) => x.bang.includes(bang[1].toLowerCase())); if (sc) return scopeUrl(sc, bang[2]); }
   if (/^(https?|file|stupid|about|view-source):/i.test(t)) return t;
   if (/^localhost(:\d+)?(\/.*)?$/i.test(t) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(t)) return 'http://' + t;
   if (!/\s/.test(t) && /^[^\s/]+\.[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(t)) return 'https://' + t;
@@ -846,7 +857,9 @@ async function updateSuggest(inline) {
   const lq = q.toLowerCase();
   for (const t of tabs) if (t.id !== activeId && !isInternal(t.url) && ((t.title || '').toLowerCase().includes(lq) || t.url.toLowerCase().includes(lq))) sugItems.push({ kind: 'tab', label: prettyTitle(t), sub: 'Switch to this tab', id: t.id, fav: t.favicon });
   for (const r of res) if (r.url !== go) sugItems.push({ kind: r.kind, label: r.title || r.url, sub: r.url.replace(/^https?:\/\/(www\.)?/, ''), url: r.url, fav: faviconFor(r.url) });
-  if (isSearch) sugItems.push({ kind: 'search', label: q, sub: 'Ask Claude in the AI sidebar', ai: true });
+  if (isSearch && !/^!\w+\s/.test(q)) sugItems.splice(1, 0, { kind: 'scopes', label: q, sub: '' });
+  const buddyOn = window.buddy && !(settings.buddy && settings.buddy.enabled === false);
+  if (isSearch) sugItems.push({ kind: 'search', label: q, sub: buddyOn ? `Ask ${(settings.buddyLook && settings.buddyLook.name) || 'Buddy'}` : 'Ask Claude in the AI sidebar', ai: true, buddy: buddyOn });
   sugItems = sugItems.slice(0, 9);
   sugSel = 0;
   // inline completion (Chrome-style) from the best history/bookmark prefix match
@@ -866,6 +879,18 @@ function renderSuggest() {
   const box = $('suggest'); box.innerHTML = '';
   if (!sugItems.length) { closeSuggest(); return; }
   sugItems.forEach((it, i) => {
+    if (it.kind === 'scopes') {   // one row of "search on Reddit / Quora / …" buttons
+      const r = el('div', 'sug sug-scopes' + (i === sugSel ? ' sel' : ''));
+      r.appendChild(el('span', 'sug-s', 'Search on'));
+      for (const sc of SCOPES) {
+        const b = el('button', 'scope-chip'); const im = el('img'); im.src = faviconFor(sc.url || 'https://' + sc.site); im.onerror = () => im.remove();
+        b.append(im, el('span', null, sc.name)); b.title = `Search ${sc.name} for “${it.label}”`;
+        b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); closeSuggest(); $('address').blur(); navigate(scopeUrl(sc, it.label)); });
+        r.appendChild(b);
+      }
+      r.addEventListener('mousedown', (e) => { e.preventDefault(); sugSel = i; pickSuggest(); });
+      box.appendChild(r); return;
+    }
     const r = el('div', 'sug' + (i === sugSel ? ' sel' : ''));
     if (it.fav) { const im = el('img', 'sug-ic'); im.src = it.fav; im.onerror = () => im.replaceWith(svg(ICON.globe, 'sug-ic')); r.appendChild(im); }
     else r.appendChild(svg(it.kind === 'search' ? ICON.search : it.kind === 'tab' ? ICON.tab : it.kind === 'bookmark' ? ICON.star : it.kind === 'history' ? ICON.clock : ICON.globe, 'sug-ic'));
@@ -882,6 +907,8 @@ function pickSuggest() {
   closeSuggest(); input.blur();
   if (!it) { navigate(input.value); return; }
   if (it.kind === 'tab') return activate_(it.id);
+  if (it.kind === 'scopes') return navigate(scopeUrl(SCOPES[0], it.label));
+  if (it.ai && it.buddy) { window.buddy.show().then(() => window.buddy.ask(it.label)); return; }
   if (it.ai) { navigator.clipboard && navigator.clipboard.writeText(it.label).catch(() => {}); openAI(); toast('Question copied — paste it into Claude'); return; }
   navigate(sugSel === 0 && !it.url ? input.value : it.url);
 }

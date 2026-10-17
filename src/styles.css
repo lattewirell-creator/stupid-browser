@@ -560,3 +560,9 @@ body.rail-dragging webview { pointer-events: none; }
 #views webview.switch-in.visible { animation: switchIn .14s ease-out; }
 @keyframes switchIn { from { opacity: .82; } }
 @media (prefers-reduced-motion: reduce) { .tab.entering, .tab.leaving, .tab.active::after, #views webview.switch-in.visible { animation: none; } .tab.leaving { display: none; } }
+/* address bar: search on Reddit / Quora / … */
+.sug-scopes { flex-wrap: wrap; gap: 6px; }
+.sug-scopes .sug-s { margin-right: 4px; }
+.scope-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); font-size: 12px; cursor: pointer; transition: all .15s; }
+.scope-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.scope-chip img { width: 14px; height: 14px; border-radius: 3px; }
