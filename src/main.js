@@ -552,7 +552,8 @@ function cleanPatch(patch) {
       backpack: L.backpack !== false, scarf: L.scarf !== false,
       hat: ['none', 'tophat', 'cap', 'beanie', 'crown', 'party', 'cowboy', 'headphones', 'halo'].includes(L.hat) ? L.hat : 'none',
       glasses: ['none', 'round', 'square', 'shades', 'star', 'heart'].includes(L.glasses) ? L.glasses : 'none',
-      image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : ''
+      image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : '',
+      v: 2   // saved after the hiker existed (see migrateBuddyLook)
     };
   }
   delete p.brandBundle;   // only brand:apply sets this
@@ -1219,7 +1220,16 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', (_e, argv) => openFromOutside(normalizeArgUrl(urlFromArgv(argv))));
 
+// Buddy looks saved before the hiker design existed default to an old robot head ('round').
+// Move those to the hiker once, keeping name, hat, glasses and colors. Looks saved later carry v: 2.
+function migrateBuddyLook() {
+  const saved = store.read('settings.json', {});
+  const L = saved.buddyLook;
+  if (!L || typeof L !== 'object' || L.v === 2) return;
+  setSettings({ buddyLook: Object.assign({}, L, { shape: 'hiker', v: 2 }) });
+}
   app.whenReady().then(() => {
+    migrateBuddyLook();
     // Brand-new install (no settings yet): open the welcome screen once.
     const firstRun = !fs.existsSync(path.join(app.getPath('userData'), 'settings.json'));
     const s = getSettings();
