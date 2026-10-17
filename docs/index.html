@@ -372,7 +372,12 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
     click: ['Hi. I’m the logo.', 'Stop staring. That’s my job.', 'Yes, it’s really free.', 'I watch your tabs so you don’t have to.', 'Ads? Never heard of them.',
       'Download me. I’ll behave.', 'Go on, throw me. I dare you.', 'I’m not stupid. The name is.', 'Your other browser has never looked back at you.', 'I only have one eye, but it’s on you.',
       'Half the memory of a normal browser. Just saying.', 'I block ads before they even load.', 'Five tabs, 738 MB. Beat that.', 'Honestly? Best browser I’ve ever been the logo of.',
-      'Sleeping tabs. Shield. Buddy. Rewind. I’m kind of a big deal.', 'Your history stays on your computer. I don’t peek. Much.', 'Free on Mac, Windows and Android. Pick one.'],
+      'Sleeping tabs. Shield. Buddy. Rewind. I’m kind of a big deal.', 'Your history stays on your computer. I don’t peek. Much.', 'Free on Mac, Windows and Android. Pick one.',
+      'This is fine. 🔥', 'One does not simply close all the tabs.', 'Such browser. Very calm. Wow.', 'Task failed successfully.', 'Stonks. 📈', 'It’s over 9000 tabs!',
+      'Me: one more tab. Also me: 47 tabs.', 'Ah yes, the internet. Made of internet.', 'Nobody: … Me: 👁️', 'Big brain time.', 'Not all who wander are lost. Some just have 40 tabs open.',
+      'Every tab you close is a small goodbye.', 'You are not your browser history.', 'We are all just cookies in the great cache of the universe.',
+      'What is a page, if no one scrolls it?', 'Between loading and loaded, there is a quiet moment. Breathe.', 'The internet never forgets. I try to.',
+      'An eye that sees everything still can’t find the tab with the music.', 'The back button is proof that you can always return.', 'In the end, we are all just pixels looking for a home page.'],
     grab: ['Whoa, put me down!', 'Careful, I bruise easily.', 'Where are we going?', 'Hey! Personal space!'],
     fly: ['Wheeeee!', 'I can see my house!', 'Aaaaaah!', 'Best. Day. Ever.'],
     bonk: ['Ow.', 'My pupil!', 'Ouch, the edge of the screen.', 'That one’s going to leave a mark.', 'Bonk.'],
@@ -454,21 +459,28 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   addEventListener('resize', () => { if (wrap.classList.contains('loose') && !held) { pos.x = Math.min(pos.x, innerWidth - size); pos.y = Math.min(pos.y, innerHeight - size); place(); } });
 
   // ten clicks: it warns you a few times, then calls its friends
-  let pokes = 0, pokeT, storming = false;
+  let pokes = 0, pokeT, waves = 0;
   const WARN = { 4: 'Okay, that’s four.', 6: 'Stop poking me.', 8: 'I’m warning you.', 9: 'One more and I call my friends.' };
+  const WAVE_LINES = ['You asked for it.', 'I have more friends.', 'Okay, now it’s the whole family.', 'You really don’t learn, do you?', 'ALL OF THEM. 👁️👁️👁️'];
+  const tell = (line, ms) => { bubble.textContent = line; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), ms); };
   function poked() {
-    if (storming) { say('click'); return; }
     clearTimeout(pokeT); pokeT = setTimeout(() => { pokes = 0; }, 6000);
     pokes++;
-    if (pokes >= 10) { pokes = 0; bubble.textContent = 'You asked for it.'; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), 2600); storm(); return; }
-    if (WARN[pokes]) { bubble.textContent = WARN[pokes]; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), 2200); }
-    else say('click');
+    if (pokes % 10 === 0) { tell(WAVE_LINES[Math.min(waves, WAVE_LINES.length - 1)], 2600); waves++; storm(waves); return; }
+    const n = pokes % 10;
+    if (waves === 0 && WARN[n]) tell(WARN[n], 2200); else say('click');
   }
-  // a rain of little googly eyes that pile up at the bottom, all watching your pointer; click near them to kick them
-  function storm() {
+  // a rain of little googly eyes that pile up at the bottom, all watching your pointer; click near them to kick them.
+  // Each wave is bigger than the last; the pile clears itself 14 s after the latest wave.
+  let balls = [], stormEnd = 0, stormRaf = 0, cv = null;
+  function storm(wave) {
     if (reduce) return;
-    storming = true;
-    const cv = document.createElement('canvas'); cv.setAttribute('aria-hidden', 'true');
+    const room = 260 - balls.length;
+    const n = Math.max(0, Math.min(room, Math.round(innerWidth * innerHeight / 22000 * (0.6 + wave * 0.5))));
+    for (let i = 0; i < n; i++) { const r = 14 + Math.random() * (24 + Math.min(wave, 4) * 4); balls.push({ r, x: r + Math.random() * (innerWidth - 2 * r), y: -r - Math.random() * innerHeight * 1.2 - i * 4, vx: (Math.random() - .5) * 6, vy: Math.random() * 4, px: 0, py: 0 }); }
+    stormEnd = performance.now() + 14000;
+    if (cv) { cv.style.opacity = '1'; return; }
+    cv = document.createElement('canvas'); cv.setAttribute('aria-hidden', 'true');
     cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:60;transition:opacity 1s';
     document.body.appendChild(cv);
     const ctx = cv.getContext('2d'), dpr = Math.min(2, devicePixelRatio || 1);
@@ -478,9 +490,6 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
     const track = (e) => { mx = e.clientX; my = e.clientY; };
     const kick = (e) => { for (const b of balls) { const dx = b.x - e.clientX, dy = b.y - e.clientY, d = Math.hypot(dx, dy); if (d < 170) { const f = (170 - d) / 170; b.vx += dx / (d || 1) * 22 * f; b.vy += -14 - 18 * f; } } };
     addEventListener('pointermove', track, { passive: true }); addEventListener('pointerdown', kick);
-    const N = Math.min(46, Math.round(innerWidth * innerHeight / 22000));
-    const balls = Array.from({ length: N }, (_, i) => { const r = 16 + Math.random() * 30; return { r, x: r + Math.random() * (innerWidth - 2 * r), y: -r - Math.random() * innerHeight * 1.2 - i * 6, vx: (Math.random() - .5) * 6, vy: Math.random() * 4, px: 0, py: 0 }; });
-    const t0 = performance.now(); let raf, fading = false;
     const draw = (b) => {
       ctx.fillStyle = '#DB7656'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
       ctx.fillStyle = '#FFFDF8'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * .754, 0, 7); ctx.fill();
@@ -489,6 +498,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
       b.px += (dx / d * reach - b.px) * .2; b.py += (dy / d * reach - b.py) * .2;
       ctx.fillStyle = '#33321F'; ctx.beginPath(); ctx.arc(b.x + b.px, b.y + b.py, b.r * .15, 0, 7); ctx.fill();
     };
+    let fading = false;
     const frame = (now) => {
       const W = innerWidth, H = innerHeight;
       for (const b of balls) {
@@ -506,12 +516,15 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
       balls.forEach(draw);
-      if (now - t0 < 14000) raf = requestAnimationFrame(frame);
-      else if (!fading) { fading = true; cv.style.opacity = '0'; setTimeout(() => { cancelAnimationFrame(raf); cv.remove(); removeEventListener('pointermove', track); removeEventListener('pointerdown', kick); removeEventListener('resize', fit); storming = false; }, 1000); raf = requestAnimationFrame(frame); }
-      else raf = requestAnimationFrame(frame);
+      if (now > stormEnd && !fading) { fading = true; cv.style.opacity = '0'; }
+      if (fading && now < stormEnd) { fading = false; }   // a new wave arrived while fading
+      if (fading && now > stormEnd + 1000) {
+        cv.remove(); cv = null; balls = []; removeEventListener('pointermove', track); removeEventListener('pointerdown', kick); removeEventListener('resize', fit); return;
+      }
+      stormRaf = requestAnimationFrame(frame);
     };
-    raf = requestAnimationFrame(frame);
-    setTimeout(() => { bubble.textContent = 'Click near them. They love it.'; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), 3000); }, 3200);
+    stormRaf = requestAnimationFrame(frame);
+    setTimeout(() => tell('Click near them. They love it.', 3000), 3200);
   }
 
   // put it back where it lives
