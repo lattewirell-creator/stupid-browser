@@ -535,3 +535,7 @@ body.rail-dragging webview { pointer-events: none; }
 .bdc-ex:first-child { font-size: 11.5px; }
 .bdc-ex.on { border-color: var(--accent); background: var(--accent-soft); }
 .bdc-done { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+/* new tab opens with a soft fade instead of a flash */
+#views webview.fresh.visible { animation: freshIn .26s cubic-bezier(.2,.8,.2,1); }
+@keyframes freshIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #views webview.fresh.visible { animation: none; } }

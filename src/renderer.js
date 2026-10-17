@@ -126,9 +126,25 @@ function normalizeOrder() {
   tabs = [...pinned, ...out];
 }
 
+// A blank new tab is kept ready (hidden) so opening one is instant, like Chrome's prerendered new tab page.
+let spareTab = null, spareT = null;
+function makeSpare() {
+  clearTimeout(spareT);
+  if (spareTab || restoring) return;
+  spareTab = { id: nextId++, url: NEWTAB, title: '', favicon: null, pinned: false, groupId: null, wv: null, loading: false, muted: false, audible: false, zoom: 1, lastActive: Date.now() };
+  createWebview(spareTab);
+}
+const queueSpare = () => { clearTimeout(spareT); spareT = setTimeout(makeSpare, 1200); };
 function newTab(url, opts = {}) {
   const { activate = true, pinned = false, title, favicon, lazy = false, groupId = null, index = null, muted = false, afterId = null } = opts;
-  const tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
+  let tab;
+  if (!lazy && (url || NEWTAB) === NEWTAB && spareTab && spareTab.ready && !spareTab.crashed) {
+    tab = spareTab; spareTab = null;
+    Object.assign(tab, { pinned, groupId, muted, lastActive: Date.now(), title: title || tab.title });
+    if (muted) try { tab.wv.setAudioMuted(true); } catch {}
+    tab.wv.classList.add('fresh'); setTimeout(() => tab.wv && tab.wv.classList.remove('fresh'), 400);
+    queueSpare();
+  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
   if (index != null) tabs.splice(Math.min(index, tabs.length), 0, tab);
   else if (afterId != null) {
     // Chrome-like: links open right after the opener (and its other children)
@@ -140,7 +156,7 @@ function newTab(url, opts = {}) {
     if (opener && opener.groupId) tab.groupId = opener.groupId;
   } else tabs.push(tab);
   normalizeOrder();
-  if (!lazy) createWebview(tab);
+  if (!lazy && !tab.wv) { createWebview(tab); if (tab.url === NEWTAB) { tab.wv.classList.add('fresh'); setTimeout(() => tab.wv && tab.wv.classList.remove('fresh'), 400); queueSpare(); } }
   buildTabEl(tab);
   if (activate) activate_(tab.id); else renderAll();
   scheduleSave();
