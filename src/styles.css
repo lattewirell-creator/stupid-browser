@@ -498,3 +498,5 @@ body.rail-dragging webview { pointer-events: none; }
 @keyframes botTalk { from { height: 2px; } to { height: 6px; width: 12px; margin-left: -6px; border-radius: 4px; } }
 @keyframes botHop { 40% { transform: translateY(-9px) rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) { .bot-float, .bot-shadow, .bot-eye, .bot-head, .bot-antenna i, .bot-eyes, .bot-mouth { animation: none !important; } }
+.tab.asleep .fav, .tab.asleep .fav-dot { opacity: .45; filter: grayscale(.7); }
+.tab.asleep .title { opacity: .7; }

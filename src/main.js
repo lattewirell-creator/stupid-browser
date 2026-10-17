@@ -51,10 +51,10 @@ const SEARCH_ENGINES = {
 };
 const DEFAULT_SETTINGS = () => ({
   name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
-  logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true,
+  logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25,
+  bg: 'none', bgDim: 25, tabSleep: 15,
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -472,11 +472,14 @@ function cleanPatch(patch) {
   const p = Object.assign({}, patch);
   if ('logo' in p && !['ring', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
   if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
+  if ('quoteMode' in p && !['browser', 'mine', 'mix'].includes(p.quoteMode)) delete p.quoteMode;
+  if ('myQuotes' in p) p.myQuotes = (Array.isArray(p.myQuotes) ? p.myQuotes : []).map((q) => String(q).trim().slice(0, 200)).filter(Boolean).slice(0, 100);
   if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
   if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
   if ('eq' in p) p.eq = cleanEq(p.eq);
   if ('aiButton' in p && !['buddy', 'sidebar', 'off'].includes(p.aiButton)) delete p.aiButton;
   if ('bg' in p && !/^(none|image|preset:[a-z]{2,16})$/.test(String(p.bg))) delete p.bg;
+  if ('tabSleep' in p && ![0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
   if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
   if ('buddy' in p) {
     const b = p.buddy && typeof p.buddy === 'object' ? p.buddy : {};

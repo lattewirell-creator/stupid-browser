@@ -153,9 +153,10 @@ function activate_(id) {
   if (split && !split.includes(id)) split = null;
   if (tab.groupId && groups.get(tab.groupId) && groups.get(tab.groupId).collapsed) groups.get(tab.groupId).collapsed = false;
   const changed = activeId !== id;
+  const prev = changed && tabById(activeId); if (prev) prev.lastActive = Date.now();   // "last seen", for tab sleeping
   activeId = id;
   tab.lastActive = Date.now();
-  if (!tab.wv) createWebview(tab);
+  if (!tab.wv) { tab.asleep = false; createWebview(tab); }
   renderAll();
   if (changed) { closeFind(); hideAllPops(); showQueuedPrompt(); }
   if (isNewtab(tab.url)) setTimeout(() => { $('address').focus(); }, 30);
@@ -317,6 +318,8 @@ function renderTab(tab) {
   e.classList.toggle('sleeping', !tab.wv);
   e.classList.toggle('crashed', !!tab.crashed);
   e.classList.toggle('split', !!(split && split.includes(tab.id)));
+  e.classList.toggle('asleep', !!tab.asleep && !tab.wv);
+  if (tab.asleep && !tab.wv) e.title = (tab.title || tab.url) + ' — sleeping to save memory'; else if (e.title.endsWith(' — sleeping to save memory')) e.title = tab.title || tab.url;
   e.classList.toggle('grouped', !!tab.groupId);
   const g = tab.groupId && groups.get(tab.groupId);
   e.style.setProperty('--gc', g ? GROUP_COLORS[g.color] : 'transparent');
@@ -525,6 +528,7 @@ function hideAllPops() { hidePop(); hideMenus(); }
 function showMenu(target, items, x, y) {
   const m = $(target); m.innerHTML = '';
   for (const it of items) {
+    if (!it) continue;
     if (it === '-') { m.appendChild(el('div', 'sep')); continue; }
     if (it.row) { m.appendChild(it.row); continue; }
     const b = el('button', 'menu-item');
@@ -559,6 +563,8 @@ function tabMenu(tab, x, y) {
     { label: tab.muted ? 'Unmute site' : 'Mute site', fn: () => toggleMute(tab) },
     tab.id !== activeId ? { label: 'Split with current tab', fn: () => toggleSplit(tab.id) } : (split ? { label: 'Exit split view', fn: () => toggleSplit() } : { label: 'Split view', key: 'Ctrl+Shift+S', fn: () => toggleSplit() }),
     '-',
+    tab.wv && tab.id !== activeId ? { label: 'Sleep tab (free memory)', fn: () => sleepTab(tab, true) } : null,
+    { label: 'Sleep other tabs', disabled: !tabs.some((t) => t !== tab && t.wv && t.id !== activeId), fn: () => tabs.forEach((t) => { if (t !== tab) sleepTab(t, true); }) },
     { label: 'Close', key: 'Ctrl+W', fn: () => closeTab(tab.id) },
     { label: 'Close other tabs', disabled: tabs.filter((t) => !t.pinned).length < 2, fn: () => closeOthers(tab) },
     { label: 'Close tabs to the right', disabled: i === tabs.length - 1, fn: () => closeRight(tab) },
@@ -1196,6 +1202,30 @@ setInterval(() => {
     if (a !== !!t.audible) { t.audible = a; renderTab(t); }
   }
 }, 1200);
+
+/* ---------------- tab sleeping (Memory saver) ----------------
+   Background tabs that haven't been looked at for a while are unloaded (their webview is removed) and
+   reload instantly when clicked, like Chrome's Memory Saver. Settings → Performance sets the delay. */
+function sleepable(t) { return t.wv && t.id !== activeId && !(split && split.includes(t.id)) && !t.audible && !t.loading; }
+async function sleepTab(t, now = false) {
+  if (!sleepable(t)) return false;
+  // Don't throw away half-typed text.
+  if (!now || t.ready) {
+    let typing = false;
+    try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("input,textarea,[contenteditable=true]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 && document.activeElement === e : (e.type !== "hidden" && e.type !== "password" && e.type !== "checkbox" && e.type !== "radio" && e.value && e.value !== e.defaultValue))'); } catch {}
+    if (typing || !sleepable(t)) return false;
+  }
+  try { const u = t.wv.getURL(); if (u) t.url = u; const ti = t.wv.getTitle(); if (ti) t.title = ti; } catch {}
+  t.wv.remove(); t.wv = null; t.ready = false; t.loading = false; t.asleep = true;
+  renderTab(t);
+  return true;
+}
+setInterval(() => {
+  const mins = settings.tabSleep == null ? 15 : +settings.tabSleep;
+  if (!mins) return;
+  const cutoff = Date.now() - mins * 60000;
+  for (const t of tabs) if (sleepable(t) && (t.lastActive || 0) < cutoff) sleepTab(t);
+}, 60000);
 
 /* ---------------- session save ---------------- */
 let saveTimer;

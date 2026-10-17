@@ -45,7 +45,12 @@
     <input id="czTitle" class="cz-input" maxlength="40" placeholder="The Stupid Browser">
     <div class="cz-label">Widgets</div>
     <div class="cz-widgets" id="czWidgets"></div>
-    <label class="cz-check"><span>Random browser quotes</span><input id="czQuotes" type="checkbox" class="toggle"></label>
+    <label class="cz-check"><span>Quote above the clock</span><input id="czQuotes" type="checkbox" class="toggle"></label>
+    <div id="czQuoteBox" class="cz-row">
+      <div class="cz-seg" id="czQuoteMode"><button data-v="browser">Browser quotes</button><button data-v="mine">My own</button><button data-v="mix">Both</button></div>
+      <textarea id="czMyQuotes" class="cz-input cz-quotes" rows="4" placeholder="Write your own quotes or reminders — one per line&#10;Drink water 💧&#10;Call grandma on Sunday"></textarea>
+      <small class="cz-note" id="czQuoteNote"></small>
+    </div>
     <button id="czReset" class="btn cz-reset">Reset to default</button>
   </aside>
   <script src="keys.js"></script>
