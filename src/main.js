@@ -425,6 +425,25 @@ function loadBlocker() {
 let countTimer = null;
 function broadcastCount() { if (countTimer) return; countTimer = setTimeout(() => { countTimer = null; broadcast('adblock:count', blockedCount); }, 500); }
 function tabSessions() { const out = new Set([session.fromPartition(PERSIST)]); for (const w of windows.values()) out.add(session.fromPartition(w.partition)); return [...out]; }
+// Ghostery runs its scriptlets with event.sender.executeJavaScript, i.e. in the tab's *main* frame,
+// whenever *any* frame asks. On YouTube (lots of ad iframes) that re-ran the scriptlets ~30 times per
+// page, re-wrapping JSON/fetch each time, and videos stalled for up to 20 s. Run them in the frame that
+// asked instead, once per frame per document.
+const scriptletsRun = new Map();   // frame → url scriptlets ran for
+function frameScoped(e, url) {
+  const frame = e.senderFrame;
+  if (!frame) return e;
+  const sender = {
+    insertCSS: (css, opts) => e.sender.insertCSS(css, opts),
+    executeJavaScript: (code) => {
+      if (frame.isDestroyed() || scriptletsRun.get(frame) === frame.url) return;
+      scriptletsRun.set(frame, frame.url);
+      frame.executeJavaScript(code, true).catch(() => {});
+    }
+  };
+  if (scriptletsRun.size > 500) for (const f of scriptletsRun.keys()) if (f.isDestroyed()) scriptletsRun.delete(f);
+  return { frameId: e.frameId, processId: e.processId, sender };
+}
 function setAdblock(on, only) {
   const b = loadBlocker();
   if (!b) return { on: false, count: blockedCount, error: true };
@@ -441,7 +460,7 @@ function setAdblock(on, only) {
   }
   if (blockingCount > 0) {
     dropHandlers();
-    ipcMain.handle(AB_CHANNELS[0], (e, url, msg) => b.onInjectCosmeticFilters(e, url, msg));
+    ipcMain.handle(AB_CHANNELS[0], (e, url, msg) => b.onInjectCosmeticFilters(frameScoped(e, url), url, msg));
     ipcMain.handle(AB_CHANNELS[1], (e) => b.onIsMutationObserverEnabled(e));
   }
   return { on, count: blockedCount };
