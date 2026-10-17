@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Rewind</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="rewind.css">
+</head>
+<body>
+  <main>
+    <header class="rw-head">
+      <div class="rw-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg></div>
+      <div><h1>Rewind</h1><p class="lead">Everything you’ve seen, searchable — even tabs you closed. Private to this computer.</p></div>
+    </header>
+
+    <section id="intro" class="intro hidden">
+      <h2>Never lose a page again</h2>
+      <p>Turn on Rewind and the browser keeps a small snapshot and the text of each page you look at. Later, search “that blue sofa” or “the lemon pasta recipe” and jump right back.</p>
+      <ul>
+        <li>Stays on this computer — never uploaded</li>
+        <li>Skips private windows, pages with password fields, banking, payments and log-in pages</li>
+        <li>Forgets automatically after 30 days · pause or clear any time</li>
+      </ul>
+      <button id="turnOn" class="btn primary big">Turn on Rewind</button>
+    </section>
+
+    <section id="app" class="hidden">
+      <div class="rw-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="q" placeholder="Search everything you’ve seen…" autocomplete="off" spellcheck="false"><span id="count" class="muted"></span></div>
+      <div id="scrub" class="scrub hidden">
+        <div class="scrub-view"><img id="scrubImg" alt=""><div class="scrub-meta"><b id="scrubTitle"></b><span id="scrubWhen"></span></div><button id="scrubOpen" class="btn primary small">Open</button></div>
+        <input id="scrubRange" type="range" min="0" max="0" value="0" aria-label="Scrub through time">
+        <div class="scrub-ends"><span id="scrubOld"></span><span>drag to rewind</span><span>now</span></div>
+      </div>
+      <div id="results"></div>
+      <p id="empty" class="empty hidden"></p>
+    </section>
+
+    <footer id="foot" class="rw-foot hidden">
+      <span id="stat" class="muted"></span>
+      <label class="rw-toggle">Rewind on <input type="checkbox" id="onToggle" class="toggle"></label>
+      <form id="exForm" class="ex-form"><input id="exIn" placeholder="Never remember (e.g. mybank.com)"><button class="btn small">Add</button></form>
+      <div id="exList" class="ex-list"></div>
+      <button id="clearAll" class="btn small danger">Clear everything</button>
+    </footer>
+  </main>
+  <script src="keys.js"></script>
+  <script src="common.js"></script>
+  <script src="rewind.js"></script>
+</body>
+</html>

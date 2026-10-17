@@ -83,14 +83,14 @@ module.exports = function setupBuddy({ handle, store, enc, dec, getSettings, ent
   handle('buddy:stop', ['shell'], (e) => { const c = chats.get(e.sender.id); if (c && c.controller) c.controller.abort(); return true; });
 
   // What's on screen: screenshot + title/url/text of a tab in the caller's own window.
-  async function lookAt(sender, tabWcId) {
+  async function lookAt(sender, tabWcId, rect) {
     const wc = webContents.fromId(+tabWcId);
     if (!wc || wc.isDestroyed() || wc.getType() !== 'webview') return null;
     const owner = entryFor(wc), me = entryFor(sender);
     if (!owner || !me || owner.win.id !== me.win.id) return null;
     let image = null, text = '';
     try {
-      let img = await wc.capturePage();
+      let img = await require('./rewind-main').captureArea(sender, rect, wc);   // capture what the window shows
       if (img.getSize().width > 1400) img = img.resize({ width: 1400 });
       image = img.toJPEG(70).toString('base64');
     } catch {}
@@ -187,7 +187,7 @@ module.exports = function setupBuddy({ handle, store, enc, dec, getSettings, ent
     }
   }
 
-  handle('buddy:ask', ['shell'], async (e, { text, look, tabWcId } = {}) => {
+  handle('buddy:ask', ['shell'], async (e, { text, look, tabWcId, rect } = {}) => {
     const sender = e.sender;
     const c = cfg(); const P = PROVIDERS[c.provider];
     if (!c.enabled) return { ok: false, error: 'disabled' };
@@ -201,7 +201,7 @@ module.exports = function setupBuddy({ handle, store, enc, dec, getSettings, ent
     if (chat.controller) return { ok: false, error: 'busy' };
     if (chat.messages.length > MAX_TURNS * 2) chat.messages.splice(0, chat.messages.length - MAX_TURNS * 2);
 
-    const seen = look && entryFor(sender) && !entryFor(sender).incognito ? await lookAt(sender, tabWcId) : null;
+    const seen = look && entryFor(sender) && !entryFor(sender).incognito ? await lookAt(sender, tabWcId, rect) : null;
     const send = (d) => { if (!sender.isDestroyed()) sender.send('buddy:delta', d); };
     chat.controller = new AbortController();
     try {

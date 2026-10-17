@@ -131,7 +131,8 @@
     current = bubble('bot', ''); current.classList.add('typing'); current.__text = '';
     setBusy(true);
     let res;
-    try { res = await call('buddy:ask', { text, look: useLook, tabWcId: useLook ? t.wv.getWebContentsId() : null }); }
+    const box = useLook ? t.wv.getBoundingClientRect() : null;
+    try { res = await call('buddy:ask', { text, look: useLook, tabWcId: useLook ? t.wv.getWebContentsId() : null, rect: box ? { x: box.left, y: box.top, width: box.width, height: box.height } : null }); }
     catch { res = { ok: false, error: 'api' }; }
     setBusy(false);
     current.classList.remove('typing');

@@ -8,7 +8,7 @@ const NEWTAB = 'stupid://newtab/';
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
 const GROUP_COLORS = { clay: '#D97757', sand: '#C9A15A', sage: '#7C9A6E', sky: '#6A8FB5', plum: '#9B6A8E', rose: '#C96A7A', teal: '#5E9A94', slate: '#8A857A', ink: '#3D3929' };
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
-const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome' };
+const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome', rewind: 'Rewind' };
 
 let info = {};
 let settings = {};
@@ -85,7 +85,7 @@ function createWebview(tab) {
   tab.internal = isInternal(tab.url);
   tab.wv = wv; tab.ready = false;
   wv.addEventListener('did-start-loading', () => { tab.loading = true; tab.crashed = false; renderTab(tab); if (tab.id === activeId) updateNav(); });
-  wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); });
+  wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); rewindSoon(tab); });
   wv.addEventListener('dom-ready', () => { tab.ready = true; tab.wcId = wv.getWebContentsId(); if (tab.muted) wv.setAudioMuted(true); readZoom(tab); if (tab.id === activeId) updateNav(); });
   wv.addEventListener('page-title-updated', (e) => { tab.title = e.title; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); });
   wv.addEventListener('page-favicon-updated', (e) => { tab.favicon = (e.favicons || []).find((f) => /^(https?|data):/.test(f)) || null; renderTab(tab); scheduleSave(); });
@@ -183,6 +183,7 @@ function activate_(id) {
   const prev = changed && tabById(activeId); if (prev) prev.lastActive = Date.now();   // "last seen", for tab sleeping
   activeId = id;
   tab.lastActive = Date.now();
+  if (changed) rewindSoon(tab);
   if (changed && tab.wv && !split) { tab.wv.classList.remove('switch-in'); void tab.wv.offsetWidth; tab.wv.classList.add('switch-in'); }
   if (!tab.wv) { tab.asleep = false; createWebview(tab); }
   renderAll();
@@ -635,6 +636,7 @@ function mainMenu() {
     { label: 'New private window', key: 'Ctrl+Shift+N', fn: () => call('win:new', { incognito: true }) },
     '-',
     { label: 'History', key: 'Ctrl+H', fn: () => openInternal('history') },
+    { label: 'Rewind', key: 'Ctrl+Shift+Y', fn: () => openInternal('rewind') },
     { label: 'Downloads', key: 'Ctrl+J', fn: () => openInternal('downloads') },
     { label: 'Bookmarks', key: 'Ctrl+Shift+O', fn: () => openInternal('bookmarks') },
     { label: 'Reopen closed tab', key: 'Ctrl+Shift+T', disabled: !closedStack.length, fn: reopenClosed },
@@ -1225,6 +1227,7 @@ function runCmd(cmd) {
     case 'toggle-bookmarks-bar': call('settings:set', { showBookmarksBar: settings.showBookmarksBar === false }); break;
     case 'bookmarks': openInternal('bookmarks'); break;
     case 'history': openInternal('history'); break;
+    case 'rewind': openInternal('rewind'); break;
     case 'downloads': openInternal('downloads'); break;
     case 'settings': openInternal('settings'); break;
     case 'clear-data': openUrlInternal('settings', '#clear'); break;
@@ -1262,6 +1265,18 @@ setInterval(() => {
     if (a !== !!t.audible) { t.audible = a; renderTab(t); }
   }
 }, 1200);
+
+/* Rewind: once a page has loaded and is on screen, ask main to remember it (main skips private/sensitive pages). */
+const rewindTimers = new Map();
+function rewindSoon(tab) {
+  if (!settings.rewind || info.incognito || !tab || !/^https?:/.test(tab.url)) return;
+  clearTimeout(rewindTimers.get(tab.id));
+  rewindTimers.set(tab.id, setTimeout(() => {
+    rewindTimers.delete(tab.id);
+    const onScreen = tab.id === activeId || (split && split.includes(tab.id));
+    if (onScreen && tab.wv && tab.ready && !tab.loading) { const b = tab.wv.getBoundingClientRect(); call('rewind:capture', tab.wv.getWebContentsId(), { x: b.left, y: b.top, width: b.width, height: b.height }).catch(() => {}); }
+  }, 1600));
+}
 
 /* ---------------- tab sleeping (Memory saver) ----------------
    Background tabs that haven't been looked at for a while are unloaded (their webview is removed) and

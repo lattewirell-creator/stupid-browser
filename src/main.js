@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: 15, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -87,7 +87,7 @@ const DEFAULT_LAUNCHER = [
   { id: 'news', name: 'News', url: 'https://news.google.com' },
   { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
-const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome'];
+const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -234,6 +234,7 @@ function prepareSession(ses, { tabs, incognito }) {
     const host = u.hostname;
     if (!INTERNAL_PAGES.includes(host)) return new Response('Not found', { status: 404 });
     let rel = decodeURIComponent(u.pathname);
+    if (host === 'rewind' && rewindThumb) { const r = rewindThumb(rel); if (r) return r; }
     if (rel === '/' || rel === '') rel = `/${host}.html`;
     const base = rel.startsWith('/fonts/') || rel.startsWith('/assets/') ? __dirname : path.join(__dirname, 'pages');
     const target = path.normalize(path.join(base, rel));
@@ -518,7 +519,8 @@ function cleanPatch(patch) {
       image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : ''
     };
   }
-  for (const k of ['modernLook', 'verticalTabs', 'compactMode']) if (k in p) p[k] = !!p[k];
+  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind']) if (k in p) p[k] = !!p[k];
+  if ('rewindExclude' in p) p.rewindExclude = (Array.isArray(p.rewindExclude) ? p.rewindExclude : []).map((d) => String(d).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '')).filter((d) => /^[a-z0-9.-]{3,253}$/.test(d)).slice(0, 200);
   if ('appIcon' in p) p.appIcon = !!p.appIcon;
   if ('appIconImage' in p && !(p.appIconImage === '' || (typeof p.appIconImage === 'string' && p.appIconImage.length < 1500000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.appIconImage)))) delete p.appIconImage;
   if ('tabSleep' in p && ![0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
@@ -688,6 +690,7 @@ handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
 handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
 handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
 require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
+const rewindThumb = require('./rewind-main')({ app, handle, store, getSettings, entryFor, broadcast });
 require('./import-bookmarks')({ handle, store, getBookmarks, broadcast, getHistory, getPasswords, enc });
 
 handle('default:status', ['internal'], () => ({ http: app.isDefaultProtocolClient('http'), https: app.isDefaultProtocolClient('https'), platform: process.platform }));
@@ -808,6 +811,7 @@ function shortcutFor(input) {
     if (k === 'e') return 'toggle-sidebar';
     if (k === 'b') return 'toggle-bookmarks-bar';
     if (k === 'o') return 'bookmarks';
+    if (k === 'y') return 'rewind';
     if (k === 's') return 'split';
     if (k === 'r') return 'hard-reload';
     if (k === 'delete') return 'clear-data';
