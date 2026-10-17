@@ -44,6 +44,8 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     cfg.mediaTypesRequiringUserActionForPlayback = []
     let uc = cfg.userContentController
     uc.add(self, name: "tab")
+    uc.add(self, name: "page")
+    uc.addUserScript(WKUserScript(source: Res.text(Res.mac.appendingPathComponent("js/host-page.js")), injectionTime: .atDocumentStart, forMainFrameOnly: true))
     uc.addUserScript(WKUserScript(source: Res.text(Res.mac.appendingPathComponent("js/tab-events.js")), injectionTime: .atDocumentStart, forMainFrameOnly: true))
     return cfg
   }
@@ -219,8 +221,19 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     decisionHandler(.cancel)
   }
 
+  /// Our pages (stupid://…) calling the core: only from a stupid:// top frame, like the Electron app's isInternal check.
+  private func pageCall(_ m: WKScriptMessage) {
+    if let log = (m.body as? [String: Any])?["log"] as? String { print("[page] \(log)"); return }
+    guard m.frameInfo.isMainFrame, m.frameInfo.securityOrigin.protocol == "stupid", let w = m.webView,
+          let msg = m.body as? [String: Any], let id = msg["id"] as? Int, let channel = msg["channel"] as? String else { return }
+    owner.app.core.invoke(channel, msg["args"] ?? [], ctx: ["window": owner.id, "incognito": owner.incognito, "page": w.url?.absoluteString ?? ""]) { ok, v in
+      w.evaluateJavaScript("window.__stupidPage && __stupidPage.reply(\(id), \(ok), \(json(v)))", completionHandler: nil)
+    }
+  }
+
   // Messages from tab-events.js (page side)
   func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
+    if m.name == "page" { pageCall(m); return }
     guard let w = m.webView, let t = tab(for: w), let msg = m.body as? [String: Any], let type = msg["type"] as? String else { return }
     switch type {
     case "dom-ready": send(t, "dom-ready")
