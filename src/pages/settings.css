@@ -39,3 +39,10 @@ section.dim { opacity: .3; }
 .upd-bar { height: 4px; border-radius: 4px; background: var(--line); margin-top: 8px; overflow: hidden; max-width: 320px; }
 .upd-bar div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 .card.dim { opacity: .5; pointer-events: none; }
+.logo-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.logo-prev { width: 34px; height: 34px; flex: none; position: relative; display: grid; place-items: center; font-size: 26px; }
+.logo-prev.ring { border-radius: 50%; border: 2.5px solid var(--accent); }
+.logo-prev.ring::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--accent); }
+.logo-prev.image { border-radius: 9px; background: var(--hover) center / cover no-repeat; }
+.logo-prev.none { border: 2px dashed var(--line-strong); border-radius: 50%; }
+.small-in { width: 70px; text-align: center; }

@@ -13,6 +13,7 @@ function render() {
   for (const [k, c] of Object.entries(ACCENTS)) { const b = el('button', 'swatch' + ((s.accent || 'clay') === k ? ' on' : '')); b.style.background = c; b.title = k; b.onclick = () => set({ accent: k }).then(render); acc.appendChild(b); }
   bindValue('fontSize');
   $('tabSleep').value = String(s.tabSleep == null ? 15 : s.tabSleep); $('tabSleep').onchange = () => set({ tabSleep: +$('tabSleep').value });
+  paintLogo(s);
   $('musicIsland').checked = s.musicIsland !== false; $('musicIsland').onchange = (e) => set({ musicIsland: e.target.checked });
   $('showBookmarksBar').checked = s.showBookmarksBar !== false; $('showBookmarksBar').onchange = (e) => set({ showBookmarksBar: e.target.checked });
   $('showHome').checked = s.showHome !== false; $('showHome').onchange = (e) => set({ showHome: e.target.checked });
@@ -175,6 +176,39 @@ async function renderDefault() {
   $('defStatus').firstChild.textContent = isDef ? 'The Stupid Browser is registered for web links. ' : 'The Stupid Browser is not your default browser. ';
 }
 $('defBtn').onclick = async () => { await call('default:set'); toast(IS_MAC ? 'Confirm in the macOS dialog that opened' : 'Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
+
+/* ---------- browser logo (+ optional app icon) ---------- */
+function paintLogo(s) {
+  const kind = s.logo || 'ring', pv = $('logoPrev');
+  pv.className = 'logo-prev ' + kind; pv.textContent = kind === 'emoji' ? (s.logoEmoji || '🦆') : ''; pv.style.backgroundImage = kind === 'image' && s.logoImage ? `url("${s.logoImage}")` : '';
+  $('logoKind').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === kind));
+  $('logoEmojiIn').classList.toggle('hidden', kind !== 'emoji'); $('logoUpload').classList.toggle('hidden', kind !== 'image');
+  if (document.activeElement !== $('logoEmojiIn')) $('logoEmojiIn').value = s.logoEmoji || '';
+  if (document.activeElement !== $('wordmarkIn')) $('wordmarkIn').value = s.wordmark || '';
+  $('appIcon').checked = !!s.appIcon;
+}
+// Draws the app icon (macOS-style rounded square) from the current logo.
+async function iconFor(s) {
+  if (!s.appIcon || !['emoji', 'image'].includes(s.logo) || (s.logo === 'image' && !s.logoImage)) return '';
+  const n = 512, c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d');
+  const r = 112, p = 32; g.beginPath(); g.roundRect(p, p, n - 2 * p, n - 2 * p, r); g.closePath(); g.save(); g.clip();
+  const acc = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#D97757';
+  if (s.logo === 'image') { const im = new Image(); im.src = s.logoImage; await im.decode().catch(() => {}); g.drawImage(im, p, p, n - 2 * p, n - 2 * p); }
+  else { const gr = g.createLinearGradient(0, p, 0, n - p); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, acc + '33'); g.fillStyle = gr; g.fillRect(0, 0, n, n); g.font = '300px "Apple Color Emoji","Segoe UI Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s.logoEmoji || '🦆', n / 2, n / 2 + 18); }
+  g.restore(); return c.toDataURL('image/png');
+}
+async function saveLogo(patch) { const s = await call('settings:set', patch); const icon = await iconFor(s); if ((s.appIconImage || '') !== icon) await call('settings:set', { appIconImage: icon }); paintLogo(await call('settings:get')); }
+$('logoKind').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.v === 'image') call('settings:get').then((s) => { if (!s.logoImage) $('logoFile').click(); }); saveLogo({ logo: b.dataset.v }); });
+let emojiT; $('logoEmojiIn').addEventListener('input', () => { clearTimeout(emojiT); emojiT = setTimeout(() => { const v = $('logoEmojiIn').value.trim(); if (v) saveLogo({ logo: 'emoji', logoEmoji: v }); }, 300); });
+let wmT; $('wordmarkIn').addEventListener('input', () => { clearTimeout(wmT); wmT = setTimeout(() => call('settings:set', { wordmark: $('wordmarkIn').value.trim() }), 300); });
+$('appIcon').addEventListener('change', () => saveLogo({ appIcon: $('appIcon').checked }));
+$('logoFile').addEventListener('change', () => {
+  const f = $('logoFile').files[0]; $('logoFile').value = ''; if (!f || !/^image\//.test(f.type)) return;
+  const im = new Image(); const url = URL.createObjectURL(f);
+  im.onload = () => { const n = 256, c = document.createElement('canvas'); c.width = c.height = n; const sq = Math.min(im.width, im.height); c.getContext('2d').drawImage(im, (im.width - sq) / 2, (im.height - sq) / 2, sq, sq, 0, 0, n, n); URL.revokeObjectURL(url); saveLogo({ logo: 'image', logoImage: c.toDataURL('image/png') }); };
+  im.onerror = () => { URL.revokeObjectURL(url); toast('Couldn’t read that image'); };
+  im.src = url;
+});
 
 async function renderBuddy() {
   const s = await call('settings:get'); const st = await call('buddy:status');

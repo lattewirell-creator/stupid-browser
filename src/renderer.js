@@ -470,7 +470,7 @@ function updateNav() {
   const z = tab.zoom || 1;
   $('zoomBtn').classList.toggle('hidden', Math.abs(z - 1) < 0.001);
   $('zoomBtn').textContent = Math.round(z * 100) + '%';
-  document.title = (!isNewtab(tab.url) ? prettyTitle(tab) + ' — ' : '') + (info.incognito ? 'Private — ' : '') + 'The Stupid Browser';
+  document.title = (!isNewtab(tab.url) ? prettyTitle(tab) + ' — ' : '') + (info.incognito ? 'Private — ' : '') + ((settings.wordmark || '').trim() || 'The Stupid Browser');
 }
 
 function navigate(text, tab = activeTab()) {

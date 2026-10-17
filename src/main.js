@@ -1,7 +1,7 @@
 'use strict';
 const {
   app, BrowserWindow, ipcMain, session, shell, webContents, nativeTheme, protocol, net,
-  Menu, clipboard, dialog, safeStorage
+  Menu, clipboard, dialog, safeStorage, nativeImage
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, buddyLook: { name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: 15, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -143,6 +143,7 @@ function themeColors(incognito) {
     : { bg: '#FAF9F5', bar: '#F0EEE6', fg: '#3D3929' };
 }
 
+const windowTitle = (incognito) => { const n = (getSettings().wordmark || '').trim() || 'The Stupid Browser'; return incognito ? `Private — ${n}` : n; };
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const partition = incognito ? `incognito-${++incognitoCounter}` : PERSIST;   // no "persist:" = in memory only
   const aiPartition = incognito ? `${partition}-ai` : PERSIST_AI;
@@ -153,7 +154,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const c = themeColors(incognito);
   const win = new BrowserWindow({
     width: 1360, height: 860, minWidth: 720, minHeight: 480,
-    title: incognito ? 'Private — The Stupid Browser' : 'The Stupid Browser',
+    title: windowTitle(incognito),
     backgroundColor: c.bg,
     icon: path.join(__dirname, 'assets', 'icon.png'),
     // Windows: custom-drawn caption buttons on the right. macOS: traffic lights inset on the left.
@@ -171,7 +172,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => { win.show(); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
@@ -431,9 +432,20 @@ function setAdblock(on, only) {
 }
 
 /* ---------- theme / font size side effects ---------- */
+// Your logo as the Dock / taskbar icon (Settings → Appearance), or the default icon.
+function applyAppIcon() {
+  const s = getSettings();
+  let img = null;
+  if (s.appIcon && s.appIconImage) { try { img = nativeImage.createFromDataURL(s.appIconImage); if (img.isEmpty()) img = null; } catch { img = null; } }
+  if (!img) img = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png'));
+  if (IS_MAC && app.dock) app.dock.setIcon(img);
+  else for (const { win } of windows.values()) if (!win.isDestroyed()) win.setIcon(img);
+}
 function applySettingsSideEffects(patch) {
   if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system';
   if ('adblock' in patch) setAdblock(!!patch.adblock);
+  if ('appIcon' in patch || 'appIconImage' in patch) applyAppIcon();
+  if ('wordmark' in patch) for (const { win, incognito } of windows.values()) if (!win.isDestroyed()) win.setTitle(windowTitle(incognito));
   if ('eq' in patch) {
     // Equalizer runs inside web pages (media-preload.js); push the new curve to every page.
     for (const wc of webContents.getAllWebContents()) {
@@ -493,6 +505,8 @@ function cleanPatch(patch) {
       image: typeof L.image === 'string' && L.image.length < 300000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(L.image) ? L.image : ''
     };
   }
+  if ('appIcon' in p) p.appIcon = !!p.appIcon;
+  if ('appIconImage' in p && !(p.appIconImage === '' || (typeof p.appIconImage === 'string' && p.appIconImage.length < 1500000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.appIconImage)))) delete p.appIconImage;
   if ('tabSleep' in p && ![0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
   if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
   if ('buddy' in p) {
@@ -1098,6 +1112,7 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
     if (IS_MAC) buildMacMenu();
     profiles.sync(s);
+    if (s.appIcon) setTimeout(applyAppIcon, 500);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
     if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
     else openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
