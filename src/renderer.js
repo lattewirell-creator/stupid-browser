@@ -172,6 +172,7 @@ function activate_(id) {
   const prev = changed && tabById(activeId); if (prev) prev.lastActive = Date.now();   // "last seen", for tab sleeping
   activeId = id;
   tab.lastActive = Date.now();
+  if (changed && tab.wv && !split) { tab.wv.classList.remove('switch-in'); void tab.wv.offsetWidth; tab.wv.classList.add('switch-in'); }
   if (!tab.wv) { tab.asleep = false; createWebview(tab); }
   renderAll();
   if (changed) { closeFind(); hideAllPops(); showQueuedPrompt(); }
@@ -190,7 +191,10 @@ function closeTab(id, { record = true } = {}) {
   }
   tabs.splice(i, 1);
   if (tab.wv) tab.wv.remove();
-  if (tab.el) tab.el.remove();
+  if (tab.el) {   // shrink away instead of vanishing
+    const e = tab.el; e.classList.remove('entering', 'active'); e.classList.add('leaving');
+    const gone = () => e.remove(); e.addEventListener('animationend', gone, { once: true }); setTimeout(gone, 260);
+  }
   if (split && split.includes(id)) split = null;
   normalizeOrder();
   if (!tabs.length) { if (info.incognito || settings.closeWindowWithLastTab) { call('win:close'); return; } newTab(); return; }
@@ -270,7 +274,8 @@ function editGroup(gid) {
 /* ---------------- tab strip ---------------- */
 let dragId = null;
 function buildTabEl(tab) {
-  const e = el('div', 'tab');
+  const e = el('div', 'tab' + (restoring ? '' : ' entering'));   // grows into place (not on session restore)
+  e.addEventListener('animationend', (ev) => { if (ev.animationName === 'tabGrow') e.classList.remove('entering'); });
   e.dataset.id = tab.id;
   e.draggable = true;
   e.appendChild(el('span', 'fav-dot'));
@@ -361,18 +366,28 @@ function renderStrip() {
   const frag = document.createDocumentFragment();
   const pinFrag = document.createDocumentFragment();
   let lastGroup = null;
+  const want = [], wantPinned = [];
   for (const t of tabs) {
-    if (t.pinned) { pinFrag.appendChild(t.el); t.el.classList.remove('collapsed-hide'); continue; }
-    if (t.groupId && t.groupId !== lastGroup) frag.appendChild(groupChip(groups.get(t.groupId)));
+    if (t.pinned) { wantPinned.push(t.el); t.el.classList.remove('collapsed-hide'); continue; }
+    if (t.groupId && t.groupId !== lastGroup) want.push(groupChip(groups.get(t.groupId)));
     lastGroup = t.groupId;
     const g = t.groupId && groups.get(t.groupId);
     t.el.classList.toggle('collapsed-hide', !!(g && g.collapsed));
     const nextT = tabs[tabs.indexOf(t) + 1];
     t.el.classList.toggle('group-end', !!t.groupId && (!nextT || nextT.groupId !== t.groupId));
-    frag.appendChild(t.el);
+    want.push(t.el);
   }
-  box.querySelectorAll('.group-chip').forEach((c) => c.remove());
-  box.appendChild(frag); pinBox.appendChild(pinFrag);
+  // Only touch the DOM when the order really changed: re-inserting a tab restarts its animations (flicker on every switch).
+  const sync = (container, nodes) => {
+    const current = [...container.children].filter((c) => !c.classList.contains('leaving'));
+    const same = current.length === nodes.length && current.every((c, k) => c === nodes[k] || (c.classList.contains('group-chip') && nodes[k].classList.contains('group-chip') && c.dataset.gid === nodes[k].dataset.gid));
+    if (same) { current.forEach((c, k) => { if (c !== nodes[k]) c.replaceWith(nodes[k]); }); return; }
+    container.querySelectorAll('.group-chip').forEach((c) => c.remove());
+    nodes.forEach((n) => { if (n.classList.contains('group-chip')) frag.appendChild(n); else frag.appendChild(n); });
+    container.appendChild(frag);
+  };
+  sync(box, want); sync(pinBox, wantPinned);
+  void pinFrag;
   // stretch: tabs shrink like Chrome
   const n = tabs.filter((t) => !t.pinned && !(t.groupId && groups.get(t.groupId).collapsed)).length;
   box.style.setProperty('--n', n);

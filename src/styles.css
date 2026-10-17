@@ -39,7 +39,7 @@ svg .fill { fill: currentColor; stroke: none; }
 #tabs { flex: 0 1 auto; overflow: hidden; }
 #pinnedTabs:not(:empty) { padding-right: 4px; margin-right: 4px; border-right: 1px solid var(--line); height: 26px; align-items: center; margin-bottom: 3px; }
 .tab { position: relative; display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 6px 0 11px; width: 220px; min-width: 44px; flex: 0 1 220px;
-  border-radius: 10px 10px 0 0; color: var(--muted); cursor: default; transition: background .16s var(--ease), color .16s, opacity .2s; animation: tabIn .2s var(--ease); }
+  border-radius: 10px 10px 0 0; color: var(--muted); cursor: default; transition: background .18s var(--ease), color .18s, opacity .2s; }
 .tab:hover { background: var(--hover); color: var(--text-2); }
 .tab.active { background: var(--bg); color: var(--text); }
 .tab.active::after { content: ''; position: absolute; left: 12px; right: 12px; top: 0; height: 2px; border-radius: 2px; background: var(--accent); }
@@ -549,3 +549,14 @@ body.rail-dragging webview { pointer-events: none; }
 .bdc-hint { text-align: center; font-size: 11px; color: var(--muted); margin-top: -6px; }
 .bdc-ex { display: inline-flex; align-items: center; gap: 5px; }
 .bdc-ex small { font-size: 11px; color: var(--text-2); }
+
+/* tab strip motion: grow in, shrink out, glide the active line (no animation replays on switch) */
+.tab.entering { animation: tabGrow .24s cubic-bezier(.2,.8,.2,1); overflow: hidden; }
+.tab.leaving { animation: tabShrink .2s cubic-bezier(.4,0,.2,1) forwards; overflow: hidden; pointer-events: none; }
+@keyframes tabGrow { from { max-width: 0; min-width: 0; padding-left: 0; padding-right: 0; opacity: 0; } 60% { opacity: 1; } to { max-width: 220px; } }
+@keyframes tabShrink { from { max-width: 220px; } to { max-width: 0; min-width: 0; padding-left: 0; padding-right: 0; opacity: 0; } }
+.tab.active::after { animation: tabLine .22s cubic-bezier(.2,.8,.2,1); }
+@keyframes tabLine { from { transform: scaleX(.2); opacity: 0; } }
+#views webview.switch-in.visible { animation: switchIn .14s ease-out; }
+@keyframes switchIn { from { opacity: .82; } }
+@media (prefers-reduced-motion: reduce) { .tab.entering, .tab.leaving, .tab.active::after, #views webview.switch-in.visible { animation: none; } .tab.leaving { display: none; } }
