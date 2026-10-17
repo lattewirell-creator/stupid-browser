@@ -1028,6 +1028,14 @@ function pageContextMenu(wc, p) {
 /* =========================================================================
    webview hardening + per-tab hooks
    ========================================================================= */
+const SEARCH_ADS = [
+  [/^https:\/\/(www\.)?google\.[a-z.]+\/search/, '#tads, #tadsb, #bottomads, #atvcap, [data-text-ad], .commercial-unit-desktop-top, .commercial-unit-desktop-rhs, .cu-container'],
+  [/^https:\/\/(www\.)?bing\.com\/search/, '.b_ad, .b_adTop, .b_adBottom, #b_results > li.b_adLastChild'],
+  [/^https:\/\/(html\.|lite\.)?duckduckgo\.com\//, '.result--ad, [data-testid="ad"], li[data-layout="ad"], .module--ads, .badge--ad'],
+  [/^https:\/\/search\.yahoo\.com\/search/, '.searchCenterTopAds, .searchCenterBottomAds, .searchRightTopAds, .searchRightBottomAds, ol.ads']
+];
+function searchAdCss(url) { const hit = SEARCH_ADS.find(([re]) => re.test(url || '')); return hit ? hit[1] + ' { display: none !important; }' : ''; }
+
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
@@ -1043,6 +1051,14 @@ app.on('web-contents-created', (_e, contents) => {
 
   if (contents.getType() !== 'webview') return;
   hookShortcuts(contents);
+  // Shield also hides the ads search engines put in their own results (they're part of the page, so the
+  // network blocker can't catch them).
+  const hideSearchAds = () => {
+    if (contents.isDestroyed() || !getSettings().adblock) return;
+    const css = searchAdCss(contents.getURL());
+    if (css) contents.insertCSS(css).catch(() => {});
+  };
+  contents.on('dom-ready', hideSearchAds);
   contents.setWindowOpenHandler(({ url, disposition }) => {
     const shellWc = shellFor(contents);
     if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
