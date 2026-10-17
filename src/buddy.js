@@ -217,14 +217,17 @@
   const BODY = { clay: '#D97757', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
   const GLOW = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
   const EXTRAS = { none: 'None', headphones: '🎧', cap: '🧢', bow: '🎀', crown: '👑', glasses: '🕶️', flower: '🌼' };
-  const SHAPES = { round: ['⚪', 'Round'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
+  const SHAPES = { hiker: ['🎒', 'Hiker'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
   const HATS = { none: ['✖', 'None'], tophat: ['🎩', 'Top hat'], cap: ['🧢', 'Cap'], beanie: ['🧶', 'Beanie'], crown: ['👑', 'Crown'], party: ['🥳', 'Party'], cowboy: ['🤠', 'Cowboy'], headphones: ['🎧', 'Headphones'], halo: ['😇', 'Halo'] };
+  const EYES = { dot: ['•', 'Dots'], round: ['👀', 'Round'], sleepy: ['😌', 'Sleepy'], wide: ['😳', 'Wide'], lash: ['😉', 'Lashes'] };
+  const MOUTHS = { smile: ['🙂', 'Smile'], grin: ['😁', 'Grin'], flat: ['😐', 'Flat'], open: ['😮', 'Open'], cat: ['😺', 'Cat'] };
   const GLASSES = { none: ['✖', 'None'], round: ['👓', 'Round'], square: ['🤓', 'Square'], shades: ['🕶️', 'Shades'], star: ['⭐', 'Stars'], heart: ['💖', 'Hearts'] };
   // Older looks only had one "extra"; map it onto hat/glasses.
   const look3d = () => {
     const L = lookCfg();
     const fromExtra = { headphones: ['headphones', null], cap: ['cap', null], crown: ['crown', null], glasses: [null, 'shades'] }[L.extra] || [null, null];
-    return { shape: SHAPES[L.shape] ? L.shape : 'round', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
+    return { eyes: EYES[L.eyes] ? L.eyes : 'dot', mouth: MOUTHS[L.mouth] ? L.mouth : 'smile', outfit: L.outfit || 'sky', backpack: L.backpack !== false, scarf: L.scarf !== false,
+      shape: SHAPES[L.shape] ? L.shape : 'hiker', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
   };
   let previewBox = null, previewB3 = null;
   const lookCfg = () => Object.assign({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
@@ -264,8 +267,9 @@
       pick.addEventListener('input', () => saveLook({ [key]: pick.value })); box.appendChild(pick);
       return box;
     };
-    row('Color', sw(BODY, L.color, 'color'));
-    row('Eyes', sw(GLOW, L.glow, 'glow'));
+    const isHiker = look3d().shape === 'hiker';
+    row(isHiker ? 'Body' : 'Color', sw(BODY, L.color, 'color'));
+    if (!isHiker) row('Glow', sw(GLOW, L.glow, 'glow'));
     const chips = (map, cur, key) => {
       const box = el('div', 'bdc-extras');
       for (const [k, v] of Object.entries(map)) { const b = el('button', 'bdc-ex' + (cur === k ? ' on' : '')); b.title = v[1]; b.append(el('span', null, v[0]), el('small', null, v[1])); b.addEventListener('click', () => saveLook({ [key]: k })); box.appendChild(b); }
@@ -273,6 +277,14 @@
     };
     const L3 = look3d();
     row('Shape', chips(SHAPES, L3.shape, 'shape'));
+    if (L3.shape === 'hiker') {
+      row('Eyes', chips(EYES, L3.eyes, 'eyes'));
+      row('Mouth', chips(MOUTHS, L3.mouth, 'mouth'));
+      row('Outfit', sw(BODY, L3.outfit, 'outfit'));
+      const gear = el('div', 'bdc-extras');
+      for (const [k, label] of [['backpack', '🎒 Backpack'], ['scarf', '🧣 Scarf']]) { const b = el('button', 'bdc-ex' + (L3[k] ? ' on' : ''), label); b.addEventListener('click', () => saveLook({ [k]: !L3[k] })); gear.appendChild(b); }
+      row('Gear', gear);
+    }
     row('Hat', chips(HATS, L3.hat, 'hat'));
     row('Glasses', chips(GLASSES, L3.glasses, 'glasses'));
     const ph = el('div', 'bdc-photo');
@@ -289,7 +301,7 @@
     if (L.image) { const rm = el('button', 'pill small', 'Use the robot'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
     row('Picture', ph);
     const done = el('div', 'bdc-done'); const d = el('button', 'pill solid', 'Done'); d.addEventListener('click', toggleCustom); const rs = el('button', 'pill', 'Reset');
-    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'round', hat: 'none', glasses: 'none', image: '' }));
+    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'hiker', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'sky', backpack: true, scarf: true }));
     done.append(rs, d); custom.appendChild(done);
     applyLook();
   }

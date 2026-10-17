@@ -51,6 +51,12 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xf2c14e, metalness: 1, roughness: 0.25 });
   const lensMat = new THREE.MeshPhysicalMaterial({ color: 0x111111, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.85, clearcoat: 1 });
   const photoMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  // hiker (cute climber) materials
+  const outfitMat = new THREE.MeshStandardMaterial({ color: 0xe0603a, roughness: 0.85 });
+  const packMat = new THREE.MeshStandardMaterial({ color: 0x6b5a3e, roughness: 0.9 });
+  const faceMat = new THREE.MeshBasicMaterial({ color: 0x2a221c });
+  const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const blushMat = new THREE.MeshBasicMaterial({ color: 0xff8a8a, transparent: true, opacity: 0.45, depthWrite: false });
 
   // ---- rig: root (spin) > floater (bob) > head + body + hands
   const root = new THREE.Group(); scene.add(root);
@@ -65,7 +71,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = -1.45; scene.add(shadow);
 
   let shell = null, parts = null, hatObj = null, glassesObj = null, face = null;
-  const look = { shape: 'round', hat: 'none', glasses: 'none', color: 'clay', glow: 'cyan', image: '' };
+  const look = { shape: 'hiker', hat: 'none', glasses: 'none', color: 'clay', glow: 'cyan', image: '', eyes: 'dot', mouth: 'smile', outfit: 'sky', backpack: true, scarf: true };
 
   // Head shapes: each returns the head mesh and where its face is.
   function buildShell(shape) {
@@ -75,12 +81,51 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     else if (shape === 'capsule') { geo = new THREE.CapsuleGeometry(0.72, 0.62, 12, 32); geo.rotateZ(Math.PI / 2); front = 0.72; top = 0.72; w = 1.05; }
     else if (shape === 'egg') { geo = new THREE.SphereGeometry(1, 48, 32); geo.scale(0.88, 1.08, 0.88); front = 0.88; top = 1.08; w = 0.9; }
     else if (shape === 'tv') { geo = new RoundedBoxGeometry(2.15, 1.5, 1.25, 4, 0.2); front = 0.63; top = 0.75; w = 1.05; }
+    else if (shape === 'hiker') {   // one chubby bean: head and body together
+      geo = new THREE.CapsuleGeometry(0.8, 0.8, 16, 40); geo.scale(1, 1, 0.92);
+      shell = new THREE.Mesh(geo, bodyMat); head.add(shell);
+      return { front: 0.74, w: 0.82, top: 1.2, eyeY: 0.4, kind: 'hiker' };
+    }
     else { geo = new THREE.SphereGeometry(1, 48, 32); geo.scale(1.02, 0.92, 0.95); }
     shell = new THREE.Mesh(geo, bodyMat); head.add(shell);
-    return { front, w, top };
+    return { front, w, top, eyeY: 0.04 };
+  }
+  // Hiker face: simple dark dot eyes and a little mouth, in several styles (like a character creator).
+  function hikerFace(dim) {
+    const g = new THREE.Group(); g.position.set(0, dim.eyeY, dim.front);
+    const E = look.eyes || 'dot', M = look.mouth || 'smile';
+    const eyes = [-0.24, 0.24].map((x) => {
+      const e = new THREE.Group(); e.position.set(x, 0, 0.02);
+      if (E === 'wide') { const w = new THREE.Mesh(new THREE.CircleGeometry(0.13, 28), whiteMat); const p = new THREE.Mesh(new THREE.CircleGeometry(0.07, 24), faceMat); p.position.z = 0.002; e.add(w, p); }
+      else if (E === 'sleepy') { const l = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.14, 4, 8), faceMat); l.rotation.z = Math.PI / 2; e.add(l); }
+      else {
+        const r = E === 'round' ? 0.1 : 0.072;
+        const d = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), faceMat); d.scale.z = 0.4; e.add(d);
+        if (E === 'round') { const hi = new THREE.Mesh(new THREE.CircleGeometry(0.03, 12), whiteMat); hi.position.set(0.03, 0.035, r * 0.45); e.add(hi); }
+        if (E === 'lash') { const lash = new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 0.08, 3, 6), faceMat); lash.rotation.z = Math.sign(x) * 0.9; lash.position.set(Math.sign(x) * 0.085, 0.055, 0.01); e.add(lash); }
+      }
+      g.add(e); return e;
+    });
+    const happyGeo = new THREE.TorusGeometry(0.075, 0.022, 8, 20, Math.PI);
+    const happy = [-0.24, 0.24].map((x) => { const h = new THREE.Mesh(happyGeo, faceMat); h.position.set(x, -0.02, 0.03); h.visible = false; g.add(h); return h; });
+    let mouth;
+    if (M === 'grin') { mouth = new THREE.Group(); const m1 = new THREE.Mesh(new THREE.CircleGeometry(0.11, 24, Math.PI, Math.PI), faceMat); const t = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.03), whiteMat); t.position.set(0, -0.015, 0.002); mouth.add(m1, t); }
+    else if (M === 'flat') { mouth = new THREE.Mesh(new THREE.CapsuleGeometry(0.018, 0.1, 4, 8), faceMat); mouth.rotation.z = Math.PI / 2; }
+    else if (M === 'open') { mouth = new THREE.Mesh(new THREE.CircleGeometry(0.06, 24), faceMat); mouth.scale.y = 1.2; }
+    else if (M === 'cat') { mouth = new THREE.Group(); for (const sx of [-1, 1]) { const a = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.016, 6, 14, Math.PI), faceMat); a.rotation.z = Math.PI; a.position.x = sx * 0.045; mouth.add(a); } }
+    else { mouth = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 8, 20, Math.PI), faceMat); mouth.rotation.z = Math.PI; }
+    mouth.position.set(0, -0.2, 0.03); g.add(mouth);
+    for (const sx of [-1, 1]) { const b = new THREE.Mesh(new THREE.CircleGeometry(0.09, 20), blushMat); b.scale.y = 0.6; b.position.set(sx * 0.4, -0.12, 0.0); g.add(b); }
+    const photo = new THREE.Mesh(new THREE.CircleGeometry(0.42, 40), photoMat); photo.position.z = 0.05; photo.visible = false; g.add(photo);
+    // The face sits on a curved body: tilt each feature to follow the surface.
+    g.children.forEach((c) => { c.position.z += -Math.abs(c.position.x) * 0.35; c.rotation.y = c.position.x * 0.6; });
+    g.scale.setScalar(1.35);   // bigger, friendlier face
+    head.add(g);
+    face = { group: g, eyes, happy, mouth, photo, eyeBase: eyes.map((e) => e.position.clone()), hiker: true };
   }
   function buildFace(dim) {
     if (face) { head.remove(face.group); face.group.traverse((o) => o.geometry && o.geometry.dispose()); }
+    if (dim.kind === 'hiker') return hikerFace(dim);
     const g = new THREE.Group(); g.position.z = dim.front - 0.18;
     const visor = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 24), darkMat); visor.scale.set(0.74 * dim.w, 0.46, 0.3); g.add(visor);
     const photo = new THREE.Mesh(new THREE.CircleGeometry(0.42, 40), photoMat); photo.position.z = 0.31; photo.visible = false; g.add(photo);
@@ -92,8 +137,36 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     head.add(g);
     face = { group: g, eyes, happy, mouth, photo, eyeBase: eyes.map((e) => e.position.clone()) };
   }
+  // Hiker gear: jacket, sleeves with mitten hands, scarf and backpack (each optional).
+  function hikerParts() {
+    const P = new THREE.Group();
+    const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.815, 0.82, 0.62, 40, 1, true), outfitMat); jacket.position.y = -0.62; jacket.scale.z = 0.93; P.add(jacket);
+    const hem = new THREE.Mesh(new THREE.SphereGeometry(0.82, 40, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), outfitMat); hem.position.y = -0.92; hem.scale.z = 0.93; P.add(hem);
+    const zip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.6, 0.02), packMat); zip.position.set(0, -0.6, 0.77); P.add(zip);
+    const arms = [-1, 1].map((sx) => {
+      const pivot = new THREE.Group(); pivot.position.set(sx * 0.72, -0.25, 0);
+      const sleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.38, 6, 14), outfitMat); sleeve.position.set(sx * 0.12, -0.25, 0); sleeve.rotation.z = sx * 0.35;
+      const mitt = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), bodyMat); mitt.position.set(sx * 0.24, -0.55, 0.02);
+      pivot.add(sleeve, mitt); P.add(pivot); return pivot;
+    });
+    P.userData.armR = arms[1]; P.userData.armL = arms[0];
+    if (look.scarf !== false) {
+      const scarfMat = new THREE.MeshStandardMaterial({ color: 0xf2c14e, roughness: 0.9 });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.13, 12, 40), scarfMat); ring.rotation.x = Math.PI / 2; ring.position.y = -0.08; ring.scale.set(1, 0.93, 1); P.add(ring);
+      const tail = new THREE.Mesh(new RoundedBoxGeometry(0.2, 0.5, 0.08, 2, 0.04), scarfMat); tail.position.set(0.32, -0.38, 0.74); tail.rotation.z = 0.15; P.add(tail);
+      P.userData.scarfMat = scarfMat;
+    }
+    if (look.backpack !== false) {
+      const pack = new THREE.Mesh(new RoundedBoxGeometry(1.0, 1.05, 0.5, 4, 0.16), packMat); pack.position.set(0, -0.35, -0.86); P.add(pack);
+      const flap = new THREE.Mesh(new RoundedBoxGeometry(1.02, 0.35, 0.54, 3, 0.12), outfitMat); flap.position.set(0, 0.08, -0.86); P.add(flap);
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.9, 16), new THREE.MeshStandardMaterial({ color: 0x4f7a5a, roughness: 0.9 })); roll.rotation.z = Math.PI / 2; roll.position.set(0, -0.9, -0.9); P.add(roll);
+      for (const sx of [-1, 1]) { const strap = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.04, 6, 20, Math.PI * 0.9), packMat); strap.rotation.y = Math.PI / 2; strap.position.set(sx * 0.42, -0.3, -0.05); P.add(strap); }
+    }
+    head.add(P); parts = P;
+  }
   function buildParts(dim, shape) {
     if (parts) { head.remove(parts); parts.traverse((o) => o.geometry && o.geometry.dispose()); }
+    if (shape === 'hiker') return hikerParts();
     parts = new THREE.Group();
     const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.38, 10), accentMat); stem.position.y = dim.top + 0.17; parts.add(stem);
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 14), glowMat); bulb.position.y = dim.top + 0.4; parts.add(bulb); parts.userData.bulb = bulb; parts.userData.stem = stem;
@@ -120,12 +193,12 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     else if (kind === 'headphones') { const band = m(new THREE.TorusGeometry(dim.w * 1.05, 0.06, 10, 40, Math.PI), accentMat, 0, 0.05); band.position.y = 0.05; for (const sx of [-1, 1]) { const cup = m(new THREE.CylinderGeometry(0.3, 0.3, 0.22, 28), accentMat, sx * (dim.w * 1.05 + 0.05), 0, 0); cup.rotation.z = Math.PI / 2; m(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 24), glowMat, sx * (dim.w * 1.05 + 0.17), 0, 0).rotation.z = Math.PI / 2; } }
     else if (kind === 'halo') { const h = m(new THREE.TorusGeometry(0.55, 0.05, 12, 48), new THREE.MeshBasicMaterial({ color: 0xfff2a8, toneMapped: false }), 0, y + 0.55); h.rotation.x = Math.PI / 2 - 0.25; g.userData.halo = h; }
     head.add(g); hatObj = g;
-    if (parts) { const hidesAntenna = !['headphones', 'halo', 'none'].includes(kind); parts.userData.stem.visible = parts.userData.bulb.visible = !hidesAntenna && look.shape !== 'tv'; }
+    if (parts && parts.userData.stem) { const hidesAntenna = !['headphones', 'halo', 'none'].includes(kind); parts.userData.stem.visible = parts.userData.bulb.visible = !hidesAntenna && look.shape !== 'tv'; }
   }
   function buildGlasses(kind, dim) {
     if (glassesObj) { head.remove(glassesObj); glassesObj.traverse((o) => o.geometry && o.geometry.dispose()); glassesObj = null; }
     if (!kind || kind === 'none') return;
-    const g = new THREE.Group(); g.position.set(0, 0.04, dim.front + 0.06);
+    const g = new THREE.Group(); g.position.set(0, dim.eyeY != null ? dim.eyeY : 0.04, dim.front + (dim.kind === 'hiker' ? 0.04 : 0.06));
     const frame = new THREE.MeshStandardMaterial({ color: kind === 'star' ? 0xffd23f : kind === 'heart' ? 0xff4f8b : kind === 'round' ? 0xd4af37 : 0xf4f4f4, roughness: 0.3, metalness: kind === 'round' ? 0.9 : 0.1 });
     for (const sx of [-1, 1]) {
       let rim, lens;
@@ -145,11 +218,17 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   function setLook(l) {
     const next = Object.assign({}, look, l || {});
     const shapeChanged = !shell || next.shape !== look.shape;
+    const faceChanged = next.shape === 'hiker' && ['eyes', 'mouth', 'backpack', 'scarf'].some((k) => next[k] !== look[k]);
     Object.assign(look, next);
+    const hiker = look.shape === 'hiker';
+    head.position.y = hiker ? 0.12 : 0.55;
+    torso.visible = belly.visible = handL.visible = handR.visible = !hiker;
+    outfitMat.color.set(hex(look.outfit, COLORS, 'clay'));
     bodyMat.color.set(hex(look.color, COLORS, 'clay'));
     glowMat.color.set(hex(look.glow, GLOWS, 'cyan'));
     let dim = head.userData.dim;
-    if (shapeChanged) { dim = buildShell(look.shape); head.userData.dim = dim; buildFace(dim); buildParts(dim, look.shape); }
+    if (shapeChanged) { dim = buildShell(look.shape); head.userData.dim = dim; }
+    if (shapeChanged || faceChanged) { buildFace(dim); buildParts(dim, look.shape); }
     buildHat(look.hat, dim); buildGlasses(look.glasses, dim);
     const img = /^data:image\/(png|jpeg|webp);base64,/.test(look.image || '') ? look.image : '';
     face.photo.visible = !!img; face.eyes.concat(face.happy, [face.mouth]).forEach((e) => { e.userData.hideForPhoto = !!img; });
@@ -222,7 +301,7 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     const happyNow = now < st.happyUntil;
     nextBlink -= dt; if (nextBlink <= 0 && blinkT < 0) { blinkT = 0; nextBlink = 2 + Math.random() * 3.5; }
     let lid = 1; if (blinkT >= 0) { blinkT += dt; lid = Math.abs(Math.cos(Math.min(1, blinkT / 0.16) * Math.PI)); if (blinkT > 0.16) blinkT = -1; }
-    if (st.sleepy) lid = 0.25;
+    if (st.sleepy) lid = face.hiker ? 0.6 : 0.25;
     face.eyes.forEach((e, i) => {
       e.visible = !happyNow && !e.userData.hideForPhoto;
       e.scale.y = Math.max(0.12, lid);
@@ -238,6 +317,10 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
     // hands float, and wave when poked
     handL.position.y = -0.72 + Math.sin(t * 1.7 + 1) * 0.05; handR.position.y = -0.72 + Math.sin(t * 1.7 + 2) * 0.05;
     if (wave > 0) { wave -= dt * 0.8; handR.position.y = -0.3 + Math.sin(t * 16) * 0.12; handR.position.x = 0.8; } else handR.position.x = 0.72;
+    if (parts && parts.userData.armR) {   // hiker: wave the right arm, swing gently otherwise
+      parts.userData.armR.rotation.z = wave > 0 ? 2.3 + Math.sin(t * 14) * 0.35 : Math.sin(t * 1.7) * 0.06;
+      parts.userData.armL.rotation.z = -Math.sin(t * 1.7 + 1) * 0.06;
+    }
     renderer.render(scene, camera);
   }
   function setVisible(v) { visible = !!v; if (visible) { resize(); kick(); } }
