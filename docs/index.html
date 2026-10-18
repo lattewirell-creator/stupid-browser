@@ -109,7 +109,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 750; letter-spacing: -.02
 .bar-row b { font-size: clamp(44px, 6vw, 76px); font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .bar { height: 16px; border-radius: 999px; background: var(--line); margin: 6px 0 22px; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 100%; background: var(--clay); border-radius: inherit; transition: width .8s var(--ease), background .8s; }
-.meter.asleep .bar i { width: 61.1%; background: var(--sage); }
+.meter.asleep .bar i { width: 37.3%; background: var(--sage); }
 .switch { display: flex; align-items: center; gap: 12px; font-family: var(--display); font-size: 17px; cursor: pointer; user-select: none; }
 .switch input { appearance: none; -webkit-appearance: none; width: 52px; height: 30px; border-radius: 999px; background: var(--line); position: relative; margin: 0; cursor: pointer; transition: background .2s; }
 .switch input::after { content: ''; position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .25s var(--ease); }
@@ -117,7 +117,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 750; letter-spacing: -.02
 .switch input:checked::after { transform: translateX(22px); }
 .fine { font-size: 14.5px; color: var(--ink-2); margin: 16px 0 0; }
 
-/* tested against Chrome and Safari */
+/* tested against Chrome */
 .bench { padding: 72px 0; border-top: 1px solid var(--line); }
 .bench h2 { font-size: clamp(36px, 4.4vw, 56px); line-height: 1; margin-bottom: 40px; max-width: 14em; }
 .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
@@ -256,37 +256,35 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
 
   <section class="wrap sleep" id="features">
     <div>
-      <h2>Lighter than Chrome. Even lighter asleep.</h2>
+      <h2>Lighter than Chrome, once idle tabs sleep.</h2>
       <p>Tabs you haven’t looked at in a while fall asleep. They stay where they are and wake up the moment you click them, while your computer gets its memory back. Tabs playing music or video stay awake.</p>
     </div>
     <div class="meter" id="meter">
       <div class="tabs" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
-      <div class="bar-row"><b id="mb">900 MB</b><span>five sites open</span></div>
+      <div class="bar-row"><b id="mb">1,850 MB</b><span>five sites open</span></div>
       <div class="bar"><i></i></div>
       <label class="switch"><input type="checkbox" id="sleepToggle"> Let idle tabs sleep</label>
-      <p class="fine">Measured in The Stupid Browser with the same five sites as the test below: about 900 MB with every tab awake, 550 MB with the idle ones asleep.</p>
+      <p class="fine">Measured in The Stupid Browser for Mac with the same five sites as the test below: about 1,850 MB with every tab awake, 690 MB with the idle ones asleep. Chrome used about 1,100 MB.</p>
     </div>
   </section>
 
   <section class="wrap bench" aria-labelledby="benchTitle">
-    <h2 id="benchTitle">We tested it against Chrome and Safari.</h2>
+    <h2 id="benchTitle">We tested it against Chrome.</h2>
     <div class="charts">
       <figure class="chart">
         <figcaption><b>Memory</b> with the same five sites open. Less is better.</figcaption>
-        <div class="row me"><span class="who">The Stupid Browser, idle tabs asleep</span><span class="track"><i style="--v: 36.9%"></i></span><b>550 MB</b></div>
-        <div class="row me"><span class="who">The Stupid Browser</span><span class="track"><i style="--v: 60.4%"></i></span><b>900 MB</b></div>
-        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 69.1%"></i></span><b>1,030 MB</b></div>
-        <div class="row"><span class="who">Safari</span><span class="track"><i style="--v: 100%"></i></span><b>1,490 MB</b></div>
+        <div class="row me"><span class="who">The Stupid Browser, idle tabs asleep</span><span class="track"><i style="--v: 37.3%"></i></span><b>690 MB</b></div>
+        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 59.5%"></i></span><b>1,100 MB</b></div>
+        <div class="row me"><span class="who">The Stupid Browser, every tab awake</span><span class="track"><i style="--v: 100%"></i></span><b>1,850 MB</b></div>
       </figure>
       <figure class="chart">
         <figcaption><b>Speed</b> in Speedometer 3.1, the test browser makers use. More is better.</figcaption>
-        <div class="row"><span class="who">Safari</span><span class="track"><i style="--v: 100%"></i></span><b>48.2</b></div>
-        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 88.8%"></i></span><b>42.8</b></div>
-        <div class="row me"><span class="who">The Stupid Browser</span><span class="track"><i style="--v: 88%"></i></span><b>42.4</b></div>
-        <p class="chart-note">As fast as Chrome, because it runs the same engine. That’s the Windows version; since 1.4 the Mac version runs on Safari’s own engine, WebKit, made by the same people who make the chip.</p>
+        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 100%"></i></span><b>51.5</b></div>
+        <div class="row me"><span class="who">The Stupid Browser for Mac</span><span class="track"><i style="--v: 89.3%"></i></span><b>46.0</b></div>
+        <p class="chart-note">The Mac version runs on Safari’s engine, WebKit, which is what lets you sign in to Google. It scores the same as WebKit on its own, so the browser adds nothing on top. On Windows it runs Chrome’s engine.</p>
       </figure>
     </div>
-    <p class="fine">Tested on 17 October 2026 on a Mac mini with an M4 chip and 16 GB of memory, each browser with a fresh profile. Sites: Wikipedia, YouTube, Reddit, GitHub and The Verge. Memory is the total of all the browser’s processes, measured with Apple’s footprint tool. Speedometer scores are the average of 10 rounds and vary by about ±2.5 between runs.</p>
+    <p class="fine">Tested on 18 October 2026 on a MacBook Air with an M4 chip and 16 GB of memory, The Stupid Browser 1.4.1 against Chrome, each with a fresh profile and its window on screen. Sites: Wikipedia, YouTube, Reddit, GitHub and The Verge, measured a minute after opening. Memory is the total of all the browser’s processes, measured with Apple’s footprint tool (average of two runs). Speedometer scores are the average of several runs and vary by about ±1.5.</p>
   </section>
 
   <section class="wrap more">
@@ -417,7 +415,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   const LINES = {
     click: ['Hi. I’m the logo.', 'Stop staring. That’s my job.', 'Yes, it’s really free.', 'I watch your tabs so you don’t have to.', 'Ads? Never heard of them.', 'I don’t track you. I just look at you.',
       'Download me. I’ll behave.', 'Go on, throw me. I dare you.', 'I’m not stupid. The name is.', 'Your other browser has never looked back at you.', 'I only have one eye, but it’s on you.',
-      'Less memory than Chrome. Just saying.', 'I block ads before they even load.', 'Five sites, 550 MB with sleeping tabs. Beat that.', 'Honestly? Best browser I’ve ever been the logo of.',
+      'Sleeping tabs: less memory than Chrome. Just saying.', 'I block ads before they even load.', 'Five sites, 690 MB with sleeping tabs. Beat that.', 'Honestly? Best browser I’ve ever been the logo of.',
       'Sleeping tabs. Shield. Buddy. Rewind. I’m kind of a big deal.', 'Your history stays on your computer. I don’t peek. Much.', 'Free on Mac, Windows and Android. Pick one.',
       'This is fine. 🔥', 'One does not simply close all the tabs.', 'Such browser. Very calm. Wow.', 'Task failed successfully.', 'Stonks. 📈', 'It’s over 9000 tabs!',
       'Me: one more tab. Also me: 47 tabs.', 'Ah yes, the internet. Made of internet.', 'Nobody: … Me: 👁️', 'Big brain time.', 'Not all who wander are lost. Some just have 40 tabs open.',
@@ -595,7 +593,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   const meter = document.getElementById('meter'), mb = document.getElementById('mb');
   document.getElementById('sleepToggle').addEventListener('change', (e) => {
     const on = e.target.checked; meter.classList.toggle('asleep', on);
-    const from = on ? 900 : 550, to = on ? 550 : 900, t0 = performance.now(), dur = reduce ? 1 : 800;
+    const from = on ? 1850 : 690, to = on ? 690 : 1850, t0 = performance.now(), dur = reduce ? 1 : 800;
     const tick = (now) => { const k = Math.min(1, (now - t0) / dur), v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
       mb.textContent = v.toLocaleString('en-US') + ' MB'; if (k < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
@@ -626,8 +624,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   const links = [...document.querySelectorAll('[data-asset]')];
   fetch('https://api.github.com/repos/lattewirell-creator/stupid-browser/releases/latest').then((r) => (r.ok ? r.json() : Promise.reject())).then((rel) => {
     const find = (end) => (rel.assets || []).find((x) => x.name.endsWith(end));
-    // Mac: the WebKit version (one download for Apple chip and Intel Macs) once a release has it; until then
-    // the Electron builds for each chip.
+    // Mac: one download for Apple chip and Intel Macs (older releases had one per chip).
     const webkitMac = find('-mac.dmg');
     for (const a of links) {
       const isMacLink = /\.dmg$/.test(a.dataset.asset);
