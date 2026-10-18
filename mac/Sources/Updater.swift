@@ -7,7 +7,7 @@ import Cocoa
 import CryptoKit
 
 private let REPO = "lattewirell-creator/stupid-browser"
-private let BUNDLE_ID = Bundle.main.bundleIdentifier ?? "com.emil.stupidbrowser.webkit"
+private let BUNDLE_ID = Bundle.main.bundleIdentifier ?? "com.emil.stupidbrowser"
 private func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 private func run(_ cmd: String, _ args: [String]) -> String? {
   let p = Process(); p.executableURL = URL(fileURLWithPath: cmd); p.arguments = args

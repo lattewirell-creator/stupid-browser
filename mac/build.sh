@@ -23,7 +23,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>The Stupid Browser</string>
   <key>CFBundleDisplayName</key><string>The Stupid Browser</string>
-  <key>CFBundleIdentifier</key><string>com.emil.stupidbrowser.webkit</string>
+  <key>CFBundleIdentifier</key><string>com.emil.stupidbrowser</string>
   <key>CFBundleExecutable</key><string>StupidBrowser</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
