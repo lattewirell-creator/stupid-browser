@@ -626,7 +626,19 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   if (isIOS) document.getElementById('heroSmall').textContent = 'Not on iPhone or iPad yet. Get it for your computer.';
   const links = [...document.querySelectorAll('[data-asset]')];
   fetch('https://api.github.com/repos/lattewirell-creator/stupid-browser/releases/latest').then((r) => (r.ok ? r.json() : Promise.reject())).then((rel) => {
-    for (const a of links) { const asset = (rel.assets || []).find((x) => x.name.endsWith(a.dataset.asset)); if (asset) a.href = asset.browser_download_url; }
+    const find = (end) => (rel.assets || []).find((x) => x.name.endsWith(end));
+    // Mac: the WebKit version (one download for Apple chip and Intel Macs) once a release has it; until then
+    // the Electron builds for each chip.
+    const webkitMac = find('-mac.dmg');
+    for (const a of links) {
+      const isMacLink = /\.dmg$/.test(a.dataset.asset);
+      const asset = (isMacLink && webkitMac) || find(a.dataset.asset);
+      if (asset) a.href = asset.browser_download_url;
+    }
+    if (webkitMac) {
+      const forText = document.querySelector('#mac .for'); if (forText) forText.textContent = 'macOS 13 or newer · Apple chip and Intel';
+      const which = document.querySelector('#mac .note'); if (which) which.textContent = 'One download for every Mac.';
+    }
     const v = String(rel.tag_name || '').replace(/^v/, '');
     if (v) document.getElementById('ver').innerHTML = `Version ${v}. See <a href="${rel.html_url}">what’s new</a> and all versions on GitHub.`;
   }).catch(() => {});
