@@ -12,8 +12,8 @@ android {
         applicationId 'com.emil.stupidbrowser'
         minSdk 26
         targetSdk 36
-        versionCode 2
-        versionName '1.3.0'
+        versionCode 3
+        versionName '1.4.0'
     }
     signingConfigs {
         release {
@@ -23,6 +23,8 @@ android {
                 keyAlias ks['keyAlias']
                 keyPassword ks['keyPassword']
             }
+            enableV2Signing true
+            enableV3Signing true   // newer signature scheme, recommended for apps outside Google Play
         }
     }
     buildTypes {

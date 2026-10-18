@@ -216,6 +216,14 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
       DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.shell.evaluateJavaScript(code) { _, e in if let e { print("[stupid] js error \(e)") } } }
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + delay / 1000) { [weak self] in self?.snapshot(to: path) }
+    // Benchmarks need the window on screen: macOS and WebKit slow down pages in hidden windows.
+    if ProcessInfo.processInfo.environment["STUPID_TEST_FRONT"] != nil, let w = window {
+      w.level = .floating; w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+      NSApp.activate(ignoringOtherApps: true); w.orderFrontRegardless()
+      shell.setValue(false, forKey: "windowOcclusionDetectionEnabled")
+      _ = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "benchmark")
+    }
+    for t in [2.0, 6.0] { DispatchQueue.main.asyncAfter(deadline: .now() + t) { [weak self] in print("[stupid] window visible on screen: \(self?.window?.occlusionState.contains(.visible) ?? false)") } }
   }
   private func snapshot(to path: String) {
     guard let root = window?.contentView else { return }
@@ -223,7 +231,7 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
     let image = NSImage(size: size)
     let group = DispatchGroup()
     var parts: [(NSRect, NSImage)] = []
-    for v in tabs.subviews.compactMap({ $0 as? WKWebView }) where !v.isHidden {
+    for v in tabs.subviews.compactMap({ $0 as? WKWebView }) where !v.isHidden && v.alphaValue > 0.01 {
       group.enter()
       v.takeSnapshot(with: nil) { img, _ in if let img { parts.append((v.frame, img)) }; group.leave() }
     }
