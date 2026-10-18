@@ -322,8 +322,10 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   }
 
   // ---- render loop (paused when hidden)
-  let raf = 0, visible = true, lastT = performance.now(), frame = 0, activeUntil = performance.now() + 2000;
-  function kick() { activeUntil = performance.now() + 2500; if (!raf && visible && !document.hidden) raf = requestAnimationFrame(tick); }
+  let raf = 0, visible = true, lastT = performance.now(), frame = 0, activeUntil = performance.now() + 2000, lastBusy = performance.now(), paused = false;
+  function kick() { activeUntil = performance.now() + 2500; if (!raf && visible && !document.hidden && !paused) raf = requestAnimationFrame(tick); }
+  // The browser can pause Buddy for a moment (e.g. while you scroll a page on a phone) so the page gets every frame.
+  addEventListener('stupid-buddy-pause', (e) => { paused = !!e.detail; if (!paused) { lastBusy = performance.now(); kick(); } });
   function resize() {
     const w = container.clientWidth || 110, h = container.clientHeight || 120;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -331,10 +333,12 @@ export function createBuddy(container, { interactive = true, onClick = null } = 
   const ro = new ResizeObserver(() => { resize(); kick(); }); ro.observe(container);
   function tick(now) {
     raf = 0;
-    if (!visible || document.hidden) return;
+    if (!visible || document.hidden || paused) return;
     const busy = st.busy || st.talking || st.held || st.walking || squash > 0 || now < st.dizzyUntil || now < activeUntil || hopVel !== 0 || Math.abs(spinVel) > 0.01;
     raf = requestAnimationFrame(tick);
-    if (!busy && (++frame % 2)) return;        // idle: ~30 fps
+    if (busy) lastBusy = now;
+    // idle: ~30 fps, then a calm ~12 fps after a while (the gentle float looks the same, the computer works far less)
+    if (!busy && (++frame % (now - lastBusy > 6000 ? 5 : 2))) return;
     const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now; const t = now / 1000;
     // float + hop (with squash & stretch)
     if (hopVel || hop > 0) { hopVel -= 14 * dt; hop += hopVel * dt; if (hop <= 0) { hop = 0; hopVel = hopVel < -2.5 ? -hopVel * 0.35 : 0; } }

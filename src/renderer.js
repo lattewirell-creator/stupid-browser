@@ -151,7 +151,8 @@ function makeSpare() {
   createWebview(spareTab);
   spareTab.wv.classList.add('spare');   // rendered invisibly (not display:none) so it's already painted when shown
 }
-const queueSpare = () => { clearTimeout(spareT); spareT = setTimeout(makeSpare, 1200); };
+// Prepared when the browser is idle, so making it never stutters what you're doing.
+const queueSpare = (ms = 700) => { clearTimeout(spareT); spareT = setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(makeSpare, { timeout: 2000 }) : makeSpare()), ms); };
 function newTab(url, opts = {}) {
   const { activate = true, pinned = false, title, favicon, lazy = false, groupId = null, index = null, muted = false, afterId = null } = opts;
   let tab;
@@ -1413,6 +1414,7 @@ api.on('update:status', renderUpdate);
   }
   if (info.urls && info.urls.length) info.urls.forEach((u, i) => newTab(u, { activate: i === 0 }));
   else if (!restore || !restore.tabs || !restore.tabs.length) newTab();
+  queueSpare(2500);   // the first new tab you open is instant too, not only the ones after it
   renderShield(await call('adblock:get'));
   const prev = await call('downloads:list');
   for (const d of prev.filter((x) => x.state === 'progressing')) dls.set(d.id, d);

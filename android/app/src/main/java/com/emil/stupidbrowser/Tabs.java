@@ -279,9 +279,12 @@ final class Tabs {
             if (t.web.getY() != y) t.web.setY(y);
             float r = (float) d.optDouble("radius") * dp;
             if (r != t.radius) { t.radius = r; t.web.invalidateOutline(); }
-            float alpha = shown ? (float) d.optDouble("opacity", 1) : 0;
+            // The prepared new tab stays drawn (almost invisibly, under the others), so + shows it instantly.
+            boolean spare = d.optBoolean("spare");
+            float alpha = shown ? (float) d.optDouble("opacity", 1) : spare ? 0.004f : 0;
             if (t.web.getAlpha() != alpha) t.web.setAlpha(alpha);
-            int vis = shown ? View.VISIBLE : View.INVISIBLE;
+            if (spare && layer.indexOfChild(t.web) != 0) { layer.removeView(t.web); layer.addView(t.web, 0, lp); }
+            int vis = shown || spare ? View.VISIBLE : View.INVISIBLE;
             if (t.web.getVisibility() != vis) t.web.setVisibility(vis);
             if (shown) owner.shell.pass.add(new RectF(x, yUi, x + w, yUi + h));   // in the UI's own coordinates (it slides with the bars)
         }

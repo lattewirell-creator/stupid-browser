@@ -53,6 +53,13 @@
     if (strip) new MutationObserver(reveal).observe(strip, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
   });
 
+  /* ---------------- a new tab doesn't pop the keyboard up by itself (tap the address bar to type) ---------------- */
+  let lastTouch = 0;   // when you last touched the address bar itself
+  addEventListener("pointerdown", (e) => { if (e.target.closest && e.target.closest("#omnibox")) lastTouch = Date.now(); }, true);
+  document.addEventListener("focusin", (e) => {
+    if (e.target && e.target.id === "address" && Date.now() - lastTouch > 800) setTimeout(() => { if (Date.now() - lastTouch > 800) e.target.blur(); }, 0);
+  }, true);
+
   /* ---------------- menus ---------------- */
   const show = (items, x, y) => g("showMenu")("ctxMenu", items, x, y);
   // Long-press in a page: info from the app (what was under the finger), x/y in UI coordinates.

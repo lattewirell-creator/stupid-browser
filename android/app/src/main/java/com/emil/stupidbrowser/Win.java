@@ -34,6 +34,7 @@ final class Win {
     final Tabs tabs;
     private List<String> pendingUrls;
     private final boolean startup;
+    private boolean shownOnce;
     final GradientDrawable frame = new GradientDrawable();
 
     /** The UI layer: lets touches through to the tab below wherever the page shows. */
@@ -134,6 +135,7 @@ final class Win {
             }
             case "log": android.util.Log.i("stupid-ui", m.optString("text")); return;
             case "layout": {
+                if (!shownOnce) { shownOnce = true; android.util.Log.i("stupid-perf", "window ready " + (android.os.SystemClock.uptimeMillis() - android.os.Process.getStartUptimeMillis()) + " ms after start"); }
                 tabs.layout(m.optJSONArray("tabs"), m.optJSONArray("covers"));
                 JSONObject f = m.optJSONObject("frame");
                 if (f != null) look(f);
@@ -170,7 +172,12 @@ final class Win {
     float barsExtra() { return barsHidden ? barsPx : 0; }
     /** While the bars are away the tabs sit higher (after the slide; during it the whole layer moves). */
     float barsShift() { return barsHidden && barsSettled ? barsPx : 0; }
+    private boolean scrolling;
+    private final Runnable scrollEnded = () -> { scrolling = false; js("dispatchEvent(new CustomEvent('stupid-buddy-pause', { detail: false }))"); };
     void pageScrolled(int dy, int y) {
+        // While a page scrolls, Buddy holds still so the page gets every frame.
+        if (!scrolling) { scrolling = true; js("dispatchEvent(new CustomEvent('stupid-buddy-pause', { detail: true }))"); }
+        shell.removeCallbacks(scrollEnded); shell.postDelayed(scrollEnded, 450);
         if (barsPx <= 0 || dy == 0) return;
         if ((dy > 0) != (scrollRun > 0)) scrollRun = 0;
         scrollRun += dy;
