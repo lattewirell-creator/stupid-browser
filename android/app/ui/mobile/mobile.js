@@ -32,7 +32,7 @@ const I = {
   open: '<path d="M14 5h5v5M19 5l-8 8M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
   shield: '<path d="M12 3.5l7 3v5.5c0 4.3-3 7.4-7 8.5-4-1.1-7-4.2-7-8.5V6.5z"/>', trash: '<path d="M5 7h14M10 4h4M7 7l1 12.5h8L17 7"/>',
 };
-$('menuBtn').appendChild(icon(I.menu)); $('clearBtn').appendChild(icon(I.x));
+$('menuBtn').appendChild(icon(I.menu)); $('newBtn').appendChild(icon(I.plus)); $('clearBtn').appendChild(icon(I.x));
 $('findPrev').appendChild(icon(I.up)); $('findNext').appendChild(icon(I.down)); $('findClose').appendChild(icon(I.x));
 $('gridNew').appendChild(icon(I.plus)); $('bdClose').appendChild(icon(I.x)); $('bdLook').appendChild(icon(I.eye)); $('bdSend').appendChild(icon(I.send));
 
@@ -161,7 +161,8 @@ function renderBar() {
   document.title = title(t);
 }
 const prettyUrl = (u) => { try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + (x.pathname.length > 1 ? x.pathname : '') + x.search; } catch { return u; } };
-function renderCount() { $('tabCount').textContent = tabs.length > 99 ? ':D' : tabs.length; }
+const tabCount = () => (tabs.length > 99 ? ':D' : String(tabs.length));
+function renderCount() {}
 let progT;
 function progress(on) {
   const p = $('progress'); clearTimeout(progT);
@@ -271,7 +272,21 @@ function swipeAway(c, t) {
   };
   c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
 }
-$('tabsBtn').addEventListener('click', openGrid);
+// + : a new tab; hold it for a private tab.
+{
+  const nb = $('newBtn'); let holdT = 0, held = false;
+  nb.addEventListener('pointerdown', () => { held = false; clearTimeout(holdT); holdT = setTimeout(() => { held = true; post({ type: 'android:haptic' }); call('android:showWindow', true); }, 450); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) nb.addEventListener(ev, () => clearTimeout(holdT));
+  nb.addEventListener('click', () => { if (held) { held = false; return; } newTab(); });
+  nb.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+// Swipe down on the top bar: all your tabs.
+{
+  let y0 = null;
+  $('bar').addEventListener('pointerdown', (e) => { y0 = document.body.classList.contains('typing') ? null : e.clientY; });
+  $('bar').addEventListener('pointermove', (e) => { if (y0 != null && e.clientY - y0 > 36) { y0 = null; openGrid(); } });
+  $('bar').addEventListener('pointerup', () => { y0 = null; });
+}
 $('gridDone').addEventListener('click', closeGrid);
 $('gridNew').addEventListener('click', () => { closeGrid(); newTab(); });
 $('closeAll').addEventListener('click', () => { const ids = tabs.map((t) => t.id); thumbs.clear(); for (const id of ids.slice(1)) closeTab(id); closeTab(ids[0]); closeGrid(); });
@@ -298,11 +313,12 @@ function menu() {
   sheet((s) => {
     const q = el('div', 'quick');
     const qb = (ic, label, fn, dis, on) => { const b = el('button'); b.appendChild(icon(ic)); b.appendChild(el('span', null, label)); b.disabled = !!dis; if (on) b.classList.add('on'); b.addEventListener('click', () => { hideSheet(); fn(); }); q.appendChild(b); };
+    const tb = el('button'); tb.appendChild(el('span', 'tabs-count', tabCount())); tb.appendChild(el('span', null, tabs.length === 1 ? '1 tab' : `${tabs.length} tabs`));
+    tb.addEventListener('click', () => { hideSheet(true); openGrid(); }); q.appendChild(tb);
     qb(I.back, 'Back', () => t.wv.goBack(), !(t && t.wv && t.wv.canGoBack()));
     qb(I.fwd, 'Forward', () => t.wv.goForward(), !(t && t.wv && t.wv.canGoForward()));
     qb(I.reload, 'Reload', () => t.wv && t.wv.reload(), !t);
     qb(I.star, bm ? 'Saved' : 'Bookmark', toggleBookmark, !t || isInternal(t.url), !!bm);
-    qb(I.share, 'Share', () => { if (navigator.share) navigator.share({ title: title(t), url: t.url }).catch(() => {}); else { call('clipboard:write', t.url); toast('Link copied'); } }, !t || isInternal(t.url));
     s.appendChild(q);
     s.appendChild(el('div', 'sep'));
     rowBtn(s, I.plus, 'New tab', () => newTab());
@@ -310,6 +326,7 @@ function menu() {
     rowBtn(s, I.bookmarks, 'Bookmarks', () => internal('bookmarks'));
     rowBtn(s, I.history, 'History', () => internal('history'));
     rowBtn(s, I.download, 'Downloads', () => internal('downloads'));
+    if (t && !isInternal(t.url)) rowBtn(s, I.share, 'Share', () => { if (navigator.share) navigator.share({ title: title(t), url: t.url }).catch(() => {}); else { call('clipboard:write', t.url); toast('Link copied'); } });
     rowBtn(s, I.find, 'Find in page', openFind);
     const z = el('div', 'row'); z.appendChild(icon(I.zoom)); z.appendChild(el('span', 'grow', 'Zoom'));
     const zb = el('div', 'zoom'); const lbl = el('span', null, Math.round(((t && t.zoom) || 1) * 100) + '%');
