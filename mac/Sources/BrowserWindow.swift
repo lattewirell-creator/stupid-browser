@@ -133,7 +133,7 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
   }
   required init?(coder: NSCoder) { fatalError() }
 
-  func webView(_ w: WKWebView, didFinish _: WKNavigation!) { setGlass(app.settings["glass"] as? Bool == true) }
+  func webView(_ w: WKWebView, didFinish _: WKNavigation!) { setGlass(app.settings["glass"] as? Bool == true); placeWindowButtons() }
 
   // Events to the UI (Electron's webContents.send)
   func emit(_ channel: String, _ args: [Any]) {
@@ -194,7 +194,24 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
     shell.evaluateJavaScript("document.documentElement.classList.toggle('mac-glass', \(on))", completionHandler: nil)
   }
   func windowDidEnterFullScreen(_ n: Notification) { emit("fullscreen", [true]) }
-  func windowDidExitFullScreen(_ n: Notification) { emit("fullscreen", [false]) }
+  func windowDidExitFullScreen(_ n: Notification) { emit("fullscreen", [false]); placeWindowButtons() }
+  func windowDidResize(_ n: Notification) { placeWindowButtons() }
+  func windowDidBecomeKey(_ n: Notification) { placeWindowButtons() }
+
+  /// Close / minimize / full screen, centered in the UI's 40 px tab bar (where the Electron version had them,
+  /// trafficLightPosition x 14, y 13), instead of macOS's default spot higher up.
+  static let barHeight: CGFloat = 40
+  func placeWindowButtons() {
+    guard let win = window, !win.styleMask.contains(.fullScreen), let close = win.standardWindowButton(.closeButton), let container = close.superview?.superview else { return }
+    let h = BrowserWindow.barHeight
+    var f = container.frame
+    if f.size.height != h || f.origin.y != win.frame.height - h { f.size.height = h; f.origin.y = win.frame.height - h; container.frame = f }
+    for (i, type) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].enumerated() {
+      guard let b = win.standardWindowButton(type) else { continue }
+      let origin = NSPoint(x: 14 + CGFloat(i) * 20, y: ((b.superview?.frame.height ?? h) - b.frame.height) / 2)
+      if b.frame.origin != origin { b.setFrameOrigin(origin) }
+    }
+  }
 
   func windowWillClose(_ n: Notification) {
     app.core.invoke("win:closed", [], ctx: ["window": id, "incognito": incognito]) { _, _ in }
@@ -224,6 +241,13 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
       _ = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "benchmark")
     }
     for t in [2.0, 6.0] { DispatchQueue.main.asyncAfter(deadline: .now() + t) { [weak self] in print("[stupid] window visible on screen: \(self?.window?.occlusionState.contains(.visible) ?? false)") } }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+      guard let w = self?.window else { return }
+      for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap({ w.standardWindowButton($0) }) {
+        let r = b.convert(b.bounds, to: nil)
+        print("[stupid] window button center from top: x \(Int(r.midX)) y \(Int(w.frame.height - r.midY))")
+      }
+    }
   }
   private func snapshot(to path: String) {
     guard let root = window?.contentView else { return }
