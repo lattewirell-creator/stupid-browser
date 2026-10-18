@@ -23,13 +23,30 @@
   document.addEventListener("click", (e) => { if (held && e.target.closest && e.target.closest("#newTabBtn")) { held = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
   document.addEventListener("contextmenu", (e) => { if (e.target.closest && e.target.closest("#newTabBtn")) e.preventDefault(); }, true);
 
+  /* ---------------- how tall the bars are (they slide away while you scroll down a page) ---------------- */
+  let lastBars = -1;
+  const bars = () => {
+    const tb = document.getElementById("toolbar");
+    const vis = tb && getComputedStyle(tb).display !== "none" && !document.body.classList.contains("compact");
+    const h = vis ? Math.round(tb.getBoundingClientRect().bottom) : 0;
+    if (h !== lastBars) { lastBars = h; post({ type: "android:bars", h }); }
+  };
+  document.addEventListener("DOMContentLoaded", () => {
+    const ro = new ResizeObserver(bars);
+    ["titlebar", "toolbar"].forEach((id) => { const e = document.getElementById(id); if (e) ro.observe(e); });
+    new MutationObserver(bars).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    bars();
+  });
+
   /* ---------------- the tab you're on stays in view in the tab strip ---------------- */
   let lastActive = null;
   const reveal = () => {
     const a = document.querySelector("#tabs .tab.active");
     if (!a || a === lastActive) return;
     lastActive = a;
-    requestAnimationFrame(() => a.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" }));
+    const show = () => a.isConnected && a.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+    requestAnimationFrame(show);
+    setTimeout(show, 360);   // again once a new tab has finished growing into the strip
   };
   document.addEventListener("DOMContentLoaded", () => {
     const strip = document.getElementById("tabs");

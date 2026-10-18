@@ -64,7 +64,7 @@ final class Tabs {
 
     final class Tab {
         final int id; WebView web; final boolean isTab; final String partition;
-        String lastURL = ""; boolean loading; float zoom = 1; float radius;
+        String lastURL = ""; boolean loading, zoomed; float zoom = 1; float radius;
         String findText = ""; float touchX, touchY;
         Tab(int id, boolean isTab, String partition) { this.id = id; this.isTab = isTab; this.partition = partition; }
     }
@@ -72,6 +72,7 @@ final class Tabs {
     Tabs(Win owner) {
         this.owner = owner; this.app = owner.app;
         layer = new FrameLayout(app);
+        layer.setClipChildren(false);   // a tab can reach past the bottom while the bars slide away
         if (owner.incognito && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             profile = "private-" + owner.id + "-" + System.currentTimeMillis();
             ProfileStore.getInstance().getOrCreateProfile(profile);
@@ -100,8 +101,9 @@ final class Tabs {
             case "tab:stop": t.web.stopLoading(); break;
             case "tab:focus": t.web.requestFocus(); break;
             case "tab:zoom": {
+                // The ⋮ menu's Zoom scales the whole page like on a computer (pinching still works on top).
                 float z = (float) m.optDouble("zoom", 1);
-                if (z > 0 && z != t.zoom) { t.web.zoomBy(Math.max(0.02f, Math.min(50f, z / t.zoom))); t.zoom = z; }
+                if (z > 0) { t.zoom = Math.max(0.25f, Math.min(5f, z)); applyZoom(t); }
                 try { send(t, "state", new JSONObject().put("zoom", z)); } catch (JSONException ignored) { }
                 break;
             }
@@ -141,6 +143,7 @@ final class Tabs {
         });
         web.setClipToOutline(true);
         web.setOnTouchListener((v, e) -> { if (e.getActionMasked() == MotionEvent.ACTION_DOWN) { t.touchX = v.getX() + e.getX(); t.touchY = v.getY() + e.getY(); } return false; });
+        web.setOnScrollChangeListener((v, x, y, ox, oy) -> { if (t.isTab && v.getVisibility() == View.VISIBLE) owner.pageScrolled(y - oy, y); });
         installScripts(web, t);
         web.setWebViewClient(new Client(t));
         web.setWebChromeClient(new Chrome(t));
@@ -207,6 +210,11 @@ final class Tabs {
         });
         t.web.postDelayed(() -> { ValueCallbackHolder h = evals.remove(rid); if (h != null) h.done.done(false, "no answer"); }, 20000);
     }
+    private void applyZoom(Tab t) {
+        if (t.zoom == 1 && !t.zoomed) return;
+        t.zoomed = t.zoom != 1;
+        t.web.evaluateJavascript("document.documentElement && (document.documentElement.style.zoom = " + (t.zoom == 1 ? "''" : String.valueOf(t.zoom)) + ")", null);
+    }
     /** For the core (Buddy, Rewind). */
     void evalHelper(Tab t, String code, Core.Reply done) { exec(t, code, done); }
     private static Object parse(String raw) {
@@ -250,16 +258,21 @@ final class Tabs {
     }
 
     /* ---------------- layout from the UI ---------------- */
+    private JSONArray lastList, lastCovers;
+    /** Again with the last positions (the bars slid away or came back). */
+    void relayout() { if (lastList != null) layout(lastList, lastCovers); }
     void layout(JSONArray list, JSONArray covers) {
         if (list == null) return;
+        lastList = list; lastCovers = covers;
         float dp = owner.dp();
         owner.shell.pass.clear(); owner.shell.covers.clear();
         for (int i = 0; i < list.length(); i++) {
             JSONObject d = list.optJSONObject(i); if (d == null) continue;
             Tab t = tabs.get(d.optInt("tab")); if (t == null) continue;
-            float x = (float) d.optDouble("x") * dp, y = (float) d.optDouble("y") * dp;
-            int w = Math.round((float) d.optDouble("w") * dp), h = Math.round((float) d.optDouble("h") * dp);
+            float x = (float) d.optDouble("x") * dp, yUi = (float) d.optDouble("y") * dp, y = yUi - owner.barsShift();
+            int w = Math.round((float) d.optDouble("w") * dp), h = Math.round((float) d.optDouble("h") * dp + owner.barsExtra());
             boolean shown = d.optBoolean("shown");
+            if (shown && t.isTab && t.web.getVisibility() != View.VISIBLE) owner.showBars();   // switched tabs: bars back
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) t.web.getLayoutParams();
             if (lp.width != Math.max(1, w) || lp.height != Math.max(1, h)) { lp.width = Math.max(1, w); lp.height = Math.max(1, h); t.web.setLayoutParams(lp); }
             if (t.web.getX() != x) t.web.setX(x);
@@ -270,7 +283,7 @@ final class Tabs {
             if (t.web.getAlpha() != alpha) t.web.setAlpha(alpha);
             int vis = shown ? View.VISIBLE : View.INVISIBLE;
             if (t.web.getVisibility() != vis) t.web.setVisibility(vis);
-            if (shown) owner.shell.pass.add(new RectF(x, y, x + w, y + h));
+            if (shown) owner.shell.pass.add(new RectF(x, yUi, x + w, yUi + h));   // in the UI's own coordinates (it slides with the bars)
         }
         for (int i = 0; covers != null && i < covers.length(); i++) {
             JSONObject c = covers.optJSONObject(i); if (c == null) continue;
@@ -316,6 +329,7 @@ final class Tabs {
                 }
                 case "dom-ready": {
                     if (!mainFrame) break;
+                    t.zoomed = false; applyZoom(t);   // a new page: the tab's zoom again
                     send(t, "dom-ready", null);
                     if (t.isTab && app.settingOn("adblock")) {
                         String u = t.web.getUrl();
@@ -371,6 +385,7 @@ final class Tabs {
         }
         @Override public void onPageStarted(WebView v, String url, Bitmap favicon) {
             t.loading = true; t.findText = "";
+            if (v.getVisibility() == View.VISIBLE) owner.showBars();
             send(t, "did-start-loading", null);
             navigated(url, false);
         }
@@ -394,7 +409,7 @@ final class Tabs {
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) v.getLayoutParams();
             float x = v.getX(), y = v.getY(), a = v.getAlpha(); int vis = v.getVisibility();
             layer.removeView(v); v.destroy();
-            t.web = makeView(t); t.zoom = 1;
+            t.web = makeView(t); t.zoomed = false;
             layer.addView(t.web, i, lp); t.web.setX(x); t.web.setY(y); t.web.setAlpha(a); t.web.setVisibility(vis);
             try { send(t, "render-process-gone", new JSONObject().put("details", new JSONObject().put("reason", "crashed"))); } catch (JSONException ignored) { }
             if (!url.isEmpty()) t.web.loadUrl(url);

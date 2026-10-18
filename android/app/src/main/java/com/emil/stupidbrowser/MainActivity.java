@@ -61,6 +61,7 @@ public final class MainActivity extends Activity {
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             Insets i = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime() | WindowInsets.Type.displayCutout());
             v.setPadding(i.left, i.top, i.right, i.bottom);
+            if (insets.isVisible(WindowInsets.Type.ime())) { Win w = current(); if (w != null) w.showBars(); }   // typing: bars stay
             return WindowInsets.CONSUMED;
         });
         setContentView(root);

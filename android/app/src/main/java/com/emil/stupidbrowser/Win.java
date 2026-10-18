@@ -39,6 +39,7 @@ final class Win {
     /** The UI layer: lets touches through to the tab below wherever the page shows. */
     static final class Shell extends WebView {
         final List<RectF> pass = new ArrayList<>(), covers = new ArrayList<>();
+        Runnable touched;   // a touch on the UI itself (the bars come back)
         Shell(Context c) { super(c); }
         @Override public boolean dispatchTouchEvent(MotionEvent e) {
             if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
@@ -47,6 +48,7 @@ final class Win {
                 for (RectF r : pass) if (r.contains(x, y)) { onTab = true; break; }
                 if (onTab) for (RectF r : covers) if (r.contains(x, y)) { onTab = false; break; }
                 if (onTab) return false;   // the parent offers it to the tab underneath
+                if (touched != null) touched.run();
             }
             return super.dispatchTouchEvent(e);
         }
@@ -70,6 +72,9 @@ final class Win {
         shell.getSettings().setAllowContentAccess(false);
         shell.getSettings().setMediaPlaybackRequiresUserGesture(false);
         shell.getSettings().setTextZoom(100);
+        shell.getSettings().setUseWideViewPort(true);    // honour the UI's viewport (75%, no zooming)
+        shell.getSettings().setLoadWithOverviewMode(false);
+        shell.getSettings().setSupportZoom(false);
         shell.setOverScrollMode(View.OVER_SCROLL_NEVER);
         shell.addJavascriptInterface(new Bridge(), "StupidHostNative");
         shell.setWebViewClient(new WebViewClient() {
@@ -90,10 +95,12 @@ final class Win {
             @Override public boolean onShowFileChooser(WebView v, android.webkit.ValueCallback<android.net.Uri[]> cb, FileChooserParams p) { return app.chooseFile(cb, p); }
         });
         stage.addView(shell, new FrameLayout.LayoutParams(-1, -1));
+        shell.touched = this::showBars;
         shell.loadUrl(Assets.SHELL + "/index.html");
     }
 
-    float dp() { return app.getResources().getDisplayMetrics().density; }
+    /** Device pixels per CSS pixel of the UI (the UI is shown at Assets.UI_SCALE). */
+    float dp() { return app.getResources().getDisplayMetrics().density * Assets.UI_SCALE; }
     void js(String code) { shell.evaluateJavascript(code, null); }
     /** Events to the UI (Electron's webContents.send). */
     void emit(String channel, JSONArray args) { js("window.__stupidHost && __stupidHost.emit(" + JSONObject.quote(channel) + "," + args + ")"); }
@@ -132,6 +139,7 @@ final class Win {
                 if (f != null) look(f);
                 return;
             }
+            case "android:bars": barsPx = (float) m.optDouble("h", 0) * dp(); if (barsPx <= 0) showBars(); return;
             case "android:haptic": shell.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); return;
             case "android:save": { Tabs.Tab t = tabs.get(m.optInt("tab")); app.downloads.start(m.optString("url"), t == null ? null : t.web, this); return; }
             default: if (type.startsWith("tab:")) tabs.handle(type, m);
@@ -152,6 +160,38 @@ final class Win {
             }
             default: return null;
         }
+    }
+
+    /* ---------------- bars that slide away while you scroll down (like Firefox) ---------------- */
+    private float barsPx;          // height of the tab strip + toolbar
+    private boolean barsHidden, barsSettled;
+    private float scrollRun;       // how far the page moved in one direction
+    /** Extra tab height while the bars are away (the page fills the space they leave). */
+    float barsExtra() { return barsHidden ? barsPx : 0; }
+    /** While the bars are away the tabs sit higher (after the slide; during it the whole layer moves). */
+    float barsShift() { return barsHidden && barsSettled ? barsPx : 0; }
+    void pageScrolled(int dy, int y) {
+        if (barsPx <= 0 || dy == 0) return;
+        if ((dy > 0) != (scrollRun > 0)) scrollRun = 0;
+        scrollRun += dy;
+        float slop = 24 * app.getResources().getDisplayMetrics().density;
+        if (scrollRun > slop && y > barsPx && !barsHidden) hideBars();
+        else if ((scrollRun < -slop || y <= 0) && barsHidden) showBars();
+    }
+    private void hideBars() {
+        barsHidden = true; barsSettled = false;
+        tabs.relayout();   // the page grows first (past the screen edge), then the bars and page slide up together
+        shell.animate().translationY(-barsPx).setDuration(200).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        tabs.layer.animate().translationY(-barsPx).setDuration(200).setInterpolator(new android.view.animation.DecelerateInterpolator())
+            .withEndAction(() -> { if (!barsHidden) return; barsSettled = true; tabs.layer.setTranslationY(0); tabs.relayout(); }).start();
+    }
+    void showBars() {
+        if (!barsHidden) return;
+        barsHidden = false; scrollRun = 0;
+        if (barsSettled) { barsSettled = false; tabs.layer.setTranslationY(-barsPx); tabs.relayout(); }   // same picture, now moved by the layer
+        shell.animate().translationY(0).setDuration(200).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        tabs.layer.animate().translationY(0).setDuration(200).setInterpolator(new android.view.animation.DecelerateInterpolator())
+            .withEndAction(() -> { if (!barsHidden) tabs.relayout(); }).start();
     }
 
     /* ---------------- the frame behind the UI (the Electron CSS's colours and clay tint) ---------------- */

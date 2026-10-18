@@ -23,3 +23,4 @@ html.android h1 { font-size: 36px; }
 html.android footer, html.android .foot { flex-wrap: wrap; gap: 8px; padding-left: 14px; padding-right: 14px; }
 html.android .row, html.android .row * { word-break: normal; overflow-wrap: break-word; }
 html.android :focus-visible { outline: none !important; }
+html.android .hint { display: none; }   /* keyboard shortcuts on the new tab page */

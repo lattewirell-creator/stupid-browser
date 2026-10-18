@@ -14,16 +14,20 @@ html.android .new-tab { width: 40px; height: 40px; margin: 0 0 2px 2px; flex: no
 html.android .new-tab svg { width: 20px; height: 20px; }
 html.android .drag-fill { display: none; }
 
-/* Toolbar: back · reload · address · Shield · Buddy · ⋮ */
-html.android #toolbar { gap: 0; padding: 4px 4px 6px; }
+/* Toolbar: back · reload · a big, easy address bar (like Firefox's) · Shield · Buddy · ⋮ */
+html.android #toolbar { gap: 2px; padding: 4px 6px 8px; align-items: center; }
 html.android #railBtn, html.android #fwdBtn, html.android #homeBtn, html.android #pipBtn, html.android #gridBtn, html.android #profileBtn, html.android #soundBtn { display: none !important; }
-html.android .icon-btn { width: 38px; height: 38px; }
-html.android #omnibox { height: 40px; margin: 0 4px; min-width: 0; }
-html.android #address { font-size: 16px; }              /* 16px: Android doesn't zoom in when you type */
+html.android .icon-btn { width: 40px; height: 40px; }
+html.android #toolbar > .icon-btn svg { width: 21px; height: 21px; }
+html.android #omnibox { height: 46px; margin: 0 4px; min-width: 0; padding: 0 6px 0 8px; border-radius: 16px; }
+html.android .site-btn { width: 32px; height: 32px; }
+html.android .site-btn svg { width: 17px; height: 17px; }
+html.android #address { font-size: 16.5px; }              /* 16px+: Android doesn't zoom in when you type */
 html.android #starBtn { display: none; }
 html.android #omnibox:focus-within #starBtn { display: grid; }
-html.android #adblockBtn { height: 32px; padding: 0 8px; gap: 5px; }
+html.android #adblockBtn { height: 34px; padding: 0 9px; gap: 5px; }
 html.android #adblockBtn > span:nth-child(2) { display: none; }   /* the word "Shield": the dot and count stay */
+html.android #suggest { top: calc(100% + 6px); border-radius: 16px; }
 
 /* Bookmarks bar and the apps sidebar: on a phone they're in the ⋮ menu and the + page instead */
 html.android #bookmarksBar, html.android #rail, html.android #appResizer, html.android #aiResizer { display: none !important; }
