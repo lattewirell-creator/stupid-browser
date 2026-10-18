@@ -100,6 +100,17 @@ public final class MainActivity extends Activity {
         if (top != null) { top.stage.setVisibility(View.VISIBLE); top.refreshLook(); }
         else openWindow(false, null);
     }
+    /** The tab grid's Tabs / Private switch: bring that window to the front (a private one is made if needed). */
+    void showWindow(boolean incognito) {
+        Win target = null;
+        for (Win w : windows) if (w.incognito == incognito) target = w;
+        if (target == null) { openWindow(incognito, null); return; }
+        if (target == current()) return;
+        Win before = current();
+        windows.remove(target); windows.add(target);
+        target.stage.setVisibility(View.VISIBLE); target.stage.bringToFront(); target.refreshLook();
+        if (before != null) before.stage.setVisibility(View.GONE);
+    }
     Win current() { return windows.isEmpty() ? null : windows.get(windows.size() - 1); }
     Win window(int id) { for (Win w : windows) if (w.id == id) return w; return null; }
 

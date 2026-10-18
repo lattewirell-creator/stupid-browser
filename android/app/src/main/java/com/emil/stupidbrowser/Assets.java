@@ -69,9 +69,11 @@ final class Assets {
         String s = read(c, "mac/" + name).replace("window.webkit.messageHandlers.tab.postMessage(", "__stupidTabPost(");
         return topOnly ? "if (window.top === window) {\n" + s + "\n}" : s;
     }
+    /** The phone UI's bridge: mac/js/host-shell.js (the <webview> stand-ins and window.stupid), where anything
+     *  marked .cover (sheets, the tab grid, menus) keeps touches for the UI instead of the page underneath. */
     static String shellScript(Context c) {
         return read(c, "android/shell-bridge.js") + "\n" + read(c, "mac/host-shell.js").replace("platform: \"darwin\"", "platform: \"android\"").replace("engine: \"webkit\"", "engine: \"android\"")
-            + "\n" + read(c, "android/android-shell.js");
+            .replaceFirst("const OVERLAYS = \"[^\"]*\";", "const OVERLAYS = \".cover:not(.hidden)\";");
     }
     static String pageScript(Context c) {
         return read(c, "android/page-bridge.js") + "\n" + read(c, "mac/host-page.js").replace("if (location.protocol !== \"stupid:\") return;", "if (!/\\.stupid\\.internal$/.test(location.hostname) || !window.__stupidPageBridge) return;")
@@ -87,9 +89,9 @@ final class Assets {
         if (host.equals("shell.stupidapp.internal")) {
             if (path.isEmpty()) path = "index.html";
             if (path.equals("__android/host.js")) return js(shellScript(c));
-            if (path.equals("__android/android.css")) return file(c, "android/android.css");
-            if (path.equals("index.html")) return html(read(c, "shell/index.html").replaceFirst("<head>", "<head>" + VIEWPORT + "<script src=\"/__android/host.js\"></script>")
-                .replace("</head>", "<link rel=\"stylesheet\" href=\"/__android/android.css\"></head>"));
+            // The phone's own UI (android/ui/mobile); fonts, pictures and other shared files come from src/.
+            if (path.equals("index.html")) return html(read(c, "android/mobile/index.html").replace("<head>", "<head>" + VIEWPORT + "<script src=\"/__android/host.js\"></script>"));
+            if (path.startsWith("m/")) return file(c, "android/mobile/" + path.substring(2));
             return file(c, "shell/" + path);
         }
         if (host.equals("core.stupidapp.internal")) {

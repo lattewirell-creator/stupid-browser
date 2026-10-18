@@ -123,6 +123,9 @@ function openCustomize() { $('customize').classList.remove('hidden'); paintCusto
 const save = (patch) => call('settings:set', patch).then((s) => { settings = s; renderLogo(); }).catch(() => toast('Couldn’t save that'));
 $('customizeBtn').addEventListener('click', () => { if ($('customize').classList.contains('hidden')) openCustomize(); else $('customize').classList.add('hidden'); });
 $('czClose').addEventListener('click', () => $('customize').classList.add('hidden'));
+// stupid://newtab/#customize opens the panel straight away (the phone's menu → Customize).
+const czHash = () => { if (location.hash === '#customize') { openCustomize(); history.replaceState(null, '', location.pathname); } };
+addEventListener('hashchange', czHash); czHash();
 $('czLogos').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.v === 'image' && !settings.logoImage) { $('czFile').click(); }

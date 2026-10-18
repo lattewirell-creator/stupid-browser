@@ -126,6 +126,12 @@ final class Win {
             case "invoke": {
                 String channel = m.optString("channel");
                 JSONArray args = m.optJSONArray("args"); if (args == null) args = new JSONArray();
+                if (channel.equals("android:shot")) {   // a small picture of a tab, for the tab grid
+                    Tabs.Tab t = tabs.get(args.optInt(0));
+                    if (t == null) { reply(rid, true, null); return; }
+                    tabs.shot(t, new JSONObject().put("width", 420).put("quality", 0.6), null, (ok, v) -> reply(rid, ok, v));
+                    return;
+                }
                 Object local = handleLocally(channel, args);
                 if (local != null) { reply(rid, true, local); return; }
                 JSONObject ctx = ctx();
@@ -149,10 +155,12 @@ final class Win {
     }
 
     /** Window-level channels that need this window (the rest go to the core). */
-    private Object handleLocally(String channel, JSONArray args) {
+    private Object handleLocally(String channel, JSONArray args) throws JSONException {
         switch (channel) {
             case "win:close": app.closeWindow(this); return true;
             case "win:fullscreen": case "win:trafficLights": return true;
+            case "android:windows": { boolean p = false; for (Win w : app.windows) p |= w.incognito; return new JSONObject().put("private", p).put("incognito", incognito); }
+            case "android:showWindow": app.showWindow(args.optBoolean(0)); return true;
             case "win:new": {
                 JSONObject o = args.optJSONObject(0);
                 List<String> urls = null;
