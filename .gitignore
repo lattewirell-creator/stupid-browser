@@ -12,3 +12,5 @@ Thumbs.db
 *.key
 *.p12
 *.pfx
+mac/build/
+mac/adblock/
