@@ -85,3 +85,11 @@ main > #logo.ring::after { animation: logo-core 1100ms ease-out both; }
 @keyframes logo-arrive { from { opacity: 0; transform: translateY(10px) rotate(-25deg) scale(.75); } to { opacity: 1; transform: none; } }
 @keyframes logo-core { from { transform: scale(.3); } 65% { transform: scale(1.1); } to { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { main > #logo, main > #logo::after { animation: none !important; transition: none; } }
+
+/* Buddy ball logo: the little ball from the welcome screen (eyes drawn with ::before/::after) */
+.logo.buddy { border: 0; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 70%, #fff), var(--accent) 70%); box-shadow: none; outline: 0; }
+.logo.buddy::before, .logo.buddy::after { content: ''; position: absolute; top: 33%; width: 15%; height: 25%; inset-inline: auto; border-radius: 999px; background: #fff; }
+.logo.buddy::before { left: 30%; } .logo.buddy::after { right: 30%; left: auto; }
+main > .logo.buddy { width: 58px; height: 58px; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent); animation: logo-bob 3s ease-in-out infinite; }
+@keyframes logo-bob { 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { main > .logo.buddy { animation: none; } }
