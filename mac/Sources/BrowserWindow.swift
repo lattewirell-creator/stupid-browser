@@ -20,7 +20,8 @@ final class ShellView: WKWebView {
 /// top-left corner), optionally over glass.
 final class FrameView: NSView {
   private let gradient = CAGradientLayer()
-  var glassOn = false { didSet { needsLayout = true } }
+  var glassOn = false { didSet { if let l = last { apply(bar: l.0, accent: l.1, modern: l.2, tint: l.3) } } }
+  private var last: (NSColor, NSColor, Bool, String)?
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
@@ -31,6 +32,7 @@ final class FrameView: NSView {
   override func layout() { super.layout(); CATransaction.begin(); CATransaction.setDisableActions(true); gradient.frame = bounds; CATransaction.commit() }
   /// CSS: radial-gradient(120% 90% at 0% 0%, color-mix(accent N%, bar), bar 55%)
   func apply(bar: NSColor, accent: NSColor, modern: Bool, tint: String) {
+    last = (bar, accent, modern, tint)
     let alpha: CGFloat = glassOn ? 0.62 : 1
     let mix: CGFloat = !modern || tint == "none" ? 0 : tint == "strong" ? 0.34 : 0.14
     let start = bar.blended(withFraction: mix, of: accent) ?? bar
@@ -78,11 +80,13 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
   var shell: ShellView!
   var tabs: TabHost!
   private var pendingUrls: [String]?
+  private let startup: Bool
   private let glass = makeGlassBackground()
   private let frameView = FrameView(frame: .zero)
 
-  init(app: AppDelegate, incognito: Bool, urls: [String]?) {
+  init(app: AppDelegate, incognito: Bool, urls: [String]?, startup: Bool = false) {
     self.app = app
+    self.startup = startup
     self.id = nextWindowId; nextWindowId += 1
     self.incognito = incognito
     self.pendingUrls = urls
@@ -97,6 +101,7 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
     win.isOpaque = false
     super.init(window: win)
     win.delegate = self
+    updateTitle()
 
     let root = NSView()
     root.wantsLayer = true
@@ -128,6 +133,8 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
   }
   required init?(coder: NSCoder) { fatalError() }
 
+  func webView(_ w: WKWebView, didFinish _: WKNavigation!) { setGlass(app.settings["glass"] as? Bool == true) }
+
   // Events to the UI (Electron's webContents.send)
   func emit(_ channel: String, _ args: [Any]) {
     shell.evaluateJavaScript("window.__stupidHost && __stupidHost.emit(\(json(channel)), \(json(args)))", completionHandler: nil)
@@ -144,7 +151,7 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
       let channel = msg["channel"] as? String ?? ""
       if let local = handleLocally(channel, msg["args"] as? [Any] ?? []) { reply(rid, true, local); return }
       var ctx: [String: Any] = ["window": id, "incognito": incognito]
-      if channel == "win:info" { ctx["urls"] = pendingUrls as Any? ?? NSNull(); pendingUrls = nil }
+      if channel == "win:info" { ctx["urls"] = pendingUrls as Any? ?? NSNull(); ctx["startup"] = startup; pendingUrls = nil }
       app.core.invoke(channel, msg["args"] ?? [], ctx: ctx) { [weak self] ok, v in self?.reply(rid, ok, v) }
     case "log":
       print("[ui] \(msg["text"] as? String ?? "")")
@@ -173,6 +180,21 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
     default: return nil
     }
   }
+
+  /// The window's name (Window menu, Mission Control): Settings → browser name, like Electron's windowTitle.
+  func updateTitle() {
+    let w = (app.settings["wordmark"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+    let n = w.isEmpty ? "The Stupid Browser" : w
+    window?.title = incognito ? "Private — \(n)" : n
+  }
+  /// Liquid Glass behind the browser (Settings → Appearance → Glass, Mac only).
+  func setGlass(_ on: Bool) {
+    glass.isHidden = !on
+    frameView.glassOn = on
+    shell.evaluateJavaScript("document.documentElement.classList.toggle('mac-glass', \(on))", completionHandler: nil)
+  }
+  func windowDidEnterFullScreen(_ n: Notification) { emit("fullscreen", [true]) }
+  func windowDidExitFullScreen(_ n: Notification) { emit("fullscreen", [false]) }
 
   func windowWillClose(_ n: Notification) {
     app.core.invoke("win:closed", [], ctx: ["window": id, "incognito": incognito]) { _, _ in }

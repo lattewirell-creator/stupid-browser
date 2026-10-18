@@ -81,7 +81,7 @@ const cleanEq = (eq) => {
 };
 function cleanPatch(patch) {
   const p = Object.assign({}, patch);
-  if ('logo' in p && !['ring', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
+  if ('logo' in p && !['ring', 'buddy', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
   if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
   if ('quoteMode' in p && !['browser', 'mine', 'mix'].includes(p.quoteMode)) delete p.quoteMode;
   if ('myQuotes' in p) p.myQuotes = (Array.isArray(p.myQuotes) ? p.myQuotes : []).map((q) => String(q).trim().slice(0, 200)).filter(Boolean).slice(0, 100);
@@ -98,7 +98,7 @@ function cleanPatch(patch) {
       color: col(L.color, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'cream'),
       glow: col(L.glow, ['cyan', 'green', 'pink', 'amber', 'white', 'violet'], 'cyan'),
       extra: ['none', 'headphones', 'cap', 'bow', 'crown', 'glasses', 'flower'].includes(L.extra) ? L.extra : 'none',
-      shape: ['hiker', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'hiker',
+      shape: ['hiker', 'ball', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'hiker',
       eyes: ['dot', 'round', 'sleepy', 'wide', 'lash'].includes(L.eyes) ? L.eyes : 'dot',
       mouth: ['smile', 'grin', 'flat', 'open', 'cat'].includes(L.mouth) ? L.mouth : 'smile',
       outfit: col(L.outfit, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),
@@ -109,7 +109,7 @@ function cleanPatch(patch) {
     };
   }
   delete p.brandBundle;   // only brand:apply sets this
-  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind', 'clock24']) if (k in p) p[k] = !!p[k];
+  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind', 'clock24', 'glass']) if (k in p) p[k] = !!p[k];
   const pick = (k, list) => { if (k in p && !list.includes(p[k])) delete p[k]; };
   pick('uiFont', ['inter', 'system', 'serif', 'rounded', 'mono']); pick('density', ['compact', 'comfortable', 'spacious']);
   pick('corners', ['sharp', 'rounded', 'round']); pick('tabStyle', ['classic', 'pills', 'minimal']); pick('frameTint', ['none', 'soft', 'strong']);
@@ -204,6 +204,13 @@ function suggest(q, limit = 7) {
   }
   return [...scores.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
+const SEARCH_ADS = [
+  [/^https:\/\/(www\.)?google\.[a-z.]+\/search/, '#tads, #tadsb, #bottomads, #atvcap, [data-text-ad], .commercial-unit-desktop-top, .commercial-unit-desktop-rhs, .cu-container'],
+  [/^https:\/\/(www\.)?bing\.com\/search/, '.b_ad, .b_adTop, .b_adBottom, #b_results > li.b_adLastChild'],
+  [/^https:\/\/(html\.|lite\.)?duckduckgo\.com\//, '.result--ad, [data-testid="ad"], li[data-layout="ad"], .module--ads, .badge--ad'],
+  [/^https:\/\/search\.yahoo\.com\/search/, '.searchCenterTopAds, .searchCenterBottomAds, .searchRightTopAds, .searchRightBottomAds, ol.ads']
+];
+function searchAdCss(url) { const hit = SEARCH_ADS.find(([re]) => re.test(url || '')); return hit ? hit[1] + ' { display: none !important; }' : ''; }
 handle('settings:get', ANY, () => publicSettings());
 handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(cleanPatch(patch)); return publicSettings(); });
 handle('settings:reset', ['internal'], () => { const keep = { pinned: getSettings().pinned }; store.write('settings.json', keep); applySettingsSideEffects(DEFAULT_SETTINGS()); broadcast('settings:changed', publicSettings()); return publicSettings(); });
@@ -250,6 +257,10 @@ handle('perms:set', ANY, (_e, origin, kind, value) => {
 handle('adblock:set', ANY, (_e, on) => { setSettings({ adblock: !!on }); return { on: !!on, count: blockedCount }; });
 handle('adblock:get', ANY, () => ({ on: getSettings().adblock, count: blockedCount }));
 handle('eq:get', (e) => (e.sender.getType() === 'webview' ? cleanEq(getSettings().eq) : null));
+handle('downloads:list', ANY, () => getDownloads());
+handle('downloads:clear', ANY, () => { const list = getDownloads().filter((d) => d.state === 'progressing'); store.write('downloads.json', list); broadcast('downloads:cleared', true); return true; });
+handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, origin: x.origin, username: x.username || '', never: !!x.never, created: x.created })));
+handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
 const PROVIDERS = {
   anthropic: { name: 'Claude (Anthropic)', key: true, keyUrl: 'console.anthropic.com → API keys' },
   openai: { name: 'ChatGPT (OpenAI)', key: true, base: 'https://api.openai.com/v1', keyUrl: 'platform.openai.com → API keys' },
@@ -297,6 +308,26 @@ function parseCsv(text) {
   }
   if (cell || row.length) { row.push(cell); rows.push(row); }
   return rows.filter((r) => r.some((x) => x.trim()));
+}
+function parsePlistXml(xml) {
+  const re = /<(\/?)(dict|array|key|string|integer|real|date|data|true|false)\s*(\/?)>([^<]*)/g;
+  const unesc = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  const stack = []; let key = null, top;
+  const put = (v) => { const p = stack[stack.length - 1]; if (!p) { top = v; return; } if (Array.isArray(p)) p.push(v); else { p[key] = v; key = null; } };
+  let m;
+  while ((m = re.exec(xml))) {
+    const [, close, tag, self, text] = m;
+    if (tag === 'dict' || tag === 'array') {
+      if (close) { const v = stack.pop(); if (!stack.length) top = v; }
+      else if (self) put(tag === 'dict' ? {} : []);
+      else { const v = tag === 'dict' ? {} : []; put(v); stack.push(v); }
+    } else if (close) continue;
+    else if (tag === 'key') key = unesc(text);
+    else if (tag === 'true' || tag === 'false') put(tag === 'true');
+    else if (tag === 'string') put(unesc(text));
+    else put(self ? '' : text);
+  }
+  return top;
 }
 const MAX_ITEMS = 3000, MAX_AGE = 30 * 864e5, SAME_PAGE_WINDOW = 10 * 60e3;
 const SENSITIVE = /(^|\.)(bank|paypal|stripe|klarna|swish)\.|\/(login|log-in|signin|sign-in|signup|auth|oauth|checkout|billing|payment|pay|account\/security|password|2fa|mfa)(\/|$|\?)|bankid|netbank|internetbank/i;

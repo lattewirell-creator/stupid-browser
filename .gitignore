@@ -13,3 +13,4 @@ Thumbs.db
 *.p12
 *.pfx
 mac/build/
+mac/adblock/

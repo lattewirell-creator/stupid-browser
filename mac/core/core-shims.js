@@ -13,8 +13,22 @@ const post = (m) => window.webkit.messageHandlers.core.postMessage(m);
 addEventListener("error", (e) => post({ type: "log", text: `${e.message} (${(e.filename || "").split("/").pop()}:${e.lineno})` }));
 let hostSeq = 0;
 const hostWaiting = new Map();
-function host(op, data = {}) {
-  return new Promise((resolve, reject) => { const id = ++hostSeq; hostWaiting.set(id, { resolve, reject }); post(Object.assign({ type: "host", id, op }, data)); });
+const hostStreams = new Map();   // host id -> onChunk (streamed answers, e.g. Buddy's replies)
+function host(op, data = {}, onChunk = null) {
+  return new Promise((resolve, reject) => {
+    const id = ++hostSeq;
+    hostWaiting.set(id, { resolve, reject });
+    if (onChunk) hostStreams.set(id, onChunk);
+    post(Object.assign({ type: "host", id, op }, data));
+  });
+}
+/** HTTP request done by the Mac app (no CORS limits, like Node's fetch in the Electron main process).
+ *  Returns { status, body } (body: the whole text when not streamed). onChunk gets text as it arrives.
+ *  Pass an AbortController's signal to cancel. */
+function nativeFetch(url, { method = "GET", headers = {}, body = null, timeout = 0, signal = null } = {}, onChunk = null) {
+  const fid = "f" + (++hostSeq) + Math.random().toString(36).slice(2, 6);
+  if (signal) { if (signal.aborted) return Promise.reject(new Error("aborted")); signal.addEventListener("abort", () => host("fetchAbort", { fid }).catch(() => {}), { once: true }); }
+  return host("fetch", { fid, url, method, headers, body, timeout, stream: !!onChunk }, onChunk);
 }
 /** Event to every window (and our pages), or to one window with { window: id }. */
 function broadcast(channel, ...args) { post({ type: "emit", channel, args }); }
@@ -39,10 +53,16 @@ const FILES = ["settings.json", "bookmarks.json", "ai-bots.json", "sidebar.json"
 
 // Things main.js code reaches for that live elsewhere on the Mac.
 let blockedCount = 0;
-const profiles = { sync() {} };
+const profiles = { sync(s) { host("profiles", { op: "sync", name: s.name || "", color: s.profileColor || "clay", email: s.email || "" }).catch(() => {}); } };
+// The settings the Mac app itself needs (menus, downloads, page helpers…), without the big images.
+const NATIVE_KEYS = ["theme", "adblock", "appIcon", "wordmark", "eq", "glass", "search", "customSearch", "savePasswords", "downloadDir", "askWhereToSave",
+  "fontSize", "dnt", "brandBundle", "name", "profileColor", "musicIsland"];
 /** Settings that change the app itself (theme, Shield, app icon…): the Mac app applies them. */
 function applySettingsSideEffects(patch) {
-  const keep = {};
-  for (const k of ["theme", "adblock", "appIcon", "appIconImage", "wordmark", "eq", "glass"]) if (k in patch) keep[k] = patch[k];
-  if (Object.keys(keep).length) host("settingsApplied", { patch: keep, settings: getSettings() }).catch(() => {});
+  const s = getSettings(), slim = {};
+  for (const k of NATIVE_KEYS) slim[k] = s[k];
+  slim.searchUrl = searchUrlFor(s);
+  slim.engineName = s.search === "custom" ? "the web" : (SEARCH_ENGINES[s.search] || SEARCH_ENGINES.google).name;
+  const icon = "appIcon" in patch || "appIconImage" in patch ? { appIconImage: s.appIcon ? s.appIconImage || "" : "" } : {};
+  host("settingsApplied", Object.assign({ changed: Object.keys(patch), settings: slim }, icon)).catch(() => {});
 }

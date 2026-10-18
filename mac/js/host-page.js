@@ -10,6 +10,7 @@
   const pending = new Map(), listeners = new Map();
   window.stupid = Object.freeze({
     platform: "darwin",
+    engine: "webkit",
     invoke: (channel, ...args) => new Promise((resolve, reject) => { const id = ++seq; pending.set(id, { resolve, reject }); post({ id, channel, args }); }),
     on: (channel, fn) => { (listeners.get(channel) || listeners.set(channel, []).get(channel)).push(fn); },
   });

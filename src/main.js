@@ -556,7 +556,7 @@ function cleanPatch(patch) {
     };
   }
   delete p.brandBundle;   // only brand:apply sets this
-  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind', 'clock24']) if (k in p) p[k] = !!p[k];
+  for (const k of ['modernLook', 'verticalTabs', 'compactMode', 'rewind', 'clock24', 'glass']) if (k in p) p[k] = !!p[k];
   const pick = (k, list) => { if (k in p && !list.includes(p[k])) delete p[k]; };
   pick('uiFont', ['inter', 'system', 'serif', 'rounded', 'mono']); pick('density', ['compact', 'comfortable', 'spacious']);
   pick('corners', ['sharp', 'rounded', 'round']); pick('tabStyle', ['classic', 'pills', 'minimal']); pick('frameTint', ['none', 'soft', 'strong']);

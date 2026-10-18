@@ -1,6 +1,7 @@
 // Native tabs: one WKWebView per <webview> stand-in in the UI. Reports Electron-style webview events
 // back to the stand-in (did-navigate, page-title-updated, did-stop-loading, …) and does what the UI
-// asks (load, back, reload, executeJavaScript, zoom, find…).
+// asks (load, back, reload, executeJavaScript, zoom, find…). Page helpers (music island, Ask Buddy,
+// passwords) run in an isolated world the page can't see, like Electron's preloads.
 import Cocoa
 import WebKit
 
@@ -8,20 +9,35 @@ import WebKit
 /// lets Google sign-in work, unlike Electron.
 let userAgentProduct = "Version/\(safariVersion) Safari/605.1.15"
 let sharedPool = WKProcessPool()
+/// Our page helpers' own JavaScript world (Electron's isolated preload world).
+let helperWorld = WKContentWorld.world(name: "stupid")
+let FONT_SIZES: [String: Int] = ["small": 14, "medium": 16, "large": 19, "xlarge": 22]
 
 final class Tab: NSObject {
   let id: Int
-  let web: WKWebView
+  let web: TabWebView
+  let isTab: Bool          // a browser tab (not a sidebar app / AI panel)
   var observers: [NSKeyValueObservation] = []
   var lastURL = ""
   var audible = false
-  init(id: Int, web: WKWebView) { self.id = id; self.web = web }
+  var findText = "", findIndex = 0, findCount = 0
+  var ctxInfo: [String: Any] = [:], ctxTime = Date.distantPast
+  init(id: Int, web: TabWebView, isTab: Bool) { self.id = id; self.web = web; self.isTab = isTab }
 }
 
-final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+/// A tab's web view: shows the Electron version's page context menu (see PageMenu.swift).
+final class TabWebView: WKWebView {
+  weak var host: TabHost?
+  override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+    super.willOpenMenu(menu, with: event)
+    host?.pageMenu(menu, for: self)
+  }
+}
+
+final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply {
   unowned let owner: BrowserWindow
   private(set) var tabs: [Int: Tab] = [:]
-  private lazy var privateStore = WKWebsiteDataStore.nonPersistent()   // one per private window, like Electron
+  lazy var privateStore = WKWebsiteDataStore.nonPersistent()   // one per private window, like Electron
   private var audioTimer: Timer?
 
   init(window: BrowserWindow) {
@@ -32,34 +48,52 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
   }
   required init?(coder: NSCoder) { fatalError() }
   override var isFlipped: Bool { true }
+  private var app: AppDelegate { owner.app }
 
-  private func config() -> WKWebViewConfiguration {
+  private func script(_ name: String, _ world: WKContentWorld, allFrames: Bool = false) -> WKUserScript {
+    WKUserScript(source: Res.text(Res.mac.appendingPathComponent("js/\(name)")), injectionTime: .atDocumentStart, forMainFrameOnly: !allFrames, in: world)
+  }
+  private func config(isTab: Bool) -> WKWebViewConfiguration {
     let cfg = WKWebViewConfiguration()
     cfg.processPool = sharedPool
-    cfg.websiteDataStore = owner.incognito ? privateStore : .default()
+    cfg.websiteDataStore = owner.incognito ? privateStore : app.profileStore
     cfg.applicationNameForUserAgent = userAgentProduct
     cfg.setURLSchemeHandler(StupidScheme(), forURLScheme: "stupid")
     cfg.preferences.isElementFullscreenEnabled = true
     cfg.allowsAirPlayForMediaPlayback = true
     cfg.mediaTypesRequiringUserActionForPlayback = []
+    // Settings → font size (Electron's defaultFontSize; WebKit has it as a private preference).
+    if cfg.preferences.responds(to: Selector(("_setDefaultFontSize:"))) {
+      cfg.preferences.setValue(FONT_SIZES[app.settings["fontSize"] as? String ?? "medium"] ?? 16, forKey: "defaultFontSize")
+    }
     let uc = cfg.userContentController
-    uc.add(self, name: "tab")
     uc.add(self, name: "page")
-    uc.addUserScript(WKUserScript(source: Res.text(Res.mac.appendingPathComponent("js/host-page.js")), injectionTime: .atDocumentStart, forMainFrameOnly: true))
-    uc.addUserScript(WKUserScript(source: Res.text(Res.mac.appendingPathComponent("js/tab-events.js")), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    uc.addScriptMessageHandler(self, contentWorld: helperWorld, name: "tab")
+    uc.addUserScript(script("host-page.js", .page))                 // window.stupid for stupid:// pages
+    uc.addUserScript(script("gen-media.js", .page))                 // music island + equalizer
+    uc.addUserScript(script("tab-events.js", helperWorld))
+    uc.addUserScript(script("tab-ctx.js", helperWorld, allFrames: true))
+    if isTab { uc.addUserScript(script("gen-select.js", helperWorld)) }
+    if isTab && !owner.incognito { uc.addUserScript(script("gen-pw.js", helperWorld, allFrames: true)) }
+    if app.settings["dnt"] as? Bool == true {
+      uc.addUserScript(WKUserScript(source: "try { Object.defineProperty(Navigator.prototype, 'globalPrivacyControl', { get: () => true }); Object.defineProperty(Navigator.prototype, 'doNotTrack', { get: () => '1' }); } catch {}",
+                                    injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+    }
+    if isTab, app.settings["adblock"] as? Bool ?? true, let list = Blocker.list { uc.add(list) }
     return cfg
   }
 
   func tab(for web: WKWebView) -> Tab? { tabs.values.first { $0.web === web } }
-  private func send(_ t: Tab, _ name: String, _ detail: [String: Any] = [:]) {
+  func send(_ t: Tab, _ name: String, _ detail: [String: Any] = [:]) {
     owner.shell.evaluateJavaScript("__stupidHost.tabEvent(\(t.id), \(json(name)), \(json(detail)))", completionHandler: nil)
   }
   private func state(_ t: Tab) -> [String: Any] { ["canBack": t.web.canGoBack, "canFwd": t.web.canGoForward] }
+  private var ctx: [String: Any] { ["window": owner.id, "incognito": owner.incognito] }
 
   // MARK: requests from the UI
   func handle(_ type: String, _ m: [String: Any]) {
     let id = m["tab"] as? Int ?? 0
-    if type == "tab:create" { create(id, url: m["url"] as? String ?? "about:blank"); return }
+    if type == "tab:create" { create(id, url: m["url"] as? String ?? "about:blank", partition: m["partition"] as? String ?? ""); return }
     guard let t = tabs[id] else { return }
     switch type {
     case "tab:destroy": destroy(t)
@@ -76,13 +110,15 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     case "tab:exec": exec(t, m["code"] as? String ?? "", reply: m["id"] as? Int ?? 0)
     case "tab:print": t.web.printOperation(with: NSPrintInfo.shared).runModal(for: owner.window!, delegate: nil, didRun: nil, contextInfo: nil)
     case "tab:find": find(t, m["text"] as? String ?? "", forward: m["forward"] as? Bool ?? true)
-    case "tab:devtools": break   // Web Inspector: right-click → Inspect Element (pages are inspectable)
+    case "tab:devtools": showInspector(t.web)
     default: break
     }
   }
 
-  private func create(_ id: Int, url: String) {
-    let web = WKWebView(frame: .zero, configuration: config())
+  private func create(_ id: Int, url: String, partition: String) {
+    let isTab = !partition.hasSuffix(":ai") && !partition.hasSuffix(":apps")
+    let web = TabWebView(frame: .zero, configuration: config(isTab: isTab))
+    web.host = self
     web.navigationDelegate = self
     web.uiDelegate = self
     web.allowsBackForwardNavigationGestures = true
@@ -91,19 +127,20 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     web.wantsLayer = true
     web.layer?.masksToBounds = true
     if #available(macOS 13.3, *) { web.isInspectable = true }
-    let t = Tab(id: id, web: web)
+    let t = Tab(id: id, web: web, isTab: isTab)
     tabs[id] = t
     addSubview(web)
     t.observers = [
       web.observe(\.title) { [weak self] w, _ in
         guard let self, let t = self.tab(for: w) else { return }
         self.send(t, "page-title-updated", ["title": w.title ?? ""])
-        if let u = w.url?.absoluteString, let title = w.title, !title.isEmpty { self.owner.recordVisit(u, title, titleOnly: true) }
+        if t.isTab, let u = w.url?.absoluteString, let title = w.title, !title.isEmpty { self.owner.recordVisit(u, title, titleOnly: true) }
       },
       web.observe(\.url) { [weak self] w, _ in
         // Same-document changes (pushState, #hash) don't go through the navigation delegate.
         guard let self, let t = self.tab(for: w), let u = w.url?.absoluteString, u != t.lastURL, !w.isLoading else { return }
         t.lastURL = u; self.send(t, "did-navigate-in-page", ["url": u, "isMainFrame": true].merging(self.state(t)) { a, _ in a })
+        if t.isTab { self.owner.recordVisit(u, w.title ?? "") }
       },
       web.observe(\.canGoBack) { [weak self] w, _ in guard let self, let t = self.tab(for: w) else { return }; self.send(t, "state", self.state(t)) },
       web.observe(\.canGoForward) { [weak self] w, _ in guard let self, let t = self.tab(for: w) else { return }; self.send(t, "state", self.state(t)) },
@@ -117,7 +154,7 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     load(t, url)
   }
 
-  private func load(_ t: Tab, _ s: String) {
+  func load(_ t: Tab, _ s: String) {
     guard let u = URL(string: s), let scheme = u.scheme?.lowercased() else { return }
     if ["http", "https", "stupid", "about", "data", "file", "blob"].contains(scheme) || s == "about:blank" {
       if scheme == "file" { t.web.loadFileURL(u, allowingReadAccessTo: u.deletingLastPathComponent()) } else { t.web.load(URLRequest(url: u)) }
@@ -143,23 +180,63 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
       }
     }
   }
+  /// For the core (Buddy, Rewind): evaluate in our helper world, where the page can't interfere.
+  func evalHelper(_ t: Tab, _ code: String, done: @escaping (Bool, Any?) -> Void) {
+    t.web.callAsyncJavaScript("return (\n\(code)\n)", arguments: [:], in: nil, in: helperWorld) { r in
+      switch r { case .success(let v): done(true, v); case .failure(let e): done(false, "\(e)") }
+    }
+  }
 
+  /// Find in page with Electron's match counts ("2 of 7"): WebKit finds and highlights, a quick count in
+  /// the page's text gives the total.
   private func find(_ t: Tab, _ text: String, forward: Bool) {
     guard #available(macOS 13.0, *) else { return }
-    if text.isEmpty { t.web.evaluateJavaScript("getSelection().removeAllRanges()", completionHandler: nil); return }
-    let c = WKFindConfiguration(); c.backwards = !forward; c.wraps = true; c.caseSensitive = false
-    t.web.find(text, configuration: c) { [weak self] r in
-      self?.send(t, "found-in-page", ["result": ["activeMatchOrdinal": r.matchFound ? 1 : 0, "matches": r.matchFound ? 1 : 0, "finalUpdate": true]])
+    if text.isEmpty { t.findText = ""; t.web.evaluateJavaScript("getSelection().removeAllRanges()", in: nil, in: helperWorld, completionHandler: nil); return }
+    let report = { [weak self] (found: Bool) in
+      self?.send(t, "found-in-page", ["result": ["requestId": 1, "activeMatchOrdinal": found ? t.findIndex : 0, "matches": found ? t.findCount : 0, "finalUpdate": true]])
     }
+    let go = {
+      let c = WKFindConfiguration(); c.backwards = !forward; c.wraps = true; c.caseSensitive = false
+      t.web.find(text, configuration: c) { r in report(r.matchFound) }
+    }
+    if text != t.findText {
+      t.findText = text; t.findIndex = 1
+      let count = "((t) => { const s = (document.body ? document.body.innerText : '').toLowerCase(); let n = 0, i = 0; while ((i = s.indexOf(t, i)) >= 0) { n++; i += t.length; } return n; })(\(json(text.lowercased())))"
+      t.web.evaluateJavaScript(count, in: nil, in: helperWorld) { r in
+        if case .success(let v) = r { t.findCount = max(1, (v as? Int) ?? 1) } else { t.findCount = 1 }
+        go()
+      }
+    } else {
+      let n = max(1, t.findCount)
+      t.findIndex = forward ? t.findIndex % n + 1 : (t.findIndex - 2 + n) % n + 1
+      go()
+    }
+  }
+
+  /// Web Inspector (WebKit's developer tools).
+  func showInspector(_ w: WKWebView) {
+    guard w.responds(to: Selector(("_inspector"))), let insp = w.value(forKey: "_inspector") as? NSObject, insp.responds(to: Selector(("show"))) else { return }
+    insp.perform(Selector(("show")))
   }
 
   private func pollAudio() {
     guard #available(macOS 12.0, *) else { return }
-    for t in tabs.values where !t.web.isHidden || t.audible || true {
+    for t in tabs.values {
       t.web.requestMediaPlaybackState { [weak self] st in
         let now = st == .playing
         if now != t.audible { t.audible = now; self?.send(t, "state", ["audible": now]) }
       }
+    }
+  }
+
+  // MARK: settings that change running tabs
+  func setAdblock(_ on: Bool) {
+    guard let list = Blocker.list else { return }
+    for t in tabs.values where t.isTab { let uc = t.web.configuration.userContentController; uc.remove(list); if on { uc.add(list) } }
+  }
+  func pushEq(_ eq: Any) {
+    for t in tabs.values where t.web.url?.scheme?.hasPrefix("http") == true {
+      t.web.evaluateJavaScript("window.__stupidMedia && window.__stupidMedia.setEq(\(json(eq)))", completionHandler: nil)
     }
   }
 
@@ -191,8 +268,9 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
   func webView(_ w: WKWebView, didCommit _: WKNavigation!) {
     guard let t = tab(for: w) else { return }
     t.lastURL = w.url?.absoluteString ?? ""
+    t.findText = ""
     send(t, "did-navigate", ["url": t.lastURL, "isMainFrame": true].merging(state(t)) { a, _ in a })
-    owner.recordVisit(t.lastURL, w.title ?? "")
+    if t.isTab { owner.recordVisit(t.lastURL, w.title ?? "") }
   }
   func webView(_ w: WKWebView, didFinish _: WKNavigation!) { if let t = tab(for: w) { send(t, "did-stop-loading", state(t)) } }
   func webView(_ w: WKWebView, didFail _: WKNavigation!, withError e: Error) { failed(w, e) }
@@ -200,7 +278,8 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
   private func failed(_ w: WKWebView, _ e: Error) {
     guard let t = tab(for: w) else { return }
     let err = e as NSError
-    if err.code == NSURLErrorCancelled { send(t, "did-stop-loading", state(t)); return }
+    // Cancelled, or "frame load interrupted" because the response became a download: not an error page.
+    if err.code == NSURLErrorCancelled || (err.domain == "WebKitErrorDomain" && err.code == 102) { send(t, "did-stop-loading", state(t)); return }
     send(t, "did-fail-load", ["errorCode": err.code, "errorDescription": err.localizedDescription, "validatedURL": (err.userInfo[NSURLErrorFailingURLStringErrorKey] as? String) ?? "", "isMainFrame": true])
     send(t, "did-stop-loading", state(t))
   }
@@ -209,6 +288,8 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
   // Links that open a new window open as a tab, like the Electron app.
   func webView(_ w: WKWebView, createWebViewWith _: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures _: WKWindowFeatures) -> WKWebView? {
     if let u = action.request.url?.absoluteString {
+      if u.hasPrefix("mailto:") { NSWorkspace.shared.open(action.request.url!); return nil }
+      guard u.hasPrefix("http") || u.hasPrefix("stupid:") else { return nil }
       let bg = action.modifierFlags.contains(.command)
       owner.emit("open-url", [["url": u, "where": bg ? "background" : "foreground", "opener": tab(for: w)?.id as Any? ?? NSNull()]])
     }
@@ -216,9 +297,67 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
   }
   func webView(_ w: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     guard let u = action.request.url, let scheme = u.scheme?.lowercased() else { return decisionHandler(.cancel) }
+    if action.shouldPerformDownload { return decisionHandler(.download) }
     if ["http", "https", "stupid", "about", "data", "blob", "file"].contains(scheme) { return decisionHandler(.allow) }
-    if scheme == "mailto" || scheme == "tel" { NSWorkspace.shared.open(u) }
+    if ["mailto", "tel", "zoommtg", "msteams", "spotify", "discord", "steam"].contains(scheme) { NSWorkspace.shared.open(u) }
     decisionHandler(.cancel)
+  }
+  // Files the page can't show (or sent as attachments) are downloaded, like Chrome.
+  func webView(_ w: WKWebView, decidePolicyFor r: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+    let attachment = ((r.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? "").lowercased().hasPrefix("attachment")
+    decisionHandler(!r.canShowMIMEType || (attachment && r.isForMainFrame) ? .download : .allow)
+  }
+  func webView(_ w: WKWebView, navigationAction _: WKNavigationAction, didBecome d: WKDownload) { app.downloads.adopt(d, window: owner) }
+  func webView(_ w: WKWebView, navigationResponse _: WKNavigationResponse, didBecome d: WKDownload) { app.downloads.adopt(d, window: owner) }
+
+  // Shield's blocked-request counter (WebKit tells its delegate about content-blocker actions).
+  @objc(_webView:contentRuleListWithIdentifier:performedAction:forURL:)
+  func contentRuleListPerformed(_ w: WKWebView, identifier: String, action: NSObject, url: URL) {
+    if action.responds(to: Selector(("blockedLoad"))), (action.value(forKey: "blockedLoad") as? Bool) == false { return }
+    Blocker.counted()
+  }
+
+  // MARK: permissions (camera, microphone, location) → the same per-site allow/ask/block as Electron
+  private func originString(_ o: WKSecurityOrigin) -> String { "\(o.protocol)://\(o.host)" + (o.port != 0 ? ":\(o.port)" : "") }
+  private func askPermission(_ w: WKWebView, _ origin: String, _ kinds: [String], _ done: @escaping (Bool) -> Void) {
+    guard let t = tab(for: w) else { return done(false) }
+    app.core.invoke("perm:request", [origin, kinds], ctx: ctx.merging(["tab": t.id]) { a, _ in a }) { ok, v in done(ok && (v as? Bool ?? false)) }
+  }
+  @available(macOS 12.0, *)
+  func webView(_ w: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame _: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+    let kinds = type == .camera ? ["camera"] : type == .microphone ? ["microphone"] : ["camera", "microphone"]
+    askPermission(w, originString(origin), kinds) { decisionHandler($0 ? .grant : .deny) }
+  }
+  @objc(_webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:)
+  func geolocation(_ w: WKWebView, origin: WKSecurityOrigin, frame _: WKFrameInfo, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+    askPermission(w, originString(origin), ["location"]) { decisionHandler($0 ? .grant : .deny) }
+  }
+  @objc(_webView:requestGeolocationPermissionForFrame:decisionHandler:)
+  func geolocationOld(_ w: WKWebView, frame: WKFrameInfo, decisionHandler: @escaping (Bool) -> Void) {
+    askPermission(w, originString(frame.securityOrigin), ["location"], decisionHandler)
+  }
+  // JavaScript alert / confirm / prompt as sheets on the window.
+  func webView(_ w: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame _: WKFrameInfo, completionHandler: @escaping () -> Void) {
+    let a = NSAlert(); a.messageText = w.url?.host ?? ""; a.informativeText = message
+    guard let win = owner.window else { completionHandler(); return }
+    a.beginSheetModal(for: win) { _ in completionHandler() }
+  }
+  func webView(_ w: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame _: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+    let a = NSAlert(); a.messageText = w.url?.host ?? ""; a.informativeText = message; a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
+    guard let win = owner.window else { completionHandler(false); return }
+    a.beginSheetModal(for: win) { completionHandler($0 == .alertFirstButtonReturn) }
+  }
+  func webView(_ w: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame _: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+    let a = NSAlert(); a.messageText = w.url?.host ?? ""; a.informativeText = prompt; a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
+    let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24)); field.stringValue = defaultText ?? ""; a.accessoryView = field
+    guard let win = owner.window else { completionHandler(nil); return }
+    a.beginSheetModal(for: win) { completionHandler($0 == .alertFirstButtonReturn ? field.stringValue : nil) }
+  }
+  // <input type=file>
+  func webView(_ w: WKWebView, runOpenPanelWith p: WKOpenPanelParameters, initiatedByFrame _: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+    let panel = NSOpenPanel(); panel.allowsMultipleSelection = p.allowsMultipleSelection; panel.canChooseDirectories = p.allowsDirectories
+    guard let win = owner.window else { completionHandler(nil); return }
+    panel.beginSheetModal(for: win) { completionHandler($0 == .OK ? panel.urls : nil) }
   }
 
   /// Our pages (stupid://…) calling the core: only from a stupid:// top frame, like the Electron app's isInternal check.
@@ -226,22 +365,40 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     if let log = (m.body as? [String: Any])?["log"] as? String { print("[page] \(log)"); return }
     guard m.frameInfo.isMainFrame, m.frameInfo.securityOrigin.protocol == "stupid", let w = m.webView,
           let msg = m.body as? [String: Any], let id = msg["id"] as? Int, let channel = msg["channel"] as? String else { return }
-    owner.app.core.invoke(channel, msg["args"] ?? [], ctx: ["window": owner.id, "incognito": owner.incognito, "page": w.url?.absoluteString ?? ""]) { ok, v in
+    app.core.invoke(channel, msg["args"] ?? [], ctx: ctx.merging(["page": w.url?.absoluteString ?? ""]) { a, _ in a }) { ok, v in
       w.evaluateJavaScript("window.__stupidPage && __stupidPage.reply(\(id), \(ok), \(json(v)))", completionHandler: nil)
     }
   }
+  func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) { if m.name == "page" { pageCall(m) } }
 
-  // Messages from tab-events.js (page side)
-  func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
-    if m.name == "page" { pageCall(m); return }
-    guard let w = m.webView, let t = tab(for: w), let msg = m.body as? [String: Any], let type = msg["type"] as? String else { return }
+  // Messages from our page helpers (isolated world): tab-events.js, tab-ctx.js, gen-select.js, gen-pw.js
+  func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
+    guard let w = m.webView, let t = tab(for: w), let msg = m.body as? [String: Any], let type = msg["type"] as? String else { return replyHandler(nil, nil) }
+    let origin = originString(m.frameInfo.securityOrigin)
     switch type {
-    case "dom-ready": send(t, "dom-ready")
+    case "dom-ready":
+      send(t, "dom-ready")
+      if let eq = app.settings["eq"] as? [String: Any], eq["on"] as? Bool == true { pushEqTo(t, eq) }
+      if t.isTab, app.settings["adblock"] as? Bool ?? true, let u = w.url?.absoluteString {
+        app.core.invoke("ads:css", [u], ctx: ctx) { ok, css in
+          guard ok, let css = css as? String, !css.isEmpty else { return }
+          w.evaluateJavaScript("(() => { const s = document.createElement('style'); s.textContent = \(json(css)); (document.head || document.documentElement).appendChild(s); })()", in: nil, in: helperWorld, completionHandler: nil)
+        }
+      }
     case "favicons": send(t, "page-favicon-updated", ["favicons": msg["list"] as? [String] ?? []])
     case "target-url": send(t, "update-target-url", ["url": msg["url"] as? String ?? ""])
     case "focus": send(t, "focus")
     case "ipc": send(t, "ipc-message", ["channel": msg["channel"] as? String ?? "", "args": msg["args"] as? [Any] ?? []])
+    case "ctx": t.ctxInfo = msg; t.ctxTime = Date()
+    case "pw:query":
+      guard t.isTab, !owner.incognito else { return replyHandler([], nil) }
+      app.core.invoke("pw:query", [], ctx: ctx.merging(["origin": origin]) { a, _ in a }) { ok, v in replyHandler(ok ? v : [], nil) }
+      return
+    case "pw:submitted":
+      if t.isTab, !owner.incognito { app.core.invoke("pw:submitted", [msg["data"] ?? NSNull()], ctx: ctx.merging(["origin": origin, "tab": t.id]) { a, _ in a }) { _, _ in } }
     default: break
     }
+    replyHandler(nil, nil)
   }
+  private func pushEqTo(_ t: Tab, _ eq: Any) { t.web.evaluateJavaScript("window.__stupidMedia && window.__stupidMedia.setEq(\(json(eq)))", completionHandler: nil) }
 }

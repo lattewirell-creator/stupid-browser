@@ -64,16 +64,35 @@ final class StupidScheme: NSObject, WKURLSchemeHandler {
   func webView(_ w: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
-/// ~/Library/Application Support/The Stupid Browser WebKit (its own folder, so it never touches the Electron app's data).
+/// ~/Library/Application Support/The Stupid Browser WebKit (its own folder, so it never touches the Electron
+/// app's data), or Profiles/<id> inside it for other profiles.
 enum DataDir {
   static let url: URL = {
-    let u = ProcessInfo.processInfo.environment["STUPID_DATA_DIR"].map { URL(fileURLWithPath: $0) }   // tests
-      ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("The Stupid Browser WebKit")
+    let u = Profiles.dataDir
     try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+    migrateFromElectron(into: u)
     return u
   }()
   static func file(_ name: String) -> URL? {
     guard name.range(of: #"^[a-zA-Z0-9._-]{1,80}$"#, options: .regularExpression) != nil else { return nil }
     return url.appendingPathComponent(name)
+  }
+  /// First start after switching from the Electron version: bring its bookmarks, history, settings, saved
+  /// passwords (still encrypted; read through Vault) and the rest along. The Electron folder is only read.
+  private static func migrateFromElectron(into dir: URL) {
+    guard Profiles.current == "default", !FileManager.default.fileExists(atPath: dir.appendingPathComponent("settings.json").path) else { return }
+    let env = ProcessInfo.processInfo.environment
+    if env["STUPID_DATA_DIR"] != nil && env["STUPID_MIGRATE_FROM"] == nil { return }   // tests start clean unless asked
+    let from = env["STUPID_MIGRATE_FROM"].map { URL(fileURLWithPath: $0) }
+      ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("The Stupid Browser")
+    guard FileManager.default.fileExists(atPath: from.appendingPathComponent("settings.json").path) else { return }
+    for name in ["bookmarks.json", "history.json", "ai-bots.json", "sidebar.json", "launcher.json", "site-permissions.json", "passwords.json",
+                 "downloads.json", "background.json", "widgets.json", "session.json", "buddy-key.json", "rewind.json", "settings.json"] {
+      let src = from.appendingPathComponent(name)
+      if FileManager.default.fileExists(atPath: src.path) { try? FileManager.default.copyItem(at: src, to: dir.appendingPathComponent(name)) }
+    }
+    let thumbs = from.appendingPathComponent("rewind")
+    if FileManager.default.fileExists(atPath: thumbs.path) { try? FileManager.default.copyItem(at: thumbs, to: dir.appendingPathComponent("rewind")) }
+    print("[stupid] brought data over from the Electron version")
   }
 }

@@ -18,6 +18,7 @@
 
   window.stupid = Object.freeze({
     platform: "darwin",
+    engine: "webkit",
     invoke: (channel, ...args) => request({ type: "invoke", channel, args }),
     on: (channel, fn) => { (listeners.get(channel) || listeners.set(channel, []).get(channel)).push(fn); },
   });
@@ -25,7 +26,9 @@
   // The native tab sits behind the UI: the stand-in and the area around it must not paint over it.
   const style = document.createElement("style");
   // The window frame (its colour, tint, glass) is painted natively behind everything, so the page can show through.
-  style.textContent = "html, body, #app, webview, #views { background: transparent !important; } webview { display: none; } webview.visible, webview.spare { display: flex; }";
+  style.textContent = "html, body, #app, webview, #views { background: transparent !important; } webview { display: none; } webview.visible, webview.spare { display: flex; }"
+    // Liquid Glass (Settings → Appearance): the classic look's bars let the glass through too.
+    + " html.mac-glass #titlebar, html.mac-glass #toolbar, html.mac-glass #bookmarksBar, html.mac-glass #rail, html.mac-glass #vtabs { background: transparent !important; }";
   (document.head || document.documentElement).appendChild(style);
   document.addEventListener("DOMContentLoaded", () => document.head.appendChild(style));
 

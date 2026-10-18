@@ -6,10 +6,16 @@ cd "$(dirname "$0")"
 APP="build/The Stupid Browser.app"
 VERSION=$(node -p "require('../package.json').version")
 python3 tools/gen-core.py >/dev/null
+# Ad blocker rules (WebKit content blocker), built from EasyList + EasyPrivacy when missing.
+[ -f adblock/rules.json ] || node ../scripts/build-mac-blocklist.js
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/app/mac"
-swiftc -O -target arm64-apple-macos13.0 Sources/*.swift -o "$APP/Contents/MacOS/StupidBrowser" -framework Cocoa -framework WebKit -framework UniformTypeIdentifiers
+# One app for Apple chip and Intel Macs.
+for ARCH in arm64 x86_64; do
+  swiftc -O -target $ARCH-apple-macos13.0 Sources/*.swift -o "build/StupidBrowser-$ARCH" -framework Cocoa -framework WebKit -framework UniformTypeIdentifiers -lsqlite3
+done
+lipo -create build/StupidBrowser-arm64 build/StupidBrowser-x86_64 -output "$APP/Contents/MacOS/StupidBrowser" && rm build/StupidBrowser-arm64 build/StupidBrowser-x86_64
 rsync -a --delete --exclude '*.map' ../src/ "$APP/Contents/Resources/app/src/"
-rsync -a js core "$APP/Contents/Resources/app/mac/"
+rsync -a js core adblock "$APP/Contents/Resources/app/mac/"
 cp ../build/icon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
