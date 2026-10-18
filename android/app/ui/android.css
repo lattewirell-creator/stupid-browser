@@ -41,3 +41,8 @@ html.android #suggest .sug, html.android #suggest > * { min-height: 44px; }
 html.android #hoverCard { display: none !important; }
 html.android .menu-item .mk, html.android .kbd { display: none !important; }
 html.android :focus-visible { outline: none !important; }
+
+/* The page fills the screen edge to edge (on a computer it floats as a rounded card) */
+html.android body #content, html.android body.look-modern #content, html.android body.compact #content { padding: 0 !important; }
+html.android body #views, html.android body.look-modern #views { border-radius: 0 !important; box-shadow: none !important; }
+html.android #views webview { border-radius: 0 !important; }
