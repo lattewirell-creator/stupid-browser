@@ -108,8 +108,8 @@
   // Runs every frame only while something moves (animations, resizing, the UI changing); once nothing has
   // changed for a moment it stops, and changes to the page, animations or the window size start it again.
   let layoutQueued = false, last = "", still = 0, slowTimer = 0;
-  function scheduleLayout() { still = 0; if (!layoutQueued) { layoutQueued = true; clearTimeout(slowTimer); requestAnimationFrame(layout); } }
-  function layout() {
+  function scheduleLayout() { still = 0; if (!layoutQueued) { layoutQueued = true; clearTimeout(slowTimer); requestAnimationFrame(() => layout(false)); } }
+  function layout(fromTimer) {
     layoutQueued = false;
     const tabsOut = [];
     for (const [tab, el] of views) {
@@ -130,9 +130,10 @@
     const frame = b ? { bar: bs.getPropertyValue("--bar").trim(), bg: bs.getPropertyValue("--bg").trim(), accent: (document.documentElement.style.getPropertyValue("--accent") || root.getPropertyValue("--accent")).trim(),
       modern: b.classList.contains("look-modern"), tint: b.classList.contains("tint-none") ? "none" : b.classList.contains("tint-strong") ? "strong" : "soft" } : null;
     const msg = JSON.stringify({ tabsOut, covers, frame });
-    if (msg !== last) { last = msg; still = 0; post({ type: "layout", tabs: tabsOut, covers, frame }); } else still++;
-    if (still < 20) { layoutQueued = true; requestAnimationFrame(layout); }
-    else slowTimer = setTimeout(scheduleLayout, 500);   // safety net for changes nothing announces
+    if (msg !== last) { last = msg; still = 0; post({ type: "layout", tabs: tabsOut, covers, frame }); } else if (!fromTimer) still++;
+    if (msg === last && fromTimer) { slowTimer = setTimeout(() => layout(true), 1000); return; }   // idle: one quiet check a second
+    if (still < 20) { layoutQueued = true; requestAnimationFrame(() => layout(false)); }
+    else slowTimer = setTimeout(() => layout(true), 1000);   // safety net for changes nothing announces
   }
   new MutationObserver(() => scheduleLayout()).observe(document, { subtree: true, childList: true, attributes: true, characterData: false });
   for (const ev of ["resize", "transitionrun", "transitionend", "animationstart", "animationend", "pointerdown", "pointerup", "wheel", "keydown"]) addEventListener(ev, scheduleLayout, { capture: true, passive: true });

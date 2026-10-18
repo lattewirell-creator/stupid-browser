@@ -134,7 +134,7 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     web.wantsLayer = true
     web.layer?.masksToBounds = true
     if #available(macOS 13.3, *) { web.isInspectable = true }
-    if ProcessInfo.processInfo.environment["STUPID_TEST_FRONT"] != nil { web.setValue(false, forKey: "windowOcclusionDetectionEnabled") }   // benchmarks: as if on screen
+    if ProcessInfo.processInfo.environment["STUPID_TEST_UNTHROTTLE"] != nil { web.setValue(false, forKey: "windowOcclusionDetectionEnabled") }   // benchmarks: as if on screen
     let t = Tab(id: id, web: web, isTab: isTab)
     tabs[id] = t
     if web.responds(to: Selector(("_isPlayingAudio"))) { web.addObserver(self, forKeyPath: "_isPlayingAudio", options: [.new], context: nil) }
@@ -257,11 +257,11 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
       let shown = d["shown"] as? Bool ?? false, spare = d["spare"] as? Bool ?? false
       if t.web.frame != r { t.web.frame = r }
       t.web.layer?.cornerRadius = CGFloat(d["radius"] as? Double ?? 0)
-      // Shown tabs follow the UI's fade-in; the prepared new tab stays drawn but invisible, under the others.
+      // Shown tabs follow the UI's fade-in (the prepared new tab fades in from invisible, so it never flashes).
+      // Hidden tabs, the prepared one included, aren't drawn at all: no CPU spent on what you can't see.
       let alpha = shown ? CGFloat(d["opacity"] as? Double ?? 1) : 0
       if t.web.alphaValue != alpha { t.web.alphaValue = alpha }
-      let hide = !shown && !spare
-      if t.web.isHidden != hide { t.web.isHidden = hide }
+      if t.web.isHidden != !shown { t.web.isHidden = !shown }
       if spare != t.isSpare {
         t.isSpare = spare
         if spare { addSubview(t.web, positioned: .below, relativeTo: nil) } else { addSubview(t.web, positioned: .above, relativeTo: nil) }

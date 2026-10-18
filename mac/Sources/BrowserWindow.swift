@@ -220,7 +220,7 @@ final class BrowserWindow: NSWindowController, NSWindowDelegate, WKScriptMessage
     if ProcessInfo.processInfo.environment["STUPID_TEST_FRONT"] != nil, let w = window {
       w.level = .floating; w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
       NSApp.activate(ignoringOtherApps: true); w.orderFrontRegardless()
-      shell.setValue(false, forKey: "windowOcclusionDetectionEnabled")
+      if ProcessInfo.processInfo.environment["STUPID_TEST_UNTHROTTLE"] != nil { shell.setValue(false, forKey: "windowOcclusionDetectionEnabled") }
       _ = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "benchmark")
     }
     for t in [2.0, 6.0] { DispatchQueue.main.asyncAfter(deadline: .now() + t) { [weak self] in print("[stupid] window visible on screen: \(self?.window?.occlusionState.contains(.visible) ?? false)") } }
