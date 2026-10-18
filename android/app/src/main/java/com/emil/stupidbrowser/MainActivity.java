@@ -74,7 +74,7 @@ public final class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::back);
         String u = urlFrom(getIntent());
         if (u != null) pendingUrls.add(u);
-        core.start(() -> core.invoke("app:startup", new JSONArray(pendingUrls), new JSONObject(), (ok, n) -> {
+        core.start(() -> core.invoke("app:startup", new JSONArray().put(new JSONArray(pendingUrls)), new JSONObject(), (ok, n) -> {
             pendingUrls.clear();
             ready = true;
             openWindow(false, null, true);

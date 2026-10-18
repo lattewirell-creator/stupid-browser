@@ -64,7 +64,7 @@ final class Tabs {
 
     final class Tab {
         final int id; WebView web; final boolean isTab; final String partition;
-        String lastURL = ""; boolean loading, zoomed; float zoom = 1; float radius;
+        String lastURL = "", failed; boolean loading, zoomed; float zoom = 1; float radius;
         String findText = ""; float touchX, touchY;
         Tab(int id, boolean isTab, String partition) { this.id = id; this.isTab = isTab; this.partition = partition; }
     }
@@ -364,6 +364,21 @@ final class Tabs {
         answer.done(true, null);
     }
 
+    /** The browser's own "Can't reach this page" (instead of Android's), with Try again. */
+    private String errorPage(Uri u, int code, String desc) {
+        String host = u.getHost() == null ? u.toString() : u.getHost().replaceFirst("^www\\.", "");
+        String why;
+        switch (code) {
+            case WebViewClient.ERROR_HOST_LOOKUP: why = "couldn’t be found. Check the address, or your internet connection."; break;
+            case WebViewClient.ERROR_CONNECT: case WebViewClient.ERROR_IO: why = "didn’t answer. Check your internet connection and try again."; break;
+            case WebViewClient.ERROR_TIMEOUT: why = "took too long to answer."; break;
+            case WebViewClient.ERROR_FAILED_SSL_HANDSHAKE: why = "doesn’t have a secure connection right now."; break;
+            default: why = "couldn’t be loaded.";
+        }
+        String esc = host.replace("&", "&amp;").replace("<", "&lt;");
+        return Assets.read(app, "android/error.html").replace("__HOST__", esc).replace("__WHY__", why).replace("__CODE__", desc.replace("&", "&amp;").replace("<", "&lt;"));
+    }
+
     /* ---------------- navigation → Electron webview events ---------------- */
     final class Client extends WebViewClient {
         final Tab t;
@@ -390,7 +405,11 @@ final class Tabs {
             navigated(url, false);
         }
         @Override public void doUpdateVisitedHistory(WebView v, String url, boolean reload) { if (!url.equals(t.lastURL)) navigated(url, !t.loading); else send(t, "state", state(t)); }
-        @Override public void onPageFinished(WebView v, String url) { t.loading = false; send(t, "did-stop-loading", state(t)); }
+        @Override public void onPageFinished(WebView v, String url) {
+            t.loading = false;
+            if (t.failed != null) { v.evaluateJavascript("document.open();document.write(" + JSONObject.quote(t.failed) + ");document.close()", null); t.failed = null; }
+            send(t, "did-stop-loading", state(t));
+        }
         private void navigated(String url, boolean inPage) {
             t.lastURL = url;
             try { send(t, inPage ? "did-navigate-in-page" : "did-navigate", state(t).put("url", Assets.toUi(url)).put("isMainFrame", true)); } catch (JSONException ignored) { }
@@ -399,6 +418,7 @@ final class Tabs {
         @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
             if (!r.isForMainFrame()) return;
             int code = e.getErrorCode();
+            t.failed = errorPage(r.getUrl(), code, String.valueOf(e.getDescription()));
             try { send(t, "did-fail-load", new JSONObject().put("errorCode", code == -3 ? -300 : code).put("errorDescription", String.valueOf(e.getDescription())).put("validatedURL", r.getUrl().toString()).put("isMainFrame", true)); } catch (JSONException ignored) { }
         }
         // Android stopped the page's process (low memory or a crash): a fresh view takes its place.

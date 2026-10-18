@@ -29,7 +29,7 @@
     const tb = document.getElementById("toolbar");
     const vis = tb && getComputedStyle(tb).display !== "none" && !document.body.classList.contains("compact");
     const h = vis ? Math.round(tb.getBoundingClientRect().bottom) : 0;
-    if (h !== lastBars) { lastBars = h; post({ type: "android:bars", h }); }
+    if (h !== lastBars) { lastBars = h; post({ type: "android:bars", h }); document.documentElement.style.setProperty("--android-below-bars", (h ? h - 4 : 104) + "px"); }
   };
   document.addEventListener("DOMContentLoaded", () => {
     const ro = new ResizeObserver(bars);

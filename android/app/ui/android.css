@@ -27,7 +27,8 @@ html.android #starBtn { display: none; }
 html.android #omnibox:focus-within #starBtn { display: grid; }
 html.android #adblockBtn { height: 34px; padding: 0 9px; gap: 5px; }
 html.android #adblockBtn > span:nth-child(2) { display: none; }   /* the word "Shield": the dot and count stay */
-html.android #suggest { top: calc(100% + 6px); border-radius: 16px; }
+/* Suggestions use the whole screen width, like Firefox */
+html.android #suggest { position: fixed !important; left: 8px !important; right: 8px !important; width: auto !important; box-sizing: border-box; top: var(--android-below-bars, 104px); margin-top: 0; border-radius: 18px; max-height: 70vh; overflow-y: auto; }
 
 /* Bookmarks bar and the apps sidebar: on a phone they're in the ⋮ menu and the + page instead */
 html.android #bookmarksBar, html.android #rail, html.android #appResizer, html.android #aiResizer { display: none !important; }
@@ -50,3 +51,5 @@ html.android :focus-visible { outline: none !important; }
 html.android body #content, html.android body.look-modern #content, html.android body.compact #content { padding: 0 !important; }
 html.android body #views, html.android body.look-modern #views { border-radius: 0 !important; box-shadow: none !important; }
 html.android #views webview { border-radius: 0 !important; }
+html.android .sug-scopes .sug-s { flex: 0 0 100%; margin: 0 0 2px 2px; }   /* "Search on" above its chips */
+html.android .scope-chip { height: 34px; padding: 0 12px; }
