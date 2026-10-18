@@ -4,7 +4,7 @@
 const steps = [...document.querySelectorAll('.step')];
 let i = 0;
 let s = {};
-const LOGO_PICKS = [['ring', ''], ['emoji', '🦆'], ['emoji', '🦊'], ['emoji', '🐸'], ['emoji', '🌙'], ['emoji', '🚀'], ['emoji', '👾']];
+const LOGO_PICKS = [['ring', ''], ['buddy', ''], ['emoji', '🦆'], ['emoji', '🦊'], ['emoji', '🐸'], ['emoji', '🌙'], ['emoji', '🚀'], ['emoji', '👾']];
 const QUICK_AI = [
   { id: 'anthropic', name: 'Claude', sub: 'by Anthropic', key: true },
   { id: 'openai', name: 'ChatGPT', sub: 'by OpenAI', key: true },
@@ -49,12 +49,12 @@ function paintLook() {
     b.addEventListener('click', () => set({ accent: k }).then(paintLook)); return b;
   }));
   $('logos').replaceChildren(...LOGO_PICKS.map(([kind, em]) => {
-    const on = (s.logo || 'ring') === kind && (kind === 'ring' || s.logoEmoji === em);
-    const b = el('button', 'logo-pick' + (on ? ' on' : '')); b.title = kind === 'ring' ? 'Classic' : em;
-    if (kind === 'ring') b.appendChild(el('span', 'ring')); else b.textContent = em;
-    b.addEventListener('click', () => set(kind === 'ring' ? { logo: 'ring' } : { logo: 'emoji', logoEmoji: em }).then(paintLook)); return b;
+    const on = (s.logo || 'ring') === kind && (kind !== 'emoji' || s.logoEmoji === em);
+    const b = el('button', 'logo-pick' + (on ? ' on' : '')); b.title = kind === 'ring' ? 'Classic' : kind === 'buddy' ? 'Buddy' : em;
+    if (kind === 'ring' || kind === 'buddy') b.appendChild(el('span', kind)); else b.textContent = em;
+    b.addEventListener('click', () => set(kind === 'emoji' ? { logo: 'emoji', logoEmoji: em } : { logo: kind }).then(paintLook)); return b;
   }));
-  const pv = $('pvLogo'); pv.className = 'pv-logo' + ((s.logo || 'ring') === 'emoji' ? ' emoji' : ''); pv.textContent = s.logo === 'emoji' ? (s.logoEmoji || '🦆') : '';
+  const pv = $('pvLogo'); pv.className = 'pv-logo' + ((s.logo || 'ring') === 'emoji' ? ' emoji' : s.logo === 'buddy' ? ' buddy' : ''); pv.textContent = s.logo === 'emoji' ? (s.logoEmoji || '🦆') : '';
   const h = new Date().getHours();
   $('pvGreet').textContent = (h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening') + (s.name ? `, ${s.name}` : '');
   $('preview').dataset.theme = s.theme || 'system';

@@ -690,3 +690,9 @@ body.tabs-minimal #titlebar .tab.active::after { display: block !important; top:
 /* frame tint (modern look) */
 body.look-modern.tint-none #app { background: var(--bar); }
 body.look-modern.tint-strong #app { background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--accent) 34%, var(--bar)), color-mix(in srgb, var(--accent) 12%, var(--bar)) 70%); }
+
+/* Buddy ball logo: the little ball from the welcome screen (eyes drawn with ::before/::after) */
+.logo-mark.buddy { border: 0; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 70%, #fff), var(--accent) 70%); box-shadow: none; outline: 0; }
+.logo-mark.buddy::before, .logo-mark.buddy::after { content: ''; position: absolute; top: 33%; width: 15%; height: 25%; inset-inline: auto; border-radius: 999px; background: #fff; }
+.logo-mark.buddy::before { left: 30%; } .logo-mark.buddy::after { right: 30%; left: auto; }
+.logo-mark.buddy { position: relative; inset: auto; }
