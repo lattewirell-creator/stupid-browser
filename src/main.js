@@ -528,7 +528,7 @@ handle('brand:apply', ['internal'], async (_e, reset) => {
 // Values that end up in pages or audio graphs get checked here.
 function cleanPatch(patch) {
   const p = Object.assign({}, patch);
-  if ('logo' in p && !['ring', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
+  if ('logo' in p && !['ring', 'buddy', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
   if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
   if ('quoteMode' in p && !['browser', 'mine', 'mix'].includes(p.quoteMode)) delete p.quoteMode;
   if ('myQuotes' in p) p.myQuotes = (Array.isArray(p.myQuotes) ? p.myQuotes : []).map((q) => String(q).trim().slice(0, 200)).filter(Boolean).slice(0, 100);
@@ -545,7 +545,7 @@ function cleanPatch(patch) {
       color: col(L.color, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'cream'),
       glow: col(L.glow, ['cyan', 'green', 'pink', 'amber', 'white', 'violet'], 'cyan'),
       extra: ['none', 'headphones', 'cap', 'bow', 'crown', 'glasses', 'flower'].includes(L.extra) ? L.extra : 'none',
-      shape: ['hiker', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'hiker',
+      shape: ['hiker', 'ball', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'hiker',
       eyes: ['dot', 'round', 'sleepy', 'wide', 'lash'].includes(L.eyes) ? L.eyes : 'dot',
       mouth: ['smile', 'grin', 'flat', 'open', 'cat'].includes(L.mouth) ? L.mouth : 'smile',
       outfit: col(L.outfit, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),

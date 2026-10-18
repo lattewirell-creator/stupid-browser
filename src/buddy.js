@@ -255,7 +255,7 @@
   const BODY = { cream: '#EBC39D', clay: '#D97757', cocoa: '#8B5E45', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
   const GLOW = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
   const EXTRAS = { none: 'None', headphones: '🎧', cap: '🧢', bow: '🎀', crown: '👑', glasses: '🕶️', flower: '🌼' };
-  const SHAPES = { hiker: ['🎒', 'Hiker'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
+  const SHAPES = { hiker: ['🎒', 'Hiker'], ball: ['🟠', 'Ball'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
   const HATS = { none: ['✖', 'None'], tophat: ['🎩', 'Top hat'], cap: ['🧢', 'Cap'], beanie: ['🧶', 'Beanie'], crown: ['👑', 'Crown'], party: ['🥳', 'Party'], cowboy: ['🤠', 'Cowboy'], headphones: ['🎧', 'Headphones'], halo: ['😇', 'Halo'] };
   const EYES = { dot: ['•', 'Dots'], round: ['👀', 'Round'], sleepy: ['😌', 'Sleepy'], wide: ['😳', 'Wide'], lash: ['😉', 'Lashes'] };
   const MOUTHS = { smile: ['🙂', 'Smile'], grin: ['😁', 'Grin'], flat: ['😐', 'Flat'], open: ['😮', 'Open'], cat: ['😺', 'Cat'] };

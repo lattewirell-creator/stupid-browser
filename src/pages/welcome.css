@@ -108,3 +108,12 @@ h2 { font-size: 36px; margin: 14px 0 10px; }
 .imp-others > span { color: var(--muted); font-size: 12.5px; }
 .imp-others .prov { width: auto; min-width: 130px; padding: 10px 14px; }
 .imp-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+
+/* Buddy ball logo: the little ball from the welcome screen (eyes drawn with ::before/::after) */
+.logo-pick .buddy { border: 0; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 70%, #fff), var(--accent) 70%); box-shadow: none; outline: 0; }
+.logo-pick .buddy::before, .logo-pick .buddy::after { content: ''; position: absolute; top: 33%; width: 15%; height: 25%; inset-inline: auto; border-radius: 999px; background: #fff; }
+.logo-pick .buddy::before { left: 30%; } .logo-pick .buddy::after { right: 30%; left: auto; }
+.logo-pick .buddy { width: 22px; height: 22px; position: relative; display: block; }
+.pv-logo.buddy { border: 0; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 70%, #fff), var(--accent) 70%); box-shadow: none; outline: 0; }
+.pv-logo.buddy::before, .pv-logo.buddy::after { content: ''; position: absolute; top: 33%; width: 15%; height: 25%; inset-inline: auto; border-radius: 999px; background: #fff; }
+.pv-logo.buddy::before { left: 30%; } .pv-logo.buddy::after { right: 30%; left: auto; }
