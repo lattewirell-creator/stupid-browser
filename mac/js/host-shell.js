@@ -105,15 +105,19 @@
   // the UI covers (menus, popovers, Buddy…), so clicks there go to the UI and everywhere else on a
   // visible tab go to the page.
   const OVERLAYS = "#popover,#menu,#ctxMenu,#toast,#island:not(.gone),.buddy:not(.hidden),#cmdbar:not(.hidden),#findBar:not(.hidden),#hoverCard:not(.hidden),.ask-pill:not(.hidden),.bd-speech:not(.hidden),#suggest:not(.hidden),.hover-card";
-  let layoutQueued = false, last = "";
-  function scheduleLayout() { if (!layoutQueued) { layoutQueued = true; requestAnimationFrame(layout); } }
-  function layout() {
+  // Runs every frame only while something moves (animations, resizing, the UI changing); once nothing has
+  // changed for a moment it stops, and changes to the page, animations or the window size start it again.
+  let layoutQueued = false, last = "", still = 0, slowTimer = 0;
+  function scheduleLayout() { still = 0; if (!layoutQueued) { layoutQueued = true; clearTimeout(slowTimer); requestAnimationFrame(() => layout(false)); } }
+  function layout(fromTimer) {
     layoutQueued = false;
     const tabsOut = [];
     for (const [tab, el] of views) {
       const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
-      const shown = el.isConnected && cs.display !== "none" && cs.visibility !== "hidden" && +cs.opacity > 0.01 && r.width > 0 && r.height > 0 && !el.classList.contains("spare");
-      tabsOut.push({ tab, x: r.left, y: r.top, w: r.width, h: r.height, shown, radius: parseFloat(cs.borderTopLeftRadius) || 0 });
+      const spare = el.classList.contains("spare");
+      const shown = el.isConnected && cs.display !== "none" && cs.visibility !== "hidden" && +cs.opacity > 0.01 && r.width > 0 && r.height > 0 && !spare;
+      // The prepared new tab (spare) keeps its size and stays drawn, invisibly, so it appears instantly.
+      tabsOut.push({ tab, x: r.left, y: r.top, w: r.width, h: r.height, shown, spare, opacity: Math.round(+cs.opacity * 100) / 100, radius: parseFloat(cs.borderTopLeftRadius) || 0 });
     }
     const covers = [];
     for (const el of document.querySelectorAll(OVERLAYS)) {
@@ -126,9 +130,13 @@
     const frame = b ? { bar: bs.getPropertyValue("--bar").trim(), bg: bs.getPropertyValue("--bg").trim(), accent: (document.documentElement.style.getPropertyValue("--accent") || root.getPropertyValue("--accent")).trim(),
       modern: b.classList.contains("look-modern"), tint: b.classList.contains("tint-none") ? "none" : b.classList.contains("tint-strong") ? "strong" : "soft" } : null;
     const msg = JSON.stringify({ tabsOut, covers, frame });
-    if (msg !== last) { last = msg; post({ type: "layout", tabs: tabsOut, covers, frame }); }
-    scheduleLayout();   // follow animations and window resizes (cheap: only sends when something moved)
+    if (msg !== last) { last = msg; still = 0; post({ type: "layout", tabs: tabsOut, covers, frame }); } else if (!fromTimer) still++;
+    if (msg === last && fromTimer) { slowTimer = setTimeout(() => layout(true), 1000); return; }   // idle: one quiet check a second
+    if (still < 20) { layoutQueued = true; requestAnimationFrame(() => layout(false)); }
+    else slowTimer = setTimeout(() => layout(true), 1000);   // safety net for changes nothing announces
   }
+  new MutationObserver(() => scheduleLayout()).observe(document, { subtree: true, childList: true, attributes: true, characterData: false });
+  for (const ev of ["resize", "transitionrun", "transitionend", "animationstart", "animationend", "pointerdown", "pointerup", "wheel", "keydown"]) addEventListener(ev, scheduleLayout, { capture: true, passive: true });
 
   /* ---------------- messages from the Mac app ---------------- */
   window.__stupidHost = {

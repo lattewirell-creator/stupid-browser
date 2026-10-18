@@ -1078,6 +1078,8 @@ app.on('web-contents-created', (_e, contents) => {
    Self-test (dev only): STUPID_SELFTEST=/tmp/shot.png
    ========================================================================= */
 function selfTest(win) {
+  // Benchmarks need the window on screen (pages in hidden windows are slowed down).
+  if (process.env.STUPID_TEST_FRONT) { win.setAlwaysOnTop(true, 'screen-saver'); win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); app.focus({ steal: true }); }
   win.webContents.on('console-message', async (e) => {
     console.log('[renderer]', e.level, e.message);
     const m = /^SHOT:(\S+)/.exec(e.message || '');

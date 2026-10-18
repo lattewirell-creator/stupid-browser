@@ -20,8 +20,14 @@ grep -q "version: $VERSION" release/latest.yml || { echo "latest.yml version mis
 grep -q "url: StupidBrowser-Setup.exe" release/latest.yml || { echo "latest.yml file name mismatch" >&2; exit 1; }
 FILES=(release/StupidBrowser-Setup.exe release/StupidBrowser-Setup.exe.blockmap release/latest.yml release/StupidBrowser-portable.exe)
 
-# Android: the newest APK from the previous release comes along, so the download page keeps its Android link.
-gh release download -R "$REPO" -p '*-android.apk' -D release 2>/dev/null || echo "No Android APK in the previous release." >&2
+# Android: built here when the signing key and SDK are available, otherwise the APK from the previous release
+# comes along, so the download page keeps its Android link.
+if [ -f android/keystore.properties ] && [ -d "$HOME/Library/Android/sdk" ]; then
+  (cd android && JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17}" ./gradlew -q assembleRelease)
+  cp android/app/build/outputs/apk/release/app-release.apk "release/StupidBrowser-$VERSION-android.apk"
+else
+  gh release download -R "$REPO" -p '*-android.apk' -D release 2>/dev/null || echo "No Android APK in the previous release." >&2
+fi
 for f in release/*-android.apk; do [ -f "$f" ] && FILES+=("$f"); done
 
 # On a Mac, also build the macOS app: the native WebKit version (mac/), one universal app for Apple chip and

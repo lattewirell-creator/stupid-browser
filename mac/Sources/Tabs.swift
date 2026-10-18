@@ -22,6 +22,7 @@ final class Tab: NSObject {
   var audible = false
   var findText = "", findIndex = 0, findCount = 0
   var ctxInfo: [String: Any] = [:], ctxTime = Date.distantPast
+  var isSpare = false
   init(id: Int, web: TabWebView, isTab: Bool) { self.id = id; self.web = web; self.isTab = isTab }
 }
 
@@ -38,13 +39,11 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
   unowned let owner: BrowserWindow
   private(set) var tabs: [Int: Tab] = [:]
   lazy var privateStore = WKWebsiteDataStore.nonPersistent()   // one per private window, like Electron
-  private var audioTimer: Timer?
 
   init(window: BrowserWindow) {
     self.owner = window
     super.init(frame: .zero)
     wantsLayer = true
-    audioTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in self?.pollAudio() }
   }
   required init?(coder: NSCoder) { fatalError() }
   override var isFlipped: Bool { true }
@@ -69,6 +68,13 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     let uc = cfg.userContentController
     uc.add(self, name: "page")
     uc.addScriptMessageHandler(self, contentWorld: helperWorld, name: "tab")
+    installScripts(uc, isTab: isTab)
+    return cfg
+  }
+
+  /// Page helpers and Shield, per tab (again when Shield is switched on or off).
+  private func installScripts(_ uc: WKUserContentController, isTab: Bool) {
+    uc.removeAllUserScripts()
     uc.addUserScript(script("host-page.js", .page))                 // window.stupid for stupid:// pages
     uc.addUserScript(script("gen-media.js", .page))                 // music island + equalizer
     uc.addUserScript(script("tab-events.js", helperWorld))
@@ -79,8 +85,9 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
       uc.addUserScript(WKUserScript(source: "try { Object.defineProperty(Navigator.prototype, 'globalPrivacyControl', { get: () => true }); Object.defineProperty(Navigator.prototype, 'doNotTrack', { get: () => '1' }); } catch {}",
                                     injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
     }
-    if isTab, app.settings["adblock"] as? Bool ?? true, let list = Blocker.list { uc.add(list) }
-    return cfg
+    let shield = isTab && (app.settings["adblock"] as? Bool ?? true)
+    if let list = Blocker.list { uc.remove(list); if shield { uc.add(list) } }
+    if shield && !Blocker.genericScript.isEmpty { uc.addUserScript(WKUserScript(source: Blocker.genericScript, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: helperWorld)) }
   }
 
   func tab(for web: WKWebView) -> Tab? { tabs.values.first { $0.web === web } }
@@ -127,8 +134,10 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     web.wantsLayer = true
     web.layer?.masksToBounds = true
     if #available(macOS 13.3, *) { web.isInspectable = true }
+    if ProcessInfo.processInfo.environment["STUPID_TEST_UNTHROTTLE"] != nil { web.setValue(false, forKey: "windowOcclusionDetectionEnabled") }   // benchmarks: as if on screen
     let t = Tab(id: id, web: web, isTab: isTab)
     tabs[id] = t
+    if web.responds(to: Selector(("_isPlayingAudio"))) { web.addObserver(self, forKeyPath: "_isPlayingAudio", options: [.new], context: nil) }
     addSubview(web)
     t.observers = [
       web.observe(\.title) { [weak self] w, _ in
@@ -163,12 +172,13 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
 
   private func destroy(_ t: Tab) {
     t.observers.forEach { $0.invalidate() }
+    if t.web.responds(to: Selector(("_isPlayingAudio"))) { t.web.removeObserver(self, forKeyPath: "_isPlayingAudio") }
     t.web.stopLoading()
     t.web.configuration.userContentController.removeAllScriptMessageHandlers()
     t.web.removeFromSuperview()
     tabs.removeValue(forKey: t.id)
   }
-  func closeAll() { tabs.values.forEach(destroy); audioTimer?.invalidate() }
+  func closeAll() { tabs.values.forEach(destroy) }
 
   /// Electron's executeJavaScript: evaluate in the page, wait if it's a promise, return a plain value.
   private func exec(_ t: Tab, _ code: String, reply rid: Int) {
@@ -219,20 +229,17 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
     insp.perform(Selector(("show")))
   }
 
-  private func pollAudio() {
-    guard #available(macOS 12.0, *) else { return }
-    for t in tabs.values {
-      t.web.requestMediaPlaybackState { [weak self] st in
-        let now = st == .playing
-        if now != t.audible { t.audible = now; self?.send(t, "state", ["audible": now]) }
-      }
-    }
+  /// The tab's sound icon: WebKit announces when a page starts or stops playing audio (what Safari's tab
+  /// speaker uses), so no tab is woken up to ask.
+  override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
+    guard keyPath == "_isPlayingAudio", let w = object as? WKWebView, let t = tab(for: w) else { return }
+    let now = (w.value(forKey: "_isPlayingAudio") as? Bool) ?? false
+    if now != t.audible { t.audible = now; send(t, "state", ["audible": now]) }
   }
 
   // MARK: settings that change running tabs
   func setAdblock(_ on: Bool) {
-    guard let list = Blocker.list else { return }
-    for t in tabs.values where t.isTab { let uc = t.web.configuration.userContentController; uc.remove(list); if on { uc.add(list) } }
+    for t in tabs.values where t.isTab { installScripts(t.web.configuration.userContentController, isTab: true) }
   }
   func pushEq(_ eq: Any) {
     for t in tabs.values where t.web.url?.scheme?.hasPrefix("http") == true {
@@ -243,15 +250,25 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
   // MARK: layout from the UI
   func layout(_ list: [[String: Any]], covers: [[String: Any]]) {
     var pass: [NSRect] = []
+    CATransaction.begin(); CATransaction.setDisableActions(true)
     for d in list {
       guard let id = d["tab"] as? Int, let t = tabs[id] else { continue }
       let r = NSRect(x: d["x"] as? Double ?? 0, y: d["y"] as? Double ?? 0, width: d["w"] as? Double ?? 0, height: d["h"] as? Double ?? 0)
-      let shown = d["shown"] as? Bool ?? false
-      t.web.frame = r
+      let shown = d["shown"] as? Bool ?? false, spare = d["spare"] as? Bool ?? false
+      if t.web.frame != r { t.web.frame = r }
       t.web.layer?.cornerRadius = CGFloat(d["radius"] as? Double ?? 0)
-      t.web.isHidden = !shown
+      // Shown tabs follow the UI's fade-in (the prepared new tab fades in from invisible, so it never flashes).
+      // Hidden tabs, the prepared one included, aren't drawn at all: no CPU spent on what you can't see.
+      let alpha = shown ? CGFloat(d["opacity"] as? Double ?? 1) : 0
+      if t.web.alphaValue != alpha { t.web.alphaValue = alpha }
+      if t.web.isHidden != !shown { t.web.isHidden = !shown }
+      if spare != t.isSpare {
+        t.isSpare = spare
+        if spare { addSubview(t.web, positioned: .below, relativeTo: nil) } else { addSubview(t.web, positioned: .above, relativeTo: nil) }
+      }
       if shown { pass.append(r) }
     }
+    CATransaction.commit()
     owner.shell.passRects = pass
     owner.shell.coverRects = covers.map { NSRect(x: $0["x"] as? Double ?? 0, y: $0["y"] as? Double ?? 0, width: $0["w"] as? Double ?? 0, height: $0["h"] as? Double ?? 0) }
   }

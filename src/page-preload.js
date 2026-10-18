@@ -11,6 +11,9 @@ if (/^https?:$/.test(location.protocol)) {
     return before.pop() || inputs.find((i) => /user|mail|login/i.test(i.name + i.id + i.autocomplete)) || null;
   }
   let lastSent = '';
+  // Clicks only matter once the page has a password field (found by check() below or focused by the user),
+  // so ordinary clicks on busy pages cost nothing.
+  let pwSeen = false;
   function capture(pw) {
     if (!pw || !pw.value) return;
     const u = userFieldFor(pw);
@@ -22,6 +25,7 @@ if (/^https?:$/.test(location.protocol)) {
   document.addEventListener('submit', (e) => { const pw = pwFields(e.target)[0]; capture(pw); }, true);
   // Many sites log in with a button click instead of a real submit.
   document.addEventListener('click', (e) => {
+    if (!pwSeen) return;
     const b = e.target.closest && e.target.closest('button, input[type="submit"], [role="button"]');
     if (!b) return;
     const root = b.form || document;
@@ -54,11 +58,11 @@ if (/^https?:$/.test(location.protocol)) {
   }
   // No MutationObserver: watching every DOM change slowed busy pages (and every iframe) down. Instead look a few
   // times while the page settles, and whenever a field gets focus — that's when a login form matters anyway.
-  const check = () => { if (!filled && document.querySelector('input[type="password"]')) tryFill(); };
+  const check = () => { if ((!filled || !pwSeen) && document.querySelector('input[type="password"]')) { pwSeen = true; tryFill(); } };
   const start = () => {
     check();
     for (const ms of [400, 1500, 4000, 10000]) setTimeout(check, ms);
-    document.addEventListener('focusin', (e) => { if (!filled && e.target && e.target.tagName === 'INPUT') check(); }, true);
+    document.addEventListener('focusin', (e) => { if (e.target && e.target.type === 'password') pwSeen = true; if (!filled && e.target && e.target.tagName === 'INPUT') check(); }, true);
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 }

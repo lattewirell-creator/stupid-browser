@@ -15,7 +15,8 @@ for ARCH in arm64 x86_64; do
 done
 lipo -create build/StupidBrowser-arm64 build/StupidBrowser-x86_64 -output "$APP/Contents/MacOS/StupidBrowser" && rm build/StupidBrowser-arm64 build/StupidBrowser-x86_64
 rsync -a --delete --exclude '*.map' ../src/ "$APP/Contents/Resources/app/src/"
-rsync -a js core adblock "$APP/Contents/Resources/app/mac/"
+rsync -a js core "$APP/Contents/Resources/app/mac/"
+node tools/split-adblock.js adblock/rules.json "$APP/Contents/Resources/app/mac/adblock"
 cp ../build/icon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

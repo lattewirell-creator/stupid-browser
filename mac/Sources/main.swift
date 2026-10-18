@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var started = false
   private var pendingOpen: [String] = []
   private var picker: PickerWindow?
+  private var memoryWatch: DispatchSourceMemoryPressure?
 
   func applicationWillFinishLaunching(_ n: Notification) {
     // Links and files from other apps (default browser): kept until the core is ready.
@@ -39,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     Shortcuts.install(self)
     Blocker.onReady = { [weak self] in self?.windows.forEach { $0.tabs.setAdblock(self?.settings["adblock"] as? Bool ?? true) } }
     Blocker.load()
+    watchMemory()
     core = Core(app: self)
     core.start { [weak self] in
       guard let self else { return }
@@ -49,6 +51,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if showPicker { self.picker = PickerWindow(app: self); self.picker?.showWindow(nil) } else { self.openStartupWindows(urls) }
       self.updater.start()
     }
+  }
+
+  /// When macOS runs low on memory, idle background tabs fall asleep right away (instead of after the
+  /// Settings → tab sleep delay), like the tab sleeping the UI already does: they wake when clicked.
+  /// Tabs playing sound, loading, or with half-typed text stay awake (the UI's own sleepable/sleepTab rules).
+  private func watchMemory() {
+    let src = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+    src.setEventHandler { [weak self] in
+      self?.windows.forEach { $0.shell.evaluateJavaScript("typeof tabs !== 'undefined' && settings.tabSleep !== 0 && tabs.forEach((t) => { if (sleepable(t)) sleepTab(t); })", completionHandler: nil) }
+    }
+    src.resume()
+    memoryWatch = src
   }
 
   /// Startup windows like the Electron app: the welcome screen on a first run, else the saved windows

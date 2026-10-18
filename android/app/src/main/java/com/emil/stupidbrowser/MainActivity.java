@@ -24,7 +24,6 @@ import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.CookieManager;
-import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -56,7 +55,12 @@ public class MainActivity extends Activity {
             {"Startpage", "https://www.startpage.com/do/search?q=%s"}, {"Ecosia", "https://www.ecosia.org/search?q=%s"},
             {"Reddit", "https://www.reddit.com/search/?q=%s"}};
 
-    final List<WebView> tabs = new ArrayList<>();
+    /** A tab keeps its address and title; its WebView exists only while it's shown or recently used,
+     *  so restored and background tabs cost no memory until you open them again. */
+    static final class Tab { String url, title = ""; WebView wv; long lastShown; Tab(String u) { url = u; } }
+    static final int LIVE_TABS = 4;   // background tabs kept loaded, most recently used first
+    final List<Tab> tabs = new ArrayList<>();
+    Tab cur;
     WebView current;
     FrameLayout content;
     EditText address;
@@ -149,7 +153,7 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- tabs
     @SuppressLint("SetJavaScriptEnabled")
-    WebView newTab(String url) {
+    WebView makeWebView() {
         WebView wv = new WebView(this);
         WebSettings s = wv.getSettings();
         s.setJavaScriptEnabled(true);
@@ -160,52 +164,86 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(true);
         s.setAllowFileAccess(false);    // the bundled new-tab page is an asset, which still loads
         wv.setBackgroundColor(bg);
+        // Pages in background tabs may be stopped by Android when memory runs low (they reload when shown).
+        wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false);
-        wv.addJavascriptInterface(new Bridge(wv), "Stupid");
         wv.setWebViewClient(new Client());
         wv.setWebChromeClient(new Chrome());
         wv.setDownloadListener((u, ua, disposition, mime, len) -> download(u, ua, disposition, mime));
-        tabs.add(wv);
-        show(wv);
-        wv.loadUrl(url);
         return wv;
     }
 
-    void show(WebView wv) {
-        current = wv;
+    WebView newTab(String url) {
+        Tab t = new Tab(url);
+        tabs.add(t);
+        show(t);
+        return t.wv;
+    }
+
+    void show(Tab t) {
+        if (t.wv == null) { t.wv = makeWebView(); t.wv.loadUrl(load(t.url)); }
+        cur = t; current = t.wv; t.lastShown = System.currentTimeMillis();
         content.removeAllViews();
-        content.addView(wv, new FrameLayout.LayoutParams(-1, -1));
-        wv.onResume();
-        for (WebView o : tabs) if (o != wv) o.onPause();   // background tabs stop timers & media
+        content.addView(t.wv, new FrameLayout.LayoutParams(-1, -1));
+        t.wv.onResume();
+        for (Tab o : tabs) if (o != t && o.wv != null) o.wv.onPause();   // background tabs stop timers & media
+        sleepOldTabs(LIVE_TABS);
         tabCount.setText(String.valueOf(tabs.size()));
         showUrl();
     }
 
-    void closeTab(WebView wv) {
-        int i = tabs.indexOf(wv);
-        tabs.remove(wv);
-        wv.destroy();
+    /** Unloads background tabs beyond the `keep` most recently used (they reload when you open them). */
+    void sleepOldTabs(int keep) {
+        List<Tab> live = new ArrayList<>();
+        for (Tab o : tabs) if (o != cur && o.wv != null) live.add(o);
+        live.sort((x, y) -> Long.compare(y.lastShown, x.lastShown));
+        for (int i = keep; i < live.size(); i++) sleep(live.get(i));
+    }
+    void sleep(Tab t) {
+        if (t.wv == null || t == cur) return;
+        String u = t.wv.getUrl(); if (u != null) t.url = u;
+        String title = t.wv.getTitle(); if (title != null) t.title = title;
+        t.wv.destroy(); t.wv = null;
+    }
+    // Android asks apps to give memory back: unload every background tab.
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_RUNNING_LOW) sleepOldTabs(0);
+    }
+
+    Tab tabOf(WebView w) { for (Tab t : tabs) if (t.wv == w) return t; return null; }
+
+    void closeTab(Tab t) {
+        int i = tabs.indexOf(t);
+        tabs.remove(t);
+        if (t.wv != null) t.wv.destroy();
         if (tabs.isEmpty()) newTab(HOME);
-        else if (wv == current) show(tabs.get(Math.max(0, i - 1)));
+        else if (t == cur) show(tabs.get(Math.max(0, i - 1)));
         else tabCount.setText(String.valueOf(tabs.size()));
     }
 
     void showTabs() {
         List<String> names = new ArrayList<>();
-        for (WebView w : tabs) names.add((w == current ? "● " : "") + label(w));
+        for (Tab t : tabs) names.add((t == cur ? "● " : "") + label(t));
         names.add("＋  New tab");
         new AlertDialog.Builder(this).setTitle(tabs.size() + (tabs.size() == 1 ? " tab" : " tabs"))
                 .setItems(names.toArray(new String[0]), (d, i) -> { if (i == tabs.size()) newTab(HOME); else show(tabs.get(i)); })
-                .setNeutralButton("Close this tab", (d, i) -> closeTab(current))
-                .setNegativeButton("Close all", (d, i) -> { for (WebView w : new ArrayList<>(tabs)) { tabs.remove(w); w.destroy(); } newTab(HOME); })
+                .setNeutralButton("Close this tab", (d, i) -> closeTab(cur))
+                .setNegativeButton("Close all", (d, i) -> { for (Tab t : new ArrayList<>(tabs)) { tabs.remove(t); if (t.wv != null) t.wv.destroy(); } newTab(HOME); })
                 .show();
     }
 
-    String label(WebView w) {
-        String u = w.getUrl();
+    String label(Tab t) {
+        String u = t.wv != null ? t.wv.getUrl() : t.url;
         if (u == null || u.startsWith("file:")) return "New tab";
-        String t = w.getTitle();
-        return t != null && !t.isEmpty() ? t : u;
+        String title = t.wv != null ? t.wv.getTitle() : t.title;
+        return title != null && !title.isEmpty() ? title : u;
+    }
+
+    /** The bundled new-tab page gets your name and search engine in its address (no bridge into the app for websites). */
+    String load(String url) {
+        if (url == null || !url.startsWith(HOME)) return url;
+        return HOME + "#name=" + Uri.encode(prefs.getString("name", "")) + "&q=" + Uri.encode(searchUrl());
     }
 
     void showUrl() {
@@ -227,7 +265,7 @@ public class MainActivity extends Activity {
     }
 
     void go(String q) {
-        current.loadUrl(toUrl(q));
+        current.loadUrl(load(toUrl(q)));
         address.clearFocus();
         ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(address.getWindowToken(), 0);
         current.requestFocus();
@@ -246,7 +284,7 @@ public class MainActivity extends Activity {
         if (code == KeyEvent.KEYCODE_BACK) {
             if (fullscreenView != null) { ((Chrome) chromeOf()).onHideCustomView(); return true; }
             if (current != null && current.canGoBack()) { current.goBack(); return true; }
-            if (tabs.size() > 1) { closeTab(current); return true; }
+            if (tabs.size() > 1) { closeTab(cur); return true; }
         }
         return super.onKeyDown(code, e);
     }
@@ -292,7 +330,7 @@ public class MainActivity extends Activity {
     void askName() {
         EditText in = new EditText(this); in.setSingleLine(true); in.setText(prefs.getString("name", ""));
         new AlertDialog.Builder(this).setTitle("What should we call you?").setView(in)
-                .setPositiveButton("Save", (d, i) -> { prefs.edit().putString("name", in.getText().toString().trim()).apply(); if (isHome(current)) current.reload(); }).show();
+                .setPositiveButton("Save", (d, i) -> { prefs.edit().putString("name", in.getText().toString().trim()).apply(); if (isHome(current)) current.loadUrl(load(HOME)); }).show();
     }
 
     void clearData() {
@@ -300,7 +338,7 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Clear", (d, i) -> {
                     CookieManager.getInstance().removeAllCookies(null);
                     WebStorage.getInstance().deleteAllData();
-                    for (WebView w : tabs) { w.clearCache(true); w.clearHistory(); }
+                    for (Tab t : tabs) if (t.wv != null) { t.wv.clearCache(true); t.wv.clearHistory(); }
                     toast("Cleared");
                 }).setNegativeButton("Cancel", null).show();
     }
@@ -334,8 +372,8 @@ public class MainActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         JSONArray a = new JSONArray();
-        for (WebView w : tabs) { String u = w.getUrl(); a.put(u == null || u.startsWith("file:") ? HOME : u); }
-        prefs.edit().putString("tabs", a.toString()).putInt("current", Math.max(0, tabs.indexOf(current))).apply();
+        for (Tab t : tabs) { String u = t.wv != null ? t.wv.getUrl() : t.url; a.put(u == null || u.startsWith("file:") ? HOME : u); }
+        prefs.edit().putString("tabs", a.toString()).putInt("current", Math.max(0, tabs.indexOf(cur))).apply();
         CookieManager.getInstance().flush();
     }
 
@@ -343,7 +381,7 @@ public class MainActivity extends Activity {
         try {
             JSONArray a = new JSONArray(prefs.getString("tabs", "[]"));
             if (a.length() == 0) return false;
-            for (int i = 0; i < a.length() && i < 30; i++) newTab(a.getString(i));
+            for (int i = 0; i < a.length() && i < 30; i++) tabs.add(new Tab(a.getString(i)));   // loaded when opened
             show(tabs.get(Math.min(prefs.getInt("current", 0), tabs.size() - 1)));
             return true;
         } catch (Exception e) { return false; }
@@ -374,6 +412,16 @@ public class MainActivity extends Activity {
         @Override public void onPageStarted(WebView v, String url, Bitmap fav) { if (v == current) { progress.setVisibility(View.VISIBLE); showUrl(); } }
         @Override public void onPageFinished(WebView v, String url) { if (v == current) { progress.setVisibility(View.INVISIBLE); showUrl(); } }
         @Override public void doUpdateVisitedHistory(WebView v, String url, boolean reload) { if (v == current) showUrl(); }
+        // Android stopped (or lost) the page's process: unload the tab instead of crashing; it reloads when shown.
+        @Override public boolean onRenderProcessGone(WebView v, android.webkit.RenderProcessGoneDetail detail) {
+            Tab t = tabOf(v);
+            if (t == null) { v.destroy(); return true; }
+            String u = v.getUrl(); if (u != null) t.url = u;
+            if (v.getParent() != null) content.removeView(v);
+            v.destroy(); t.wv = null;
+            if (t == cur) show(t);
+            return true;
+        }
     }
 
     class Chrome extends WebChromeClient {
@@ -386,7 +434,7 @@ public class MainActivity extends Activity {
             msg.sendToTarget();
             return true;
         }
-        @Override public void onCloseWindow(WebView w) { if (tabs.contains(w)) closeTab(w); }
+        @Override public void onCloseWindow(WebView w) { Tab t = tabOf(w); if (t != null) closeTab(t); }
         @Override public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
             if (fileCallback != null) fileCallback.onReceiveValue(null);
             fileCallback = cb;
@@ -406,16 +454,5 @@ public class MainActivity extends Activity {
             fullscreenView = null;
             getWindow().getInsetsController().show(WindowInsets.Type.systemBars());
         }
-    }
-
-    /** Read-only info for the bundled new-tab page. Answers only when the tab shows that page. */
-    class Bridge {
-        final WebView wv; volatile boolean home;
-        Bridge(WebView wv) { this.wv = wv; }
-        boolean onHome() { final boolean[] r = {false}; final Object lock = new Object();
-            synchronized (lock) { wv.post(() -> { synchronized (lock) { r[0] = isHome(wv); lock.notify(); } }); try { lock.wait(500); } catch (InterruptedException ignored) { } }
-            return r[0]; }
-        @JavascriptInterface public String name() { return onHome() ? prefs.getString("name", "") : ""; }
-        @JavascriptInterface public String searchUrl() { return onHome() ? MainActivity.this.searchUrl() : ""; }
     }
 }

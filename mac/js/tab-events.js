@@ -16,6 +16,10 @@
     const href = a ? a.href : "";
     if (href !== lastHref) { lastHref = href; post({ type: "target-url", url: href }); }
   }, true);
-  addEventListener("focus", () => post({ type: "focus" }), true);
-  addEventListener("mousedown", () => post({ type: "focus" }), true);
+  // The UI only needs to know when the tab gains focus, not about every focus change inside the page.
+  let focused = false;
+  const gained = () => { if (!focused) { focused = true; post({ type: "focus" }); } };
+  addEventListener("focus", gained, true);
+  addEventListener("mousedown", gained, true);
+  addEventListener("blur", (e) => { if (e.target === window) focused = false; });
 })();

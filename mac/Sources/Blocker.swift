@@ -6,6 +6,18 @@ import WebKit
 
 enum Blocker {
   private(set) static var list: WKContentRuleList?
+  /// The "hide everywhere" element-hiding lists, added to each tab's main page only (see mac/tools/split-adblock.js).
+  static let genericScript: String = {
+    guard let d = try? Data(contentsOf: Res.mac.appendingPathComponent("adblock/generic.json")),
+          let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let css = j["css"] as? String else { return "" }
+    return """
+    (() => { if (window.top !== window || !/^https?:$/.test(location.protocol)) return;
+      const h = location.hostname, skip = \(json(j["skip"] ?? []));
+      if (skip.some((d) => h === d || h.endsWith("." + d))) return;
+      const s = document.createElement("style"); s.textContent = \(json(css));
+      (document.head || document.documentElement).appendChild(s); })();
+    """
+  }()
   private static var count = 0, sent = 0
   private static var timer: Timer?
   static var onReady: (() -> Void)?
