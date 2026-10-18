@@ -67,7 +67,7 @@ async function paintDefault() {
   const isDef = st.http && st.https;
   $('makeDefault').textContent = isDef ? '✓ It’s your default browser' : 'Make it my default browser';
   $('makeDefault').disabled = !!isDef;
-  $('defaultNote').textContent = isDef ? '' : (st.platform === 'darwin' ? 'macOS will ask you to confirm.' : 'Windows opens Default apps — pick “The Stupid Browser” for HTTP and HTTPS.');
+  $('defaultNote').textContent = isDef ? '' : (window.stupid.platform === 'android' ? 'Android will ask you to pick your browser app.' : st.platform === 'darwin' ? 'macOS will ask you to confirm.' : 'Windows opens Default apps — pick “The Stupid Browser” for HTTP and HTTPS.');
 }
 $('makeDefault').addEventListener('click', async () => { await call('default:set'); setTimeout(paintDefault, 1500); setTimeout(paintDefault, 5000); });
 

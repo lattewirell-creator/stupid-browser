@@ -12,8 +12,8 @@ android {
         applicationId 'com.emil.stupidbrowser'
         minSdk 26
         targetSdk 36
-        versionCode 4
-        versionName '1.4.1'
+        versionCode 5
+        versionName '1.5.0'
     }
     signingConfigs {
         release {
@@ -31,9 +31,32 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (ksFile.exists()) signingConfig signingConfigs.release
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    sourceSets { main { assets.srcDirs += ["$buildDir/generated/ui"] } }
 }
+
+dependencies {
+    // Document-start scripts and origin-checked messaging for page helpers (what the Mac app gets from WebKit).
+    implementation 'androidx.webkit:webkit:1.14.0'
+}
+
+// The browser's UI is the desktop app's own: src/ (index.html, renderer.js, pages…) and the shared core from
+// mac/ (core/*.js = the Electron main process logic, js/*.js = page helpers), packed into the APK unchanged.
+def ui = "$buildDir/generated/ui"
+tasks.register('genCore', Exec) {
+    workingDir rootProject.file('../mac')
+    commandLine 'python3', 'tools/gen-core.py'
+}
+tasks.register('copyUi', Copy) {
+    dependsOn 'genCore'
+    into ui
+    from(rootProject.file('../src')) { into 'shell'; exclude 'main.js', '*preload*.js', 'store.js', 'profiles.js', 'buddy-main.js', 'rewind-main.js', 'import-*.js', 'mac-*.js', 'picker*' }
+    from(rootProject.file('../mac/core')) { into 'core' }
+    from(rootProject.file('../mac/js')) { into 'mac' }
+    from(file('ui')) { into 'android' }
+}
+preBuild.dependsOn 'copyUi'
