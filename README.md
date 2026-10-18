@@ -1,6 +1,6 @@
 # The Stupid Browser
 
-A calm, warm-toned personal web browser for Windows, macOS and Android. The desktop app is built with Electron.
+A calm, warm-toned personal web browser for Windows, macOS and Android. The desktop app is built with Webkit.
 Tabs and tab groups, an AI sidebar (Claude first), an Opera-style app sidebar, ad & tracker blocker,
 history, downloads, bookmarks, passwords, private windows and auto-updates.
 
