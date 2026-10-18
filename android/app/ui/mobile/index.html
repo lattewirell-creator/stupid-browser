@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: http: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>The Stupid Browser</title>
+<link rel="stylesheet" href="/m/mobile.css">
+</head>
+<!-- The Stupid Browser for Android: the phone's own UI (the desktop app's look, laid out for a phone).
+     Pages, settings, Shield and Buddy's brain are the shared ones; see mobile.js. -->
+<body class="tint-none">
+<div id="app">
+  <header id="bar">
+    <div id="omni">
+      <button id="siteBtn" class="omni-ic" aria-label="Site information"></button>
+      <input id="addr" type="text" inputmode="url" enterkeyhint="go" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Search or type a web address">
+      <button id="clearBtn" class="omni-ic hidden" aria-label="Clear"></button>
+      <button id="shieldBtn" aria-label="Shield"><span class="dot"></span><span id="shieldCount">0</span></button>
+    </div>
+    <button id="buddyBtn" class="bar-btn" aria-label="Buddy"><span class="ball small"><i></i><i></i></span></button>
+    <button id="newBtn" class="bar-btn" aria-label="New tab (hold for a private tab)"></button>
+    <button id="menuBtn" class="bar-btn" aria-label="Menu"></button>
+    <div id="progress"></div>
+  </header>
+
+  <main id="views"></main>
+
+  <section id="suggest" class="cover hidden"></section>
+
+  <section id="find" class="cover hidden">
+    <input id="findInput" type="text" placeholder="Find in page" spellcheck="false" enterkeyhint="search">
+    <span id="findCount">0/0</span>
+    <button id="findPrev" class="bar-btn" aria-label="Previous"></button>
+    <button id="findNext" class="bar-btn" aria-label="Next"></button>
+    <button id="findClose" class="bar-btn" aria-label="Close"></button>
+  </section>
+
+  <section id="grid" class="cover hidden">
+    <header class="grid-head">
+      <div class="seg"><button id="segTabs" class="on">Tabs</button><button id="segPrivate">Private</button></div>
+      <button id="gridDone" class="text-btn">Done</button>
+    </header>
+    <div id="cards"></div>
+    <footer class="grid-foot">
+      <button id="closeAll" class="text-btn">Close all</button>
+      <button id="gridNew" class="fab" aria-label="New tab"></button>
+      <span class="grid-spacer"></span>
+    </footer>
+  </section>
+
+  <div id="scrim" class="cover hidden"></div>
+  <section id="sheet" class="cover hidden"><div class="grab"></div><div id="sheetBody"></div></section>
+
+  <section id="buddy" class="cover hidden">
+    <div class="grab"></div>
+    <header class="bd-head">
+      <span id="bdBall" class="ball"><i></i><i></i></span>
+      <div class="bd-who"><div id="bdName" class="serif">Buddy</div><div id="bdModel">Not set up</div></div>
+      <button id="bdNew" class="chip">New chat</button>
+      <button id="bdClose" class="bar-btn" aria-label="Close"></button>
+    </header>
+    <div id="bdLog"></div>
+    <div id="bdChips"></div>
+    <form id="bdForm">
+      <button id="bdLook" type="button" class="bar-btn on" aria-label="Let Buddy see this page"></button>
+      <textarea id="bdInput" rows="1" placeholder="Ask Buddy…" enterkeyhint="send"></textarea>
+      <button id="bdSend" type="submit" class="send" aria-label="Send"></button>
+    </form>
+  </section>
+
+  <button id="selPill" class="cover hidden"><span class="ball tiny"><i></i><i></i></span>Ask Buddy about this</button>
+  <div id="toast" class="cover hidden"></div>
+</div>
+<script src="/m/mobile.js"></script>
+</body>
+</html>

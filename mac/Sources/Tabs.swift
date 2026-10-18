@@ -257,11 +257,13 @@ final class TabHost: NSView, WKNavigationDelegate, WKUIDelegate, WKScriptMessage
       let shown = d["shown"] as? Bool ?? false, spare = d["spare"] as? Bool ?? false
       if t.web.frame != r { t.web.frame = r }
       t.web.layer?.cornerRadius = CGFloat(d["radius"] as? Double ?? 0)
-      // Shown tabs follow the UI's fade-in (the prepared new tab fades in from invisible, so it never flashes).
-      // Hidden tabs, the prepared one included, aren't drawn at all: no CPU spent on what you can't see.
-      let alpha = shown ? CGFloat(d["opacity"] as? Double ?? 1) : 0
+      // Shown tabs follow the UI's fade-in. The prepared new tab stays drawn, almost invisibly, under the
+      // others, so opening a new tab shows a finished page at once (its page is still, so this costs nothing).
+      // Other hidden tabs aren't drawn at all: no CPU spent on what you can't see.
+      let alpha = shown ? CGFloat(d["opacity"] as? Double ?? 1) : spare ? 0.004 : 0
       if t.web.alphaValue != alpha { t.web.alphaValue = alpha }
-      if t.web.isHidden != !shown { t.web.isHidden = !shown }
+      let hidden = !shown && !spare
+      if t.web.isHidden != hidden { t.web.isHidden = hidden }
       if spare != t.isSpare {
         t.isSpare = spare
         if spare { addSubview(t.web, positioned: .below, relativeTo: nil) } else { addSubview(t.web, positioned: .above, relativeTo: nil) }

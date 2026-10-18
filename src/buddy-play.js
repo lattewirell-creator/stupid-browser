@@ -122,10 +122,15 @@
     if (!s || !s.text || !buddyOn || tab.id !== activeId || !tab.wv) { hideT = setTimeout(() => { if (!pill.matches(':hover')) pill.classList.add('hidden'); }, 120); return; }
     const c = box(), wr = tab.wv.getBoundingClientRect(), z = tab.zoom || 1;
     sel = { text: s.text, tab, left: wr.left - c.left + s.x * z, top: wr.top - c.top + s.y * z, right: wr.left - c.left + (s.x + s.w) * z, bottom: wr.top - c.top + (s.y + s.h) * z };
-    pillName.textContent = (settings.buddyLook && settings.buddyLook.name) || 'Buddy';
-    pill.style.left = Math.round(Math.min(c.width - 130, Math.max(8, sel.right - 40))) + 'px';
-    pill.style.top = Math.round(Math.min(c.height - 40, sel.bottom + 8)) + 'px';
-    pill.classList.remove('hidden'); pill.classList.remove('pop'); void pill.offsetWidth; pill.classList.add('pop');
+    // "Ask Max" when your buddy is called Max.
+    pillName.textContent = String((settings.buddyLook && settings.buddyLook.name) || '').trim() || 'Buddy';
+    pill.classList.remove('hidden');
+    // Centered just under the highlighted text (above it when there's no room below).
+    const pw = pill.offsetWidth || 120, ph = pill.offsetHeight || 32;
+    const below = sel.bottom + 8, top = below + ph > c.height - 4 ? sel.top - ph - 8 : below;
+    pill.style.left = Math.round(Math.min(c.width - pw - 8, Math.max(8, (sel.left + sel.right) / 2 - pw / 2))) + 'px';
+    pill.style.top = Math.round(Math.max(4, Math.min(c.height - ph - 4, top))) + 'px';
+    pill.classList.remove('pill-pop'); void pill.offsetWidth; pill.classList.add('pill-pop');
   };
   pill.addEventListener('mousedown', (e) => e.preventDefault());
   pill.addEventListener('click', () => { pill.classList.add('hidden'); if (sel) explain(sel); });

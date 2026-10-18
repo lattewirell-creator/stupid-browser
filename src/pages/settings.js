@@ -115,7 +115,9 @@ async function renderPerms() {
 }
 
 const IS_MAC = S.platform === 'darwin';
+const IS_ANDROID = S.platform === 'android';
 if (IS_MAC) $('defHint').textContent = 'macOS asks you to confirm. Choose “Use The Stupid Browser”.';
+if (IS_ANDROID) $('defHint').textContent = 'Android asks you to confirm. Choose The Stupid Browser as your browser app.';
 
 $('pwImport').onclick = async () => {
   const r = await call('import:passwords');
@@ -126,7 +128,7 @@ $('pwImport').onclick = async () => {
 
 async function renderPasswords() {
   const enc = await call('pw:encryption');
-  $('encNote').textContent = enc ? (IS_MAC ? 'Passwords are encrypted with a key kept in your macOS Keychain and stay on this computer.' : 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.') : 'Warning: system encryption is not available, passwords are only obfuscated.';
+  $('encNote').textContent = enc ? (IS_ANDROID ? 'Passwords are encrypted with a key kept in your phone’s secure hardware and stay on this phone.' : IS_MAC ? 'Passwords are encrypted with a key kept in your macOS Keychain and stay on this computer.' : 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.') : 'Warning: system encryption is not available, passwords are only obfuscated.';
   const list = await call('pw:list');
   const box = $('pwList'); box.innerHTML = '';
   if (!list.length) { box.appendChild(el('div', 'row muted', 'No saved passwords. When you sign in to a site, The Stupid Browser offers to save it.')); return; }
@@ -213,7 +215,7 @@ async function renderDefault() {
   const isDef = st.http && st.https;
   $('defStatus').firstChild.textContent = isDef ? 'The Stupid Browser is registered for web links. ' : 'The Stupid Browser is not your default browser. ';
 }
-$('defBtn').onclick = async () => { await call('default:set'); toast(IS_MAC ? 'Confirm in the macOS dialog that opened' : 'Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
+$('defBtn').onclick = async () => { await call('default:set'); toast(IS_ANDROID ? 'Pick The Stupid Browser in the list Android shows' : IS_MAC ? 'Confirm in the macOS dialog that opened' : 'Choose The Stupid Browser in the Windows window that opened'); setTimeout(renderDefault, 1500); };
 
 /* ---------- browser logo (+ optional app icon) ---------- */
 function paintLogo(s) {
@@ -336,7 +338,7 @@ function renderUpdate(u) {
     checking: 'Checking for updates…',
     none: `You’re up to date (version ${u.current})${when}.`,
     downloading: `Downloading version ${u.version || ''}… ${u.progress || 0}%`,
-    ready: `Version ${u.version} is ready. Restart to finish updating (or it installs when you close the browser).`,
+    ready: IS_ANDROID ? `Version ${u.version} is out. Tap Install to download it, then open the download to update. Your tabs and settings stay.` : `Version ${u.version} is ready. Restart to finish updating (or it installs when you close the browser).`,
     error: `Couldn’t check for updates: ${u.error || 'unknown error'}${when}.`
   }[u.status] || '';
   $('updNote').textContent = msg;
