@@ -7,21 +7,14 @@
   const root = el('div', 'buddy hidden'); root.id = 'buddy';
   const panel = el('section', 'bd-panel');
   const head = el('div', 'bd-head');
-  // 3D robot buddy: head turns and eyes follow the mouse (see .bot3d in styles.css).
+  // Buddy before the 3D model loads (or where 3D can't run): the ball with two eyes, like The Stupid Buddy app (see .bot-ball in styles.css).
   const bot = (size) => {
     const b = el('span', 'bot3d ' + size);
-    const fl = el('span', 'bot-float');
-    const ant = el('span', 'bot-antenna'); ant.appendChild(el('i'));
-    const headEl = el('span', 'bot-head');
-    const visor = el('span', 'bot-visor');
-    const eyes = el('span', 'bot-eyes'); eyes.append(el('i', 'bot-eye'), el('i', 'bot-eye'));
-    visor.append(eyes, el('span', 'bot-mouth'));
-    headEl.append(el('span', 'bot-ear l'), el('span', 'bot-ear r'), visor, el('span', 'bot-photo'), el('span', 'bot-shine'), el('span', 'bot-extra'));
-    fl.append(ant, headEl);
-    b.append(el('span', 'bot-shadow'), fl);
+    const ball = el('span', 'bot-ball'); ball.append(el('i'), el('i'), el('span', 'bot-photo'), el('span', 'bot-extra'));
+    b.append(el('span', 'bot-shadow'), ball);
     return b;
   };
-  // Header face: a picture of the 3D character you've equipped (the CSS robot only if 3D isn't available).
+  // Header face: a picture of the 3D character you've equipped (the CSS ball only if 3D isn't available).
   const faceBox = el('span', 'bd-face'); faceBox.appendChild(bot('mini'));
   let faceT;
   const paintFace = (delay = 120) => {   // after setLook rebuilds the model, so the picture shows the new look
@@ -32,6 +25,7 @@
       let img = faceBox.querySelector('img');
       if (!img) { img = el('img'); img.alt = ''; faceBox.replaceChildren(img); faceBox.classList.add('pic'); }
       img.src = url;
+      faceBox.classList.toggle('round', ['ball', 'eye'].includes(look3d().shape));   // round Buddies sit lower in the picture
     }, delay);
   };
   const titleBox = el('div', 'bd-titles'); const modelLine = el('small', null, '');
@@ -58,7 +52,7 @@
   document.getElementById('content').appendChild(root);
 
   let status = { hasKey: false };
-  // Real 3D buddy (buddy3d.js, an ES module that loads after this script); the CSS robot stays as fallback.
+  // Real 3D buddy (buddy3d.js, an ES module that loads after this script); the CSS ball stays as fallback.
   let b3 = null;
   function mount3d() {
     if (b3 || !window.Buddy3D) return;
@@ -336,7 +330,7 @@
       im.src = url;
     });
     ph.appendChild(up);
-    if (L.image) { const rm = el('button', 'pill small', 'Use the robot'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
+    if (L.image) { const rm = el('button', 'pill small', 'Use Buddy'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
     row('Picture', ph);
     const done = el('div', 'bdc-done'); const d = el('button', 'pill solid', 'Done'); d.addEventListener('click', toggleCustom); const rs = el('button', 'pill', 'Reset');
     rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'ball', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'clay', backpack: true, scarf: true }));
