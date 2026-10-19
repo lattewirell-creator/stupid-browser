@@ -464,9 +464,15 @@ body.rail-dragging webview { pointer-events: none; }
 .bot3d { --b: var(--bc, var(--accent)); --c1: color-mix(in srgb, var(--b) 55%, #fff); --c2: var(--b); --c3: color-mix(in srgb, var(--b) 60%, #000);
   position: relative; display: grid; place-items: center; perspective: 260px; width: 76px; height: 82px; }
 .bot3d.mini { transform: scale(.42); margin: -24px -22px; flex: none; }
+.bot-ball { position: relative; width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--c1), var(--b) 70%); box-shadow: inset 0 -4px 8px rgba(0,0,0,.14); animation: botFloat 3.4s ease-in-out infinite; }
+.bot-ball > i { position: absolute; top: 31%; width: 15%; height: 27%; border-radius: 999px; background: #fff; }
+.bot-ball > i:nth-of-type(1) { left: 29%; } .bot-ball > i:nth-of-type(2) { right: 29%; }
+.bot-ball > .bot-photo { position: absolute; inset: 0; border-radius: 50%; background-size: cover; background-position: center; }
+.bot-ball > .bot-extra { position: absolute; left: 50%; top: -14px; translate: -50% 0; font-size: 20px; line-height: 1; }
 .bd-face { flex: none; display: grid; place-items: center; }
 .bd-face.pic { position: relative; display: block; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: var(--surface-2); }
 .bd-face.pic img { position: absolute; left: -18px; top: -12px; width: 70px; max-width: none; }   /* the snapshot is the whole character: zoom in on head and scarf */
+.bd-face.pic.round img { left: -13px; top: -21px; width: 60px; }   /* the ball and the Eye: the whole round Buddy */
 .bot-float { position: relative; display: grid; place-items: center; transform-style: preserve-3d; animation: botFloat 3.4s ease-in-out infinite; }
 .bot-head { position: relative; width: 62px; height: 54px; border-radius: 22px 22px 20px 20px; transform-style: preserve-3d;
   transform: rotateY(var(--ry, 0deg)) rotateX(var(--rx, 0deg)); transition: transform .35s cubic-bezier(.2,.8,.2,1);

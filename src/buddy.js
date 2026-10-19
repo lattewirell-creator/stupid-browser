@@ -7,21 +7,14 @@
   const root = el('div', 'buddy hidden'); root.id = 'buddy';
   const panel = el('section', 'bd-panel');
   const head = el('div', 'bd-head');
-  // 3D robot buddy: head turns and eyes follow the mouse (see .bot3d in styles.css).
+  // Buddy before the 3D model loads (or where 3D can't run): the ball with two eyes, like The Stupid Buddy app (see .bot-ball in styles.css).
   const bot = (size) => {
     const b = el('span', 'bot3d ' + size);
-    const fl = el('span', 'bot-float');
-    const ant = el('span', 'bot-antenna'); ant.appendChild(el('i'));
-    const headEl = el('span', 'bot-head');
-    const visor = el('span', 'bot-visor');
-    const eyes = el('span', 'bot-eyes'); eyes.append(el('i', 'bot-eye'), el('i', 'bot-eye'));
-    visor.append(eyes, el('span', 'bot-mouth'));
-    headEl.append(el('span', 'bot-ear l'), el('span', 'bot-ear r'), visor, el('span', 'bot-photo'), el('span', 'bot-shine'), el('span', 'bot-extra'));
-    fl.append(ant, headEl);
-    b.append(el('span', 'bot-shadow'), fl);
+    const ball = el('span', 'bot-ball'); ball.append(el('i'), el('i'), el('span', 'bot-photo'), el('span', 'bot-extra'));
+    b.append(el('span', 'bot-shadow'), ball);
     return b;
   };
-  // Header face: a picture of the 3D character you've equipped (the CSS robot only if 3D isn't available).
+  // Header face: a picture of the 3D character you've equipped (the CSS ball only if 3D isn't available).
   const faceBox = el('span', 'bd-face'); faceBox.appendChild(bot('mini'));
   let faceT;
   const paintFace = (delay = 120) => {   // after setLook rebuilds the model, so the picture shows the new look
@@ -32,6 +25,7 @@
       let img = faceBox.querySelector('img');
       if (!img) { img = el('img'); img.alt = ''; faceBox.replaceChildren(img); faceBox.classList.add('pic'); }
       img.src = url;
+      faceBox.classList.toggle('round', ['ball', 'eye'].includes(look3d().shape));   // round Buddies sit lower in the picture
     }, delay);
   };
   const titleBox = el('div', 'bd-titles'); const modelLine = el('small', null, '');
@@ -58,7 +52,7 @@
   document.getElementById('content').appendChild(root);
 
   let status = { hasKey: false };
-  // Real 3D buddy (buddy3d.js, an ES module that loads after this script); the CSS robot stays as fallback.
+  // Real 3D buddy (buddy3d.js, an ES module that loads after this script); the CSS ball stays as fallback.
   let b3 = null;
   function mount3d() {
     if (b3 || !window.Buddy3D) return;
@@ -255,7 +249,7 @@
   const BODY = { cream: '#EBC39D', clay: '#D97757', cocoa: '#8B5E45', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
   const GLOW = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
   const EXTRAS = { none: 'None', headphones: '🎧', cap: '🧢', bow: '🎀', crown: '👑', glasses: '🕶️', flower: '🌼' };
-  const SHAPES = { hiker: ['🎒', 'Hiker'], ball: ['🟠', 'Ball'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
+  const SHAPES = { ball: ['🟠', 'Ball'], eye: ['👁️', 'Eye'], hiker: ['🎒', 'Hiker'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
   const HATS = { none: ['✖', 'None'], tophat: ['🎩', 'Top hat'], cap: ['🧢', 'Cap'], beanie: ['🧶', 'Beanie'], crown: ['👑', 'Crown'], party: ['🥳', 'Party'], cowboy: ['🤠', 'Cowboy'], headphones: ['🎧', 'Headphones'], halo: ['😇', 'Halo'] };
   const EYES = { dot: ['•', 'Dots'], round: ['👀', 'Round'], sleepy: ['😌', 'Sleepy'], wide: ['😳', 'Wide'], lash: ['😉', 'Lashes'] };
   const MOUTHS = { smile: ['🙂', 'Smile'], grin: ['😁', 'Grin'], flat: ['😐', 'Flat'], open: ['😮', 'Open'], cat: ['😺', 'Cat'] };
@@ -265,10 +259,10 @@
     const L = lookCfg();
     const fromExtra = { headphones: ['headphones', null], cap: ['cap', null], crown: ['crown', null], glasses: [null, 'shades'] }[L.extra] || [null, null];
     return { eyes: EYES[L.eyes] ? L.eyes : 'dot', mouth: MOUTHS[L.mouth] ? L.mouth : 'smile', outfit: L.outfit || 'clay', backpack: L.backpack !== false, scarf: L.scarf !== false,
-      shape: SHAPES[L.shape] ? L.shape : 'hiker', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
+      shape: SHAPES[L.shape] ? L.shape : 'ball', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
   };
   let previewBox = null, previewB3 = null;
-  const lookCfg = () => Object.assign({ name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
+  const lookCfg = () => Object.assign({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
   function buddyName() { return (lookCfg().name || 'Buddy').trim() || 'Buddy'; }
   function applyLook() {
     const L = lookCfg();
@@ -307,7 +301,7 @@
     };
     const isHiker = look3d().shape === 'hiker';
     row(isHiker ? 'Body' : 'Color', sw(BODY, L.color, 'color'));
-    if (!isHiker) row('Glow', sw(GLOW, L.glow, 'glow'));
+    if (!['hiker', 'ball', 'eye'].includes(look3d().shape)) row('Glow', sw(GLOW, L.glow, 'glow'));   // the robots' eye glow
     const chips = (map, cur, key) => {
       const box = el('div', 'bdc-extras');
       for (const [k, v] of Object.entries(map)) { const b = el('button', 'bdc-ex' + (cur === k ? ' on' : '')); b.title = v[1]; b.append(el('span', null, v[0]), el('small', null, v[1])); b.addEventListener('click', () => saveLook({ [key]: k })); box.appendChild(b); }
@@ -336,10 +330,10 @@
       im.src = url;
     });
     ph.appendChild(up);
-    if (L.image) { const rm = el('button', 'pill small', 'Use the robot'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
+    if (L.image) { const rm = el('button', 'pill small', 'Use Buddy'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
     row('Picture', ph);
     const done = el('div', 'bdc-done'); const d = el('button', 'pill solid', 'Done'); d.addEventListener('click', toggleCustom); const rs = el('button', 'pill', 'Reset');
-    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'hiker', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'clay', backpack: true, scarf: true, color: 'cream' }));
+    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'ball', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'clay', backpack: true, scarf: true }));
     done.append(rs, d); custom.appendChild(done);
     applyLook();
   }
