@@ -176,9 +176,9 @@ $('profileBtn').addEventListener('click', () => { if (isOpen('profile-pop')) hid
 /* ---------------- app grid ---------------- */
 function appIcon(it) {
   const box = el('span', 'ag-icon');
-  const src = faviconFor(appUrl(it));
   const letter = () => { box.replaceChildren(el('b', null, (it.name || '?')[0].toUpperCase())); box.classList.add('letter'); };
-  if (src) { const i = el('img'); i.draggable = false; i.src = src; i.onerror = letter; box.appendChild(i); } else letter();
+  const sources = iconSources(appUrl(it));
+  if (sources.length) { const i = el('img'); i.draggable = false; box.appendChild(i); loadIcon(i, sources, letter); } else letter();
   return box;
 }
 let gridDrag = null;

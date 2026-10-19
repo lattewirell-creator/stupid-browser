@@ -50,6 +50,21 @@ const tabById = (id) => tabs.find((t) => t.id === id);
 const activeTab = () => tabById(activeId);
 // The site's own icon, asked from the site itself (not a third-party icon service that would see your sites).
 const faviconFor = (url) => { const h = hostOf(url); return h ? `https://${h}/favicon.ico` : null; };
+// A site's icon from the best source that works: the icon the site itself announced (remembered from the sidebar),
+// its large app icon, favicon.ico, then DuckDuckGo's icon service (the default search engine). Some sites have no
+// favicon.ico at all (Discord) or send it in a form WebKit won't draw, which left only a letter.
+const iconSources = (url, known) => {
+  const h = hostOf(url), base = h && h.split('.').slice(-2).join('.');
+  // DuckDuckGo knows sites by their usual address: www.instagram.com as is, but web.whatsapp.com as whatsapp.com.
+  // (Its "no icon" picture loads like a real one, so the likelier address goes first.)
+  const ddg = [...new Set(h && h.startsWith('www.') ? [h, base] : [base, h])].filter(Boolean).map((x) => `https://icons.duckduckgo.com/ip3/${x}.ico`);
+  return [known, h && `https://${h}/apple-touch-icon.png`, h && `https://${h}/favicon.ico`, ...ddg].filter(Boolean);
+};
+function loadIcon(img, sources, onFail) {
+  let i = 0;
+  const next = () => { if (i >= sources.length) { img.onerror = null; onFail(); return; } img.src = sources[i++]; };
+  img.onerror = next; next();
+}
 function searchUrl(q) { return (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q)); }
 function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'DuckDuckGo' }).name; }
 // Community / site searches: "!r how to…" → your engine limited to Reddit, etc.
@@ -982,8 +997,8 @@ function renderRail() {
   for (const it of sideItems) {
     const b = el('button', 'rail-item app' + (activeApp === it.id ? ' on' : ''));
     b.title = it.name; b.dataset.id = it.id;
-    const img = el('img'); img.draggable = false; img.src = faviconFor(it.url);
-    img.onerror = () => img.replaceWith(el('span', 'rail-letter', (it.name || '?')[0].toUpperCase()));
+    const img = el('img'); img.draggable = false;
+    loadIcon(img, iconSources(it.url, it.icon), () => img.replaceWith(el('span', 'rail-letter', (it.name || '?')[0].toUpperCase())));
     b.appendChild(img);
     b.addEventListener('click', () => { if (!railJustDragged) toggleApp(it.id); });
     b.addEventListener('pointerdown', (e) => railDragStart(e, b));
@@ -1081,6 +1096,11 @@ function openApp(id) {
     wv.setAttribute('partition', it.ai ? info.ai : info.apps);
     wv.setAttribute('allowpopups', '');
     wv.setAttribute('src', it.url);
+    // Remember the icon the site announces, so the sidebar shows the real one next time.
+    wv.addEventListener('page-favicon-updated', (e) => {
+      const icon = (e.favicons || []).find((f) => /^https:\/\//.test(f));
+      if (icon && it.icon !== icon) { it.icon = icon; call('sidebar:set', sideItems); }
+    });
     $('appViews').appendChild(wv);
     appViews.set(id, wv);
   }
