@@ -95,10 +95,10 @@ function cleanPatch(patch) {
     const col = (v, keys, d) => (keys.includes(v) || /^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : d);
     p.buddyLook = {
       name: String(L.name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 20) || 'Buddy',
-      color: col(L.color, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'cream'),
+      color: col(L.color, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),
       glow: col(L.glow, ['cyan', 'green', 'pink', 'amber', 'white', 'violet'], 'cyan'),
       extra: ['none', 'headphones', 'cap', 'bow', 'crown', 'glasses', 'flower'].includes(L.extra) ? L.extra : 'none',
-      shape: ['hiker', 'ball', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'hiker',
+      shape: ['ball', 'eye', 'hiker', 'round', 'cube', 'capsule', 'egg', 'tv'].includes(L.shape) ? L.shape : 'ball',
       eyes: ['dot', 'round', 'sleepy', 'wide', 'lash'].includes(L.eyes) ? L.eyes : 'dot',
       mouth: ['smile', 'grin', 'flat', 'open', 'cat'].includes(L.mouth) ? L.mouth : 'smile',
       outfit: col(L.outfit, ['cream', 'clay', 'cocoa', 'sky', 'mint', 'grape', 'rose', 'sun', 'night', 'snow'], 'clay'),
