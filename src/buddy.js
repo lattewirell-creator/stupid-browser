@@ -255,7 +255,7 @@
   const BODY = { cream: '#EBC39D', clay: '#D97757', cocoa: '#8B5E45', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#D9DCE3' };
   const GLOW = { cyan: '#7CF5FF', green: '#7CFF9E', pink: '#FF8AD8', amber: '#FFC86B', white: '#FFFFFF', violet: '#B79CFF' };
   const EXTRAS = { none: 'None', headphones: '🎧', cap: '🧢', bow: '🎀', crown: '👑', glasses: '🕶️', flower: '🌼' };
-  const SHAPES = { hiker: ['🎒', 'Hiker'], ball: ['🟠', 'Ball'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
+  const SHAPES = { ball: ['🟠', 'Ball'], eye: ['👁️', 'Eye'], hiker: ['🎒', 'Hiker'], round: ['⚪', 'Robot'], cube: ['◻️', 'Cube'], capsule: ['💊', 'Capsule'], egg: ['🥚', 'Egg'], tv: ['📺', 'TV'] };
   const HATS = { none: ['✖', 'None'], tophat: ['🎩', 'Top hat'], cap: ['🧢', 'Cap'], beanie: ['🧶', 'Beanie'], crown: ['👑', 'Crown'], party: ['🥳', 'Party'], cowboy: ['🤠', 'Cowboy'], headphones: ['🎧', 'Headphones'], halo: ['😇', 'Halo'] };
   const EYES = { dot: ['•', 'Dots'], round: ['👀', 'Round'], sleepy: ['😌', 'Sleepy'], wide: ['😳', 'Wide'], lash: ['😉', 'Lashes'] };
   const MOUTHS = { smile: ['🙂', 'Smile'], grin: ['😁', 'Grin'], flat: ['😐', 'Flat'], open: ['😮', 'Open'], cat: ['😺', 'Cat'] };
@@ -265,10 +265,10 @@
     const L = lookCfg();
     const fromExtra = { headphones: ['headphones', null], cap: ['cap', null], crown: ['crown', null], glasses: [null, 'shades'] }[L.extra] || [null, null];
     return { eyes: EYES[L.eyes] ? L.eyes : 'dot', mouth: MOUTHS[L.mouth] ? L.mouth : 'smile', outfit: L.outfit || 'clay', backpack: L.backpack !== false, scarf: L.scarf !== false,
-      shape: SHAPES[L.shape] ? L.shape : 'hiker', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
+      shape: SHAPES[L.shape] ? L.shape : 'ball', hat: HATS[L.hat] ? L.hat : (fromExtra[0] || 'none'), glasses: GLASSES[L.glasses] ? L.glasses : (fromExtra[1] || 'none'), color: L.color, glow: L.glow, image: L.image };
   };
   let previewBox = null, previewB3 = null;
-  const lookCfg = () => Object.assign({ name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
+  const lookCfg = () => Object.assign({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', image: '' }, settings.buddyLook || {});
   function buddyName() { return (lookCfg().name || 'Buddy').trim() || 'Buddy'; }
   function applyLook() {
     const L = lookCfg();
@@ -307,7 +307,7 @@
     };
     const isHiker = look3d().shape === 'hiker';
     row(isHiker ? 'Body' : 'Color', sw(BODY, L.color, 'color'));
-    if (!isHiker) row('Glow', sw(GLOW, L.glow, 'glow'));
+    if (!['hiker', 'ball', 'eye'].includes(look3d().shape)) row('Glow', sw(GLOW, L.glow, 'glow'));   // the robots' eye glow
     const chips = (map, cur, key) => {
       const box = el('div', 'bdc-extras');
       for (const [k, v] of Object.entries(map)) { const b = el('button', 'bdc-ex' + (cur === k ? ' on' : '')); b.title = v[1]; b.append(el('span', null, v[0]), el('small', null, v[1])); b.addEventListener('click', () => saveLook({ [key]: k })); box.appendChild(b); }
@@ -339,7 +339,7 @@
     if (L.image) { const rm = el('button', 'pill small', 'Use the robot'); rm.addEventListener('click', () => saveLook({ image: '' })); ph.appendChild(rm); }
     row('Picture', ph);
     const done = el('div', 'bdc-done'); const d = el('button', 'pill solid', 'Done'); d.addEventListener('click', toggleCustom); const rs = el('button', 'pill', 'Reset');
-    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'hiker', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'clay', backpack: true, scarf: true, color: 'cream' }));
+    rs.addEventListener('click', () => saveLook({ name: 'Buddy', color: 'clay', glow: 'cyan', extra: 'none', shape: 'ball', hat: 'none', glasses: 'none', image: '', eyes: 'dot', mouth: 'smile', outfit: 'clay', backpack: true, scarf: true }));
     done.append(rs, d); custom.appendChild(done);
     applyLook();
   }
