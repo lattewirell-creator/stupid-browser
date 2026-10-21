@@ -122,6 +122,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 750; letter-spacing: -.02
 .bench h2 { font-size: clamp(36px, 4.4vw, 56px); line-height: 1; margin-bottom: 40px; max-width: 14em; }
 .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
 .chart { margin: 0; padding: 26px 28px; border-radius: 28px; background: var(--sand); }
+.chart.wide { grid-column: 1 / -1; }
 .chart figcaption { color: var(--ink-2); font-size: 17px; margin-bottom: 18px; }
 .chart figcaption b { color: var(--ink); font-family: var(--display); font-size: 22px; display: block; }
 .chart .row { display: grid; grid-template-columns: minmax(0, 11em) minmax(0, 1fr) 5.2em; align-items: center; gap: 12px; padding: 7px 0; font-size: 16px; }
@@ -272,19 +273,25 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
     <h2 id="benchTitle">We tested it against Chrome.</h2>
     <div class="charts">
       <figure class="chart">
-        <figcaption><b>Memory</b> with the same five sites open. Less is better.</figcaption>
+        <figcaption><b>Memory on Mac</b> with the same five sites open. Less is better.</figcaption>
         <div class="row me"><span class="who">The Stupid Browser, idle tabs asleep</span><span class="track"><i style="--v: 55.2%"></i></span><b>655 MB</b></div>
         <div class="row me"><span class="who">The Stupid Browser, every tab awake</span><span class="track"><i style="--v: 85.3%"></i></span><b>1,013 MB</b></div>
         <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 100%"></i></span><b>1,187 MB</b></div>
       </figure>
       <figure class="chart">
+        <figcaption><b>Memory on Windows</b> with the same five sites open. Less is better.</figcaption>
+        <div class="row me"><span class="who">The Stupid Browser, idle tabs asleep</span><span class="track"><i style="--v: 29.5%"></i></span><b>436 MB</b></div>
+        <div class="row me"><span class="who">The Stupid Browser, every tab awake</span><span class="track"><i style="--v: 50.9%"></i></span><b>752 MB</b></div>
+        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 100%"></i></span><b>1,478 MB</b></div>
+      </figure>
+      <figure class="chart wide">
         <figcaption><b>Speed</b> in Speedometer 3.1, the test browser makers use. More is better.</figcaption>
         <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 100%"></i></span><b>51.5</b></div>
         <div class="row me"><span class="who">The Stupid Browser for Mac</span><span class="track"><i style="--v: 89.3%"></i></span><b>46.0</b></div>
         <p class="chart-note">The Mac version runs on Safari’s engine, WebKit, which is what lets you sign in to Google. It scores the same as WebKit on its own, so the browser adds nothing on top. On Windows it runs Chrome’s engine.</p>
       </figure>
     </div>
-    <p class="fine">Tested on a MacBook Air with an M4 chip and 16 GB of memory against Chrome, each with a fresh profile and its window on screen. Memory: on 21 October 2026 with The Stupid Browser 1.5.3 and Chrome 155, sites Wikipedia, YouTube, Reddit, GitHub and The Verge, measured a minute after opening (and again after “Sleep other tabs”). It’s the total of all the browser’s processes, measured with Apple’s footprint tool, the middle of three runs; busy sites like YouTube make single runs vary by a few hundred MB. Speed: on 18 October 2026 with The Stupid Browser 1.4.1; Speedometer scores are the average of several runs and vary by about ±1.5.</p>
+    <p class="fine">Tested on a MacBook Air with an M4 chip and 16 GB of memory against Chrome, each with a fresh profile and its window on screen. Memory: on 21 October 2026 with The Stupid Browser 1.5.3 and Chrome 155, sites Wikipedia, YouTube, Reddit, GitHub and The Verge, measured a minute after opening (and again after “Sleep other tabs”). It’s the total of all the browser’s processes, measured with Apple’s footprint tool, the middle of three runs; busy sites like YouTube make single runs vary by a few hundred MB. Windows: on 21 October 2026 on one of GitHub’s Windows Server 2025 machines, The Stupid Browser 1.5.3 against Chrome with the same sites, measured the same way; memory is the total private memory of all the browser’s processes, the average of two runs. Speed: on 18 October 2026 with The Stupid Browser 1.4.1; Speedometer scores are the average of several runs and vary by about ±1.5.</p>
   </section>
 
   <section class="wrap more">
