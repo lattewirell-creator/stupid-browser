@@ -11,11 +11,7 @@ const store = require('./store');
 
 const IS_MAC = process.platform === 'darwin';
 app.setName('The Stupid Browser');
-// Lighter on memory: Chromium normally keeps a spare page process warmed up for the next site you open. It saves a
-// moment on the next page load but costs a whole idle process all the time, so it's off. (STUPID_NO_MEMORY_TWEAKS=1:
-// the old behaviour, for measuring.)
-const MEMORY_TWEAKS = !process.env.STUPID_NO_MEMORY_TWEAKS;
-if (MEMORY_TWEAKS) app.commandLine.appendSwitch('disable-features', 'SpareRendererForSitePerProcess');
+
 const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
 if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
 
@@ -1246,7 +1242,7 @@ if (!app.requestSingleInstanceLock()) {
     // When the computer runs low on memory, idle background tabs fall asleep right away (instead of after the
     // Settings → tab sleep delay), like the Mac app does. They wake when clicked; tabs playing sound, loading or
     // with half-typed text stay awake (the window's own sleepable/sleepTab rules).
-    if (MEMORY_TWEAKS) {
+    {
       let lastSqueeze = 0;
       setInterval(() => {
         const free = os.freemem(), low = free < 800 * 1048576 || free / os.totalmem() < 0.1;
