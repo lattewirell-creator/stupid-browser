@@ -2,7 +2,10 @@
 # the website's numbers. Each is measured a minute after opening (all tabs awake), and the browser again after
 # "Sleep other tabs". Memory = the total private memory of all the browser's processes. Run by hand from Actions.
 name: Memory (Windows)
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [windows-memory]   # the branch that added the memory tweaks
 jobs:
   measure:
     runs-on: windows-latest
