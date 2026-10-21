@@ -256,15 +256,15 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
 
   <section class="wrap sleep" id="features">
     <div>
-      <h2>Lighter than Chrome, once idle tabs sleep.</h2>
+      <h2>Lighter than Chrome. Even lighter once idle tabs sleep.</h2>
       <p>Tabs you haven’t looked at in a while fall asleep. They stay where they are and wake up the moment you click them, while your computer gets its memory back. Tabs playing music or video stay awake.</p>
     </div>
     <div class="meter" id="meter">
       <div class="tabs" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
-      <div class="bar-row"><b id="mb">1,850 MB</b><span>five sites open</span></div>
+      <div class="bar-row"><b id="mb">1,013 MB</b><span>five sites open</span></div>
       <div class="bar"><i></i></div>
       <label class="switch"><input type="checkbox" id="sleepToggle"> Let idle tabs sleep</label>
-      <p class="fine">Measured in The Stupid Browser for Mac with the same five sites as the test below: about 1,850 MB with every tab awake, 690 MB with the idle ones asleep. Chrome used about 1,100 MB.</p>
+      <p class="fine">Measured in The Stupid Browser 1.5.3 for Mac with the same five sites as the test below: about 1,010 MB with every tab awake, 655 MB with the idle ones asleep. Chrome used about 1,190 MB.</p>
     </div>
   </section>
 
@@ -273,9 +273,9 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
     <div class="charts">
       <figure class="chart">
         <figcaption><b>Memory</b> with the same five sites open. Less is better.</figcaption>
-        <div class="row me"><span class="who">The Stupid Browser, idle tabs asleep</span><span class="track"><i style="--v: 37.3%"></i></span><b>690 MB</b></div>
-        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 59.5%"></i></span><b>1,100 MB</b></div>
-        <div class="row me"><span class="who">The Stupid Browser, every tab awake</span><span class="track"><i style="--v: 100%"></i></span><b>1,850 MB</b></div>
+        <div class="row me"><span class="who">The Stupid Browser, idle tabs asleep</span><span class="track"><i style="--v: 55.2%"></i></span><b>655 MB</b></div>
+        <div class="row me"><span class="who">The Stupid Browser, every tab awake</span><span class="track"><i style="--v: 85.3%"></i></span><b>1,013 MB</b></div>
+        <div class="row"><span class="who">Chrome</span><span class="track"><i style="--v: 100%"></i></span><b>1,187 MB</b></div>
       </figure>
       <figure class="chart">
         <figcaption><b>Speed</b> in Speedometer 3.1, the test browser makers use. More is better.</figcaption>
@@ -284,7 +284,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
         <p class="chart-note">The Mac version runs on Safari’s engine, WebKit, which is what lets you sign in to Google. It scores the same as WebKit on its own, so the browser adds nothing on top. On Windows it runs Chrome’s engine.</p>
       </figure>
     </div>
-    <p class="fine">Tested on 18 October 2026 on a MacBook Air with an M4 chip and 16 GB of memory, The Stupid Browser 1.4.1 against Chrome, each with a fresh profile and its window on screen. Sites: Wikipedia, YouTube, Reddit, GitHub and The Verge, measured a minute after opening. Memory is the total of all the browser’s processes, measured with Apple’s footprint tool (average of two runs). Speedometer scores are the average of several runs and vary by about ±1.5.</p>
+    <p class="fine">Tested on a MacBook Air with an M4 chip and 16 GB of memory against Chrome, each with a fresh profile and its window on screen. Memory: on 21 October 2026 with The Stupid Browser 1.5.3 and Chrome 155, sites Wikipedia, YouTube, Reddit, GitHub and The Verge, measured a minute after opening (and again after “Sleep other tabs”). It’s the total of all the browser’s processes, measured with Apple’s footprint tool, the middle of three runs; busy sites like YouTube make single runs vary by a few hundred MB. Speed: on 18 October 2026 with The Stupid Browser 1.4.1; Speedometer scores are the average of several runs and vary by about ±1.5.</p>
   </section>
 
   <section class="wrap more">
@@ -600,7 +600,7 @@ footer .made { margin-left: auto; font: 700 16px var(--display); color: var(--cl
   const meter = document.getElementById('meter'), mb = document.getElementById('mb');
   document.getElementById('sleepToggle').addEventListener('change', (e) => {
     const on = e.target.checked; meter.classList.toggle('asleep', on);
-    const from = on ? 1850 : 690, to = on ? 690 : 1850, t0 = performance.now(), dur = reduce ? 1 : 800;
+    const from = on ? 1013 : 655, to = on ? 655 : 1013, t0 = performance.now(), dur = reduce ? 1 : 800;
     const tick = (now) => { const k = Math.min(1, (now - t0) / dur), v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
       mb.textContent = v.toLocaleString('en-US') + ' MB'; if (k < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
