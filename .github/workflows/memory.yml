@@ -1,0 +1,37 @@
+# Memory on Windows: The Stupid Browser and Chrome, with the same five sites as
+# the website's numbers. Each is measured a minute after opening (all tabs awake), and the browser again after
+# "Sleep other tabs". Memory = the total private memory of all the browser's processes. Run by hand from Actions.
+name: Memory (Windows)
+on: workflow_dispatch
+jobs:
+  measure:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Electron itself (newer npm may skip its download)
+        run: node node_modules/electron/install.js; Get-Item node_modules/electron/dist/electron.exe | Select-Object Name, Length
+        shell: pwsh
+      - name: Measure
+        shell: pwsh
+        run: |
+          function Total($name) { $p = Get-Process -Name $name -ErrorAction SilentlyContinue; [math]::Round((($p | Measure-Object PrivateMemorySize64 -Sum).Sum) / 1MB) }
+          $script = "$PWD\test\memory-sites.js"
+          foreach ($run in 1, 2) {
+            foreach ($mode in "browser") {
+              $env:STUPID_SELFTEST = "$env:RUNNER_TEMP\shot.png"; $env:STUPID_SELFTEST_SCRIPT = $script; $env:STUPID_SELFTEST_STEPS = "quit@170000"
+              $dir = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\p-$run-$mode" -Force
+              $proc = Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList ".", "--user-data-dir=$dir" -PassThru
+              Start-Sleep -Seconds 70; $awake = Total "electron"; $n = (Get-Process electron).Count
+              Start-Sleep -Seconds 75; $asleep = Total "electron"
+              Write-Host "STUPID run $run : awake $awake MB ($n processes), idle tabs asleep $asleep MB"
+              Stop-Process -Name electron -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 5
+            }
+            $c = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\c-$run" -Force
+            $chrome = "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe"
+            Start-Process -FilePath $chrome -ArgumentList "--user-data-dir=$c", "--no-first-run", "--no-default-browser-check", "https://en.wikipedia.org/wiki/Main_Page", "https://www.youtube.com/", "https://www.reddit.com/", "https://github.com/", "https://www.theverge.com/"
+            Start-Sleep -Seconds 70; Write-Host "CHROME run $run : $(Total 'chrome') MB ($((Get-Process chrome).Count) processes)"
+            Stop-Process -Name chrome -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 5
+          }

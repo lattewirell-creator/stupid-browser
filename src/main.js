@@ -11,6 +11,7 @@ const store = require('./store');
 
 const IS_MAC = process.platform === 'darwin';
 app.setName('The Stupid Browser');
+
 const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
 if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
 
@@ -1238,6 +1239,20 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', (_e, argv) => openFromOutside(normalizeArgUrl(urlFromArgv(argv))));
 
   app.whenReady().then(() => {
+    // When the computer runs low on memory, idle background tabs fall asleep right away (instead of after the
+    // Settings → tab sleep delay), like the Mac app does. They wake when clicked; tabs playing sound, loading or
+    // with half-typed text stay awake (the window's own sleepable/sleepTab rules).
+    {
+      let lastSqueeze = 0;
+      setInterval(() => {
+        const free = os.freemem(), low = free < 800 * 1048576 || free / os.totalmem() < 0.1;
+        if (!low || Date.now() - lastSqueeze < 120000) return;
+        lastSqueeze = Date.now();
+        for (const w of BrowserWindow.getAllWindows()) {
+          if (!w.isDestroyed()) w.webContents.executeJavaScript("typeof tabs !== 'undefined' && settings.tabSleep !== 0 && tabs.forEach((t) => { if (sleepable(t)) sleepTab(t); })").catch(() => {});
+        }
+      }, 30000);
+    }
     // Brand-new install (no settings yet): open the welcome screen once.
     const firstRun = !fs.existsSync(path.join(app.getPath('userData'), 'settings.json'));
     const s = getSettings();
