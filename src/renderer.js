@@ -168,6 +168,15 @@ function makeSpare() {
 }
 // Prepared when the browser is idle, so making it never stutters what you're doing.
 const queueSpare = (ms = 700) => { clearTimeout(spareT); spareT = setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(makeSpare, { timeout: 2000 }) : makeSpare()), ms); };
+// The spare costs a whole page process, so a window you've left for 5 minutes lets it go (Memory saver on) and makes a
+// new one the moment you come back to it.
+let spareDropT = null;
+function dropSpare() { clearTimeout(spareT); if (spareTab) { if (spareTab.wv) spareTab.wv.remove(); spareTab = null; } }
+api.on('win:focus', (on) => {
+  clearTimeout(spareDropT);
+  if (on) queueSpare(300);
+  else if (settings.tabSleep !== 0) spareDropT = setTimeout(dropSpare, 5 * 60000);
+});
 function newTab(url, opts = {}) {
   const { activate = true, pinned = false, title, favicon, lazy = false, groupId = null, index = null, muted = false, afterId = null } = opts;
   let tab;
@@ -1314,18 +1323,21 @@ addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { hideAllPops(); hideHoverCard(); if (!$('cmdbar').classList.contains('hidden')) closeCmd(); }
 });
 
-/* Sidebar apps you haven't looked at for 10 minutes are unloaded to free memory (unless they're playing sound), like
-   sleeping tabs; they load again (still signed in) when you open them. Off when tab sleeping is off. */
-const appSeen = new Map();   // sidebar app id → when it was last on screen or playing
+/* Sidebar apps and AI chats you haven't looked at for 10 minutes are unloaded to free memory (unless they're playing
+   sound), like sleeping tabs; they load again (still signed in) when you open them. Off when tab sleeping is off. */
+const appSeen = new Map();   // sidebar app id / AI bot url → when it was last on screen or playing
+function unloadUnseen(views, isShowing, now) {
+  for (const [id, wv] of views) {
+    let playing = true; try { playing = wv.isCurrentlyAudible(); } catch {}
+    if (isShowing(id) || playing || !appSeen.has(id)) { appSeen.set(id, now); continue; }
+    if (now - appSeen.get(id) > 10 * 60000) { wv.remove(); views.delete(id); appSeen.delete(id); }
+  }
+}
 setInterval(() => {
   if (settings.tabSleep === 0) return;
   const now = Date.now();
-  for (const [id, wv] of appViews) {
-    const showing = id === activeApp && !$('appPanel').classList.contains('hidden');
-    let playing = true; try { playing = wv.isCurrentlyAudible(); } catch {}
-    if (showing || playing || !appSeen.has(id)) { appSeen.set(id, now); continue; }
-    if (now - appSeen.get(id) > 10 * 60000) { wv.remove(); appViews.delete(id); appSeen.delete(id); }
-  }
+  unloadUnseen(appViews, (id) => id === activeApp && !$('appPanel').classList.contains('hidden'), now);
+  unloadUnseen(aiViews, (url) => url === aiBot && !$('aiPanel').classList.contains('hidden'), now);
 }, 60000);
 
 /* ---------------- audio polling (tab speaker icons) ---------------- */

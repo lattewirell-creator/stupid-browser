@@ -192,6 +192,8 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
+  win.on('focus', () => win.webContents.send('win:focus', true));   // the window lets go of its spare new tab while you're away
+  win.on('blur', () => win.webContents.send('win:focus', false));
   win.on('closed', () => {
     windows.delete(win.id);
     const otherPersistent = [...windows.values()].some((w) => !w.incognito);
