@@ -70,3 +70,8 @@ section.dim { opacity: .3; }
 .logo-prev.buddy { border: 0; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 70%, #fff), var(--accent) 70%); box-shadow: none; outline: 0; }
 .logo-prev.buddy::before, .logo-prev.buddy::after { content: ''; position: absolute; top: 33%; width: 15%; height: 25%; inset-inline: auto; border-radius: 999px; background: #fff; }
 .logo-prev.buddy::before { left: 30%; } .logo-prev.buddy::after { right: 30%; left: auto; }
+
+/* About → Sister apps */
+.sister-icon { width: 40px; height: 40px; border-radius: 10px; flex: none; }
+a.btn { text-decoration: none; color: inherit; }
+h3.sub { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 22px 0 10px; }
