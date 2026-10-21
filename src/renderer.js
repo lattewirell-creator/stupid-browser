@@ -1314,6 +1314,20 @@ addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { hideAllPops(); hideHoverCard(); if (!$('cmdbar').classList.contains('hidden')) closeCmd(); }
 });
 
+/* Sidebar apps you haven't looked at for 10 minutes are unloaded to free memory (unless they're playing sound), like
+   sleeping tabs; they load again (still signed in) when you open them. Off when tab sleeping is off. */
+const appSeen = new Map();   // sidebar app id → when it was last on screen or playing
+setInterval(() => {
+  if (settings.tabSleep === 0) return;
+  const now = Date.now();
+  for (const [id, wv] of appViews) {
+    const showing = id === activeApp && !$('appPanel').classList.contains('hidden');
+    let playing = true; try { playing = wv.isCurrentlyAudible(); } catch {}
+    if (showing || playing || !appSeen.has(id)) { appSeen.set(id, now); continue; }
+    if (now - appSeen.get(id) > 10 * 60000) { wv.remove(); appViews.delete(id); appSeen.delete(id); }
+  }
+}, 60000);
+
 /* ---------------- audio polling (tab speaker icons) ---------------- */
 setInterval(() => {
   for (const t of tabs) {
