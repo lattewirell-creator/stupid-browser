@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Build "The Stupid Browser" for Mac (WebKit) into mac/build/The Stupid Browser.app.
+# Build "The Stupid Browser" for Mac (WebKit) into mac/build.noindex/The Stupid Browser.app (".noindex" keeps Spotlight
+# and Launchpad from listing build copies as extra apps).
 # The UI is the Electron app's src/ folder, copied in unchanged; core-gen.js is regenerated from it.
 set -euo pipefail
 cd "$(dirname "$0")"
-APP="build/The Stupid Browser.app"
+APP="build.noindex/The Stupid Browser.app"
 VERSION=$(node -p "require('../package.json').version")
 python3 tools/gen-core.py >/dev/null
 # Ad blocker rules (WebKit content blocker), built from EasyList + EasyPrivacy when missing.
@@ -11,9 +12,9 @@ python3 tools/gen-core.py >/dev/null
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/app/mac"
 # One app for Apple chip and Intel Macs.
 for ARCH in arm64 x86_64; do
-  swiftc -O -target $ARCH-apple-macos13.0 Sources/*.swift -o "build/StupidBrowser-$ARCH" -framework Cocoa -framework WebKit -framework UniformTypeIdentifiers -lsqlite3
+  swiftc -O -target $ARCH-apple-macos13.0 Sources/*.swift -o "build.noindex/StupidBrowser-$ARCH" -framework Cocoa -framework WebKit -framework UniformTypeIdentifiers -lsqlite3
 done
-lipo -create build/StupidBrowser-arm64 build/StupidBrowser-x86_64 -output "$APP/Contents/MacOS/StupidBrowser" && rm build/StupidBrowser-arm64 build/StupidBrowser-x86_64
+lipo -create build.noindex/StupidBrowser-arm64 build.noindex/StupidBrowser-x86_64 -output "$APP/Contents/MacOS/StupidBrowser" && rm build.noindex/StupidBrowser-arm64 build.noindex/StupidBrowser-x86_64
 rsync -a --delete --exclude '*.map' ../src/ "$APP/Contents/Resources/app/src/"
 rsync -a js core "$APP/Contents/Resources/app/mac/"
 node tools/split-adblock.js adblock/rules.json "$APP/Contents/Resources/app/mac/adblock"

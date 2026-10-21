@@ -11,7 +11,7 @@ Rewind, the music island, history, downloads, bookmarks, passwords, profiles, pr
 All three share the same look and features. The interface lives in `src/` and runs unchanged on every platform.
 
 ## Mac
-- Build: `bash mac/build.sh` → `mac/build/The Stupid Browser.app` (needs the Xcode command line tools).
+- Build: `bash mac/build.sh` → `mac/build.noindex/The Stupid Browser.app` (needs the Xcode command line tools).
 - The app is a Swift shell (`mac/Sources`) that shows the interface from `src/` in WebKit, with each tab as its own WebKit view.
   The browser logic in `mac/core` is shared with the other versions; `mac/tools/gen-core.py` copies it over at build time.
 - Shortcuts follow Chrome for Mac (⌘T, ⌘W, ⌘Y history, ⌘[ / ⌘] back/forward, ⌥⌘I developer tools …), and there's a normal menu bar.

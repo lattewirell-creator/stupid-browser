@@ -36,9 +36,9 @@ for f in release/*-android.apk; do [ -f "$f" ] && FILES+=("$f"); done
 if [ "$(uname)" = "Darwin" ]; then
   bash mac/build.sh
   # Signed outside the repo: iCloud-synced folders tag files with Finder info, which a strict signature check rejects.
-  MACOUT="$HOME/Library/Caches/stupid-browser-release"; rm -rf "$MACOUT"; mkdir -p "$MACOUT"
+  MACOUT="$HOME/Library/Caches/stupid-browser-release.noindex"; rm -rf "$MACOUT"; mkdir -p "$MACOUT"
   APP="$MACOUT/The Stupid Browser.app"
-  ditto "mac/build/The Stupid Browser.app" "$APP"
+  ditto "mac/build.noindex/The Stupid Browser.app" "$APP"
   xattr -cr "$APP"; codesign --force --deep --sign - "$APP"
   codesign --verify --deep --strict "$APP" || { echo "The Mac app isn't properly signed" >&2; exit 1; }
   [ "$(/usr/bin/plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")" = "$VERSION" ] || { echo "Mac app version mismatch" >&2; exit 1; }
