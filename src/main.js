@@ -635,6 +635,13 @@ handle('widgets:get', ['internal'], () => store.read('widgets.json', [{ id: 'w-w
 handle('widgets:set', ['internal'], (_e, list) => { if (Array.isArray(list)) { const l = cleanWidgets(list); store.write('widgets.json', l); broadcast('widgets:changed', l); } return true; });
 
 handle('history:suggest', ['shell'], (_e, q) => suggest(q));
+// Open the connection (DNS, TCP, TLS) to a site you're about to visit: the link under the mouse, or the address bar's
+// pick. Chrome does the same; it takes a few hundred milliseconds off the page load. Only the address, never a request.
+handle('net:preconnect', ['shell'], (e, url) => {
+  const w = entryFor(e.sender); let u;
+  try { u = new URL(url); } catch { return; }
+  if (w && /^https?:$/.test(u.protocol)) session.fromPartition(w.partition).preconnect({ url: u.origin, numSockets: 1 });
+});
 handle('history:query', ['internal'], (_e, q, limit = 300, before = Infinity) => {
   q = String(q || '').toLowerCase();
   const h = getHistory(); const out = [];

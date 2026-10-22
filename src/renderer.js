@@ -134,8 +134,18 @@ function rebuildWebview(tab, url) {
   createWebview(tab);
   renderAll();
 }
+// Warm up the connection to where you're probably going next (main does the work; once per site every 30 s).
+const preconnected = new Map();   // origin → when
+function preconnect(url) {
+  let o; try { o = new URL(url); } catch { return; }
+  if (!/^https?:$/.test(o.protocol) || Date.now() - (preconnected.get(o.origin) || 0) < 30000) return;
+  preconnected.set(o.origin, Date.now());
+  call('net:preconnect', o.origin).catch(() => {});
+}
+let hoverT;
 let statusEl;
 function showStatus(url) {
+  clearTimeout(hoverT); if (url) hoverT = setTimeout(() => preconnect(url), 120);   // resting on a link, not passing over it
   if (!statusEl) { statusEl = el('div', 'status-url'); $('content').appendChild(statusEl); }
   statusEl.textContent = url || '';
   statusEl.classList.toggle('show', !!url);
@@ -938,6 +948,7 @@ async function updateSuggest(inline) {
 function renderSuggest() {
   const box = $('suggest'); box.innerHTML = '';
   if (!sugItems.length) { closeSuggest(); return; }
+  const pick = sugItems[sugSel]; if (pick && pick.url) preconnect(pick.url);
   sugItems.forEach((it, i) => {
     if (it.kind === 'scopes') {   // one row of "search on Reddit / Quora / …" buttons
       const r = el('div', 'sug sug-scopes' + (i === sugSel ? ' sel' : ''));
