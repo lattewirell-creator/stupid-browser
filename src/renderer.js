@@ -1328,7 +1328,7 @@ addEventListener('keydown', (e) => {
 const appSeen = new Map();   // sidebar app id / AI bot url → when it was last on screen or playing
 function unloadUnseen(views, isShowing, now) {
   for (const [id, wv] of views) {
-    let playing = true; try { playing = wv.isCurrentlyAudible(); } catch {}
+    const playing = wvAudible(wv);
     if (isShowing(id) || playing || !appSeen.has(id)) { appSeen.set(id, now); continue; }
     if (now - appSeen.get(id) > 10 * 60000) { wv.remove(); views.delete(id); appSeen.delete(id); }
   }
@@ -1340,14 +1340,16 @@ setInterval(() => {
   unloadUnseen(aiViews, (url) => url === aiBot && !$('aiPanel').classList.contains('hidden'), now);
 }, 60000);
 
-/* ---------------- audio polling (tab speaker icons) ---------------- */
-setInterval(() => {
-  for (const t of tabs) {
-    if (!t.wv || !t.ready) continue;
-    let a = false; try { a = t.wv.isCurrentlyAudible(); } catch {}
-    if (a !== !!t.audible) { t.audible = a; renderTab(t); }
-  }
-}, 1200);
+/* ---------------- tab sound (speaker icons, music island) ----------------
+   Main tells us when a page starts or stops making sound, so nothing has to keep asking. */
+const audibleIds = new Set();   // webContents ids making sound right now
+const wvId = (wv) => { try { return wv.getWebContentsId(); } catch { return -1; } };
+function wvAudible(wv) { return audibleIds.has(wvId(wv)); }
+api.on('tab:audio', (id, on) => {
+  if (on) audibleIds.add(id); else audibleIds.delete(id);
+  const t = tabs.find((x) => x.wv && wvId(x.wv) === id);
+  if (t && !!t.audible !== on) { t.audible = on; renderTab(t); }
+});
 
 /* Rewind: once a page has loaded and is on screen, ask main to remember it (main skips private/sensitive pages). */
 const rewindTimers = new Map();

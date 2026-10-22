@@ -85,7 +85,7 @@
     }
     return out;
   }
-  const audible = (wv) => { try { return wv.isCurrentlyAudible(); } catch { return false; } };
+  const audible = (wv) => wvAudible(wv);
   const readInfo = (wv) => wv.executeJavaScript('window.__stupidMedia ? window.__stupidMedia.info() : null').catch(() => null);
   const act = (wv, a) => wv.executeJavaScript(`window.__stupidMedia ? window.__stupidMedia.act(${JSON.stringify(a)}) : false`).catch(() => false);
 

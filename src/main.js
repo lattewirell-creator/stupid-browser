@@ -1062,6 +1062,9 @@ app.on('web-contents-created', (_e, contents) => {
     if (css) contents.insertCSS(css).catch(() => {});
   };
   contents.on('dom-ready', hideSearchAds);
+  // Tell the window when a tab starts or stops making sound, instead of the window asking every tab every second
+  // (each ask is a blocking call, and they added up with many tabs open).
+  contents.on('audio-state-changed', (ev) => { console.log('[dbg] audio', contents.id, ev && ev.audible, !!shellFor(contents)); const s = shellFor(contents); if (s) s.send('tab:audio', contents.id, !!ev.audible); });
   contents.setWindowOpenHandler(({ url, disposition }) => {
     const shellWc = shellFor(contents);
     if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
