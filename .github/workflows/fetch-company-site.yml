@@ -1,0 +1,21 @@
+name: Fetch company site
+on:
+  push:
+    branches: [company-site]
+    paths: [.github/workflows/fetch-company-site.yml]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download thestupidcompany.net as it is live now
+        run: |
+          mkdir -p site && cd site
+          wget -q -r -l 3 -nH -p -e robots=off --restrict-file-names=windows --domains thestupidcompany.net,www.thestupidcompany.net https://thestupidcompany.net/ || true
+          cd .. && find site -type f | sort && curl -sI https://thestupidcompany.net/ | head -20 > site-headers.txt
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site site-headers.txt && git commit -m "Company site as live on thestupidcompany.net" && git push
