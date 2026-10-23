@@ -177,7 +177,7 @@ function makeSpare() {
   spareTab.wv.classList.add('spare');   // rendered invisibly (not display:none) so it's already painted when shown
 }
 // Prepared when the browser is idle, so making it never stutters what you're doing.
-const queueSpare = (ms = 700) => { clearTimeout(spareT); spareT = setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(makeSpare, { timeout: 2000 }) : makeSpare()), ms); };
+const queueSpare = (ms = 700, wait = 2000) => { clearTimeout(spareT); spareT = setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(makeSpare, { timeout: wait }) : makeSpare()), ms); };
 // The spare costs a whole page process, so a window you've left for 5 minutes lets it go (Memory saver on) and makes a
 // new one the moment you come back to it.
 let spareDropT = null;
@@ -190,12 +190,13 @@ api.on('win:focus', (on) => {
 function newTab(url, opts = {}) {
   const { activate = true, pinned = false, title, favicon, lazy = false, groupId = null, index = null, muted = false, afterId = null } = opts;
   let tab;
-  if (!lazy && (url || NEWTAB) === NEWTAB && spareTab && spareTab.ready && !spareTab.crashed) {
+  // The spare is used even while it's still loading: it got a head start on a brand-new one. The next spare is made
+  // right away, so a second new tab straight after the first is just as quick.
+  if (!lazy && (url || NEWTAB) === NEWTAB && spareTab && !spareTab.crashed) {
     tab = spareTab; spareTab = null; tab.wv.classList.remove('spare');
     Object.assign(tab, { pinned, groupId, muted, lastActive: Date.now(), title: title || tab.title });
     if (muted) try { tab.wv.setAudioMuted(true); } catch {}
-    tab.wv.classList.add('fresh'); setTimeout(() => tab.wv && tab.wv.classList.remove('fresh'), 400);
-    queueSpare();
+    queueSpare(150, 500);
   } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
   if (index != null) tabs.splice(Math.min(index, tabs.length), 0, tab);
   else if (afterId != null) {
@@ -210,11 +211,15 @@ function newTab(url, opts = {}) {
   normalizeOrder();
   if (!lazy && !tab.wv) {
     createWebview(tab);
-    if (tab.url === NEWTAB) {   // stay invisible until the page has painted, then fade in (no white flash)
-      const wv = tab.wv; wv.classList.add('unpainted');
-      const reveal = () => { if (!wv.classList.contains('unpainted')) return; wv.classList.remove('unpainted'); wv.classList.add('fresh'); setTimeout(() => wv.classList.remove('fresh'), 400); };
-      wv.addEventListener('dom-ready', () => setTimeout(reveal, 30), { once: true }); setTimeout(reveal, 1500);
-      queueSpare();
+    if (tab.url === NEWTAB) {
+      // With another tab on screen, that tab stays up until this one has painted (see holdUntilPainted). The very first
+      // tab has nothing to hide behind, so it stays invisible over the window's own background until it has painted.
+      if (!tabById(activeId) || !activate) {
+        const wv = tab.wv; wv.classList.add('unpainted');
+        const reveal = () => wv.classList.remove('unpainted');
+        wv.addEventListener('dom-ready', () => setTimeout(reveal, 30), { once: true }); setTimeout(reveal, 1500);
+      }
+      queueSpare(150, 500);
     }
   }
   buildTabEl(tab);
@@ -223,6 +228,24 @@ function newTab(url, opts = {}) {
   return tab;
 }
 
+/* Switching tabs without a flash. A tab that wasn't on screen has no picture yet, and on Windows that shows as black for
+   a frame or two (worse when it was just created). So the tab you came from stays drawn on top until the new one has
+   really painted two frames, then they swap in one go: it looks as if the new tab was always there. */
+let held = null;
+function releaseHeld() { if (held) { held.classList.remove('holding'); held = null; } }
+function painted(tab) {
+  const wv = tab.wv;
+  const frames = () => wv.executeJavaScript('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))').catch(() => {});
+  return new Promise((resolve) => { if (tab.ready) frames().then(resolve); else wv.addEventListener('dom-ready', () => frames().then(resolve), { once: true }); });
+}
+function holdUntilPainted(incoming, outgoing) {
+  releaseHeld();
+  if (split || !outgoing || outgoing === incoming || !outgoing.wv || !incoming.wv || !outgoing.ready) return;
+  const o = outgoing.wv; o.classList.add('holding'); held = o;
+  const done = () => { if (held === o) releaseHeld(); };
+  painted(incoming).then(done);
+  setTimeout(done, incoming.ready ? 300 : 800);   // never wait long on a page that is slow to load
+}
 function activate_(id) {
   const tab = tabById(id);
   if (!tab) return;
@@ -233,8 +256,8 @@ function activate_(id) {
   activeId = id;
   tab.lastActive = Date.now();
   if (changed) rewindSoon(tab);
-  if (changed && tab.wv && !split) { tab.wv.classList.remove('switch-in'); void tab.wv.offsetWidth; tab.wv.classList.add('switch-in'); }
   if (!tab.wv) { tab.asleep = false; createWebview(tab); }
+  if (changed) holdUntilPainted(tab, prev);
   renderAll();
   if (changed) { closeFind(); hideAllPops(); showQueuedPrompt(); }
   if (isNewtab(tab.url)) setTimeout(() => { $('address').focus(); }, 30);

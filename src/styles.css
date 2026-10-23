@@ -546,9 +546,7 @@ body.rail-dragging webview { pointer-events: none; }
 .bdc-ex.on { border-color: var(--accent); background: var(--accent-soft); }
 .bdc-done { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
 /* new tab opens with a soft fade instead of a flash */
-#views webview.fresh.visible { animation: freshIn .26s cubic-bezier(.2,.8,.2,1); }
-@keyframes freshIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { #views webview.fresh.visible { animation: none; } }
+#views webview.holding { display: flex !important; position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 /* real 3D buddy (buddy3d.js) */
 .buddy.b3d .bd-avatar { width: 116px; height: 128px; margin: -18px -16px -14px 0; }
 .buddy.b3d .bd-avatar > .bot3d { display: none; }
@@ -567,9 +565,8 @@ body.rail-dragging webview { pointer-events: none; }
 @keyframes tabShrink { from { max-width: 220px; } to { max-width: 0; min-width: 0; padding-left: 0; padding-right: 0; opacity: 0; } }
 .tab.active::after { animation: tabLine .22s cubic-bezier(.2,.8,.2,1); }
 @keyframes tabLine { from { transform: scaleX(.2); opacity: 0; } }
-#views webview.switch-in.visible { animation: switchIn .14s ease-out; }
-@keyframes switchIn { from { opacity: .82; } }
-@media (prefers-reduced-motion: reduce) { .tab.entering, .tab.leaving, .tab.active::after, #views webview.switch-in.visible { animation: none; } .tab.leaving { display: none; } }
+
+@media (prefers-reduced-motion: reduce) { .tab.entering, .tab.leaving, .tab.active::after { animation: none; } .tab.leaving { display: none; } }
 /* address bar: search on Reddit / Quora / … */
 .sug-scopes { flex-wrap: wrap; gap: 6px; }
 .sug-scopes .sug-s { margin-right: 4px; }
