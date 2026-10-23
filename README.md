@@ -1,6 +1,6 @@
 # The Stupid Browser
 
-A calm, warm-toned personal web browser for Mac, Windows and Android.
+A calm, warm-toned personal web browser for Mac, Windows, Linux and Android.
 Tabs and tab groups, Buddy (a little AI helper), an AI sidebar (Claude first), an app sidebar, the Shield ad & tracker blocker,
 Rewind, the music island, history, downloads, bookmarks, passwords, profiles, private windows and automatic updates.
 
@@ -20,6 +20,12 @@ All three share the same look and features. The interface lives in `src/` and ru
 
 ## Windows
 - Run from source: `npm install && npm start`. Build the installer: `npm run dist:win`.
+
+## Linux
+- Comes preinstalled as the default browser in [Stupid OS](https://github.com/lattewirell-creator/smartos), which keeps it updated.
+- On Ubuntu, Debian and similar: download `StupidBrowser-<version>-linux-amd64.deb` from the [latest release](https://github.com/lattewirell-creator/stupid-browser/releases/latest) and run `sudo apt install ./StupidBrowser-<version>-linux-amd64.deb`.
+- Build it: `npm run dist:linux` → `release/StupidBrowser-<version>-linux-amd64.deb`. Publishing a GitHub release builds and attaches it automatically (`.github/workflows/release-linux.yml`).
+- Updates come through the system's package manager, not the browser's own updater.
 
 ## Android
 - Download `StupidBrowser-<version>-android.apk` from the [latest release](https://github.com/lattewirell-creator/stupid-browser/releases/latest) on your phone and open it.
