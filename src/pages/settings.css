@@ -72,6 +72,6 @@ section.dim { opacity: .3; }
 .logo-prev.buddy::before { left: 30%; } .logo-prev.buddy::after { right: 30%; left: auto; }
 
 /* About → Sister apps */
-.sister-icon { width: 40px; height: 40px; border-radius: 10px; flex: none; }
+.sister-icon { width: 40px; height: 40px; flex: none; }
 a.btn { text-decoration: none; color: inherit; }
 h3.sub { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 22px 0 10px; }
