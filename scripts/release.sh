@@ -61,6 +61,10 @@ if [ "$(uname)" = "Darwin" ]; then
   FILES+=("release/StupidBrowser-$VERSION-mac.dmg" "release/StupidBrowser-$VERSION-mac.zip" "release/StupidBrowser-$VERSION-arm64.zip" "release/StupidBrowser-$VERSION-x64.zip" release/latest-mac.yml)
 else
   echo "Not on a Mac: skipping the macOS build (Macs won't see this update)." >&2
+  # Keep the Mac download on the website working: bring the previous release's disk image along (not its zip or
+  # latest-mac.yml, so installed Macs simply stay on the version they have).
+  gh release download -R "$REPO" -p '*-mac.dmg' -D release 2>/dev/null || echo "No Mac disk image in the previous release." >&2
+  for f in release/*-mac.dmg; do [ -f "$f" ] && FILES+=("$f"); done
 fi
 
 gh auth setup-git && git push origin HEAD
