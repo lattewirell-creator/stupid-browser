@@ -22,7 +22,11 @@ function render() {
     const acts = el('div', 'acts');
     const btn = (label, action, cls = '') => { const b = el('button', 'btn small ' + cls, label); b.onclick = async () => { const ok = await call('downloads:action', d.id, action); if (action === 'open' && ok === false) toast('File was moved or deleted'); }; acts.appendChild(b); };
     if (d.state === 'progressing') { btn(d.paused ? 'Resume' : 'Pause', d.paused ? 'resume' : 'pause'); btn('Cancel', 'cancel'); }
-    else if (d.state === 'completed') { btn('Open', 'open', 'primary'); btn('Show in folder', 'show'); }
+    else if (d.state === 'completed') {
+      btn('Open', 'open', 'primary'); btn('Show in folder', 'show');
+      r.classList.add('openable'); r.title = 'Open ' + d.filename;   // click the row to open it (an installer starts right away)
+      r.addEventListener('click', async (e) => { if (e.target.closest('button, a')) return; if (await call('downloads:action', d.id, 'open') === false) toast('File was moved or deleted'); });
+    }
     else btn('Retry', 'retry');
     const x = el('button', 'icon-btn'); x.title = 'Remove from list'; x.appendChild(icon(X_ICON));
     x.onclick = () => call('downloads:action', d.id, 'remove');
