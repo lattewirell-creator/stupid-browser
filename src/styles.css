@@ -236,6 +236,10 @@ body.no-rail #rail { display: none; }
 .swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-2); }
 .dl-pop { width: 360px; }
 .dl-row { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.dl-row.openable { cursor: pointer; border-radius: 8px; margin: 0 -6px; padding: 8px 6px; }
+.dl-row.openable:hover { background: var(--hover); }
+#toast.clickable { cursor: pointer; }
+#toast.clickable:hover { opacity: .9; }
 .dl-info { flex: 1; min-width: 0; }
 .dl-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .dl-sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }

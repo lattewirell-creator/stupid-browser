@@ -40,7 +40,12 @@ const ICON = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'
 };
 let toastTimer;
-function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 2400); }
+// onClick makes the toast a button (it then stays a little longer, so there's time to click it).
+function toast(msg, onClick) {
+  const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); t.classList.toggle('clickable', !!onClick);
+  t.onclick = onClick ? () => { t.classList.add('hidden'); onClick(); } : null;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), onClick ? 6000 : 2400);
+}
 const isInternal = (u) => /^stupid:\/\//.test(u || '');
 const isNewtab = (u) => !u || /^stupid:\/\/newtab\/?(\?.*)?$/.test(u);
 const displayUrl = (u) => (isNewtab(u) ? '' : u);
@@ -920,7 +925,12 @@ function dlPopover() {
     row.appendChild(info);
     const act = (label, a) => { const b = el('button', 'pill small', label); b.addEventListener('click', () => call('downloads:action', d.id, a)); row.appendChild(b); };
     if (d.state === 'progressing') { act(d.paused ? 'Resume' : 'Pause', d.paused ? 'resume' : 'pause'); act('Cancel', 'cancel'); }
-    else if (d.state === 'completed') { act('Open', 'open'); act('Folder', 'show'); }
+    else if (d.state === 'completed') {
+      act('Open', 'open'); act('Folder', 'show');
+      // Click anywhere on a finished download to open it (an installer starts right away).
+      row.classList.add('openable'); row.title = 'Open ' + d.filename;
+      row.addEventListener('click', (e) => { if (e.target.closest('button')) return; hidePop(); call('downloads:action', d.id, 'open'); });
+    }
     else act('Retry', 'retry');
     pop.appendChild(row);
   }
@@ -931,7 +941,7 @@ function dlPopover() {
 }
 $('dlBtn').addEventListener('click', () => { if (!$('popover').classList.contains('hidden') && $('popover').classList.contains('dl-pop')) hidePop(); else dlPopover(); });
 api.on('downloads:started', (d) => { dls.set(d.id, d); renderDlBtn(); dlPopover(); });
-api.on('downloads:update', (d) => { if (dls.has(d.id) || d.state === 'progressing') { dls.set(d.id, d); renderDlBtn(); if (d.state === 'completed' && dls.get(d.id)) toast(`Downloaded ${d.filename}`); } });
+api.on('downloads:update', (d) => { if (dls.has(d.id) || d.state === 'progressing') { dls.set(d.id, d); renderDlBtn(); if (d.state === 'completed' && dls.get(d.id)) toast(`Downloaded ${d.filename} · click to open`, () => call('downloads:action', d.id, 'open')); } });
 api.on('downloads:removed', (id) => { dls.delete(id); renderDlBtn(); });
 api.on('downloads:cleared', () => { for (const [k, d] of dls) if (d.state !== 'progressing') dls.delete(k); renderDlBtn(); });
 

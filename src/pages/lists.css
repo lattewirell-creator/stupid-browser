@@ -51,3 +51,5 @@ body.source { margin: 0; }
 #src .at { color: #6A8FB5; }
 #src .cm { color: var(--muted); font-style: italic; }
 .import-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } #importBtn { margin-top: 8px; }
+.dl.openable { cursor: pointer; }
+.dl.openable:hover { background: var(--hover); }
