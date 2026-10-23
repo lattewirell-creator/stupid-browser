@@ -1104,6 +1104,20 @@ function selfTest(win) {
     const m = /^SHOT:(\S+)/.exec(e.message || '');
     if (m && !win.isDestroyed()) { const img = await win.capturePage(); fs.writeFileSync(process.env.STUPID_SELFTEST.replace('.png', '-' + m[1] + '.png'), img.toPNG()); console.log('[selftest] shot', m[1]); }
     if (/^QUIT$/.test(e.message || '')) app.quit();
+    // SAMPLE:<ms>:<label> captures the middle of the window over and over for <ms> and reports how many frames were
+    // (mostly) black: the flash a tab shows on Windows before it has painted (test/tab-flash.js).
+    const sm = /^SAMPLE:(\d+):(\S+)/.exec(e.message || '');
+    if (sm && !win.isDestroyed()) {
+      const until = Date.now() + +sm[1], b = win.getContentBounds(); let n = 0, black = 0, worst = 0;
+      const rect = { x: Math.round(b.width * 0.25), y: Math.round(b.height * 0.35), width: Math.round(b.width * 0.5), height: Math.round(b.height * 0.4) };
+      while (Date.now() < until && !win.isDestroyed()) {
+        const px = (await win.capturePage(rect)).toBitmap(); let d = 0, c = 0;
+        for (let i = 0; i < px.length; i += 64) { c++; if (px[i] + px[i + 1] + px[i + 2] < 36) d++; }
+        n++; worst = Math.max(worst, d / c); if (d / c > 0.3) black++;
+      }
+      const line = `[sample] ${sm[2]} frames=${n} black=${black} worst=${Math.round(worst * 100)}%`;
+      console.log(line); if (process.env.STUPID_SAMPLE_LOG) fs.appendFileSync(process.env.STUPID_SAMPLE_LOG, line + '\n');   // Windows hides GUI apps' stdout
+    }
   });
   if (process.env.STUPID_SELFTEST_SCRIPT) {
     win.webContents.once('did-finish-load', () => setTimeout(() => {
