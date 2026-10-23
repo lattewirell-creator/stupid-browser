@@ -44,7 +44,8 @@
     return ((h % 12) || 12) + ':' + m;
   }
   function dateText(d) {
-    try { return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }); } catch (e) { return d.toDateString(); }
+    // In English, like the rest of the screen ("Friday 23 October").
+    try { return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }); } catch (e) { return d.toDateString(); }
   }
   function greetText(d) {
     var h = d.getHours();
@@ -356,7 +357,8 @@
 
     if (typing) {
       if (k === KEY.LEFT || k === KEY.RIGHT) return;   // move the text cursor
-      if (k === KEY.UP || k === KEY.DOWN) { e.preventDefault(); leaveInput(a); Nav.move(DIRS[k]); return; }
+      // Up/Down belong to the on-screen keyboard while it's open; leave the field with Done, Cancel or Back.
+      if (k === KEY.UP || k === KEY.DOWN) return;
       // The keyboard's Done (or Enter) moves on to the next thing; its Cancel, Back or Esc just closes the keyboard.
       if (k === KEY.ENTER || k === IME_DONE) { e.preventDefault(); leaveInput(a); Nav.move('down'); return; }
       if (k === IME_CANCEL || k === KEY.BACK || k === KEY.ESC) { e.preventDefault(); leaveInput(a); return; }
@@ -371,7 +373,7 @@
       if (enterHeld) return;
       enterHeld = true; longFired = false;
       // Hold OK on a tile to edit it (most Smart Monitor remotes have no colour buttons).
-      if (a && a.hasAttribute('data-tile')) pressT = setTimeout(function () { pressT = null; longFired = true; editFocused(); }, 700);
+      if (a && a.hasAttribute('data-tile')) pressT = setTimeout(function () { pressT = null; if (upT) return; longFired = true; editFocused(); }, 700);
       return;
     }
     if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) { e.preventDefault(); goBack(); return; }
