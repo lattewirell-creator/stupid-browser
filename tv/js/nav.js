@@ -20,24 +20,29 @@ var Nav = (function () {
     var a = from.getBoundingClientRect(), ca = center(a), cands = items(), found = [], minGap = Infinity, i;
     for (i = 0; i < cands.length; i++) {
       var el = cands[i]; if (el === from) continue;
-      var b = el.getBoundingClientRect(), cb = center(b), gap, cross;
+      var b = el.getBoundingClientRect(), cb = center(b), gap, cross, tie = 0;
       if (dir === 'left' || dir === 'right') {
         if (dir === 'left' ? b.right > a.left + 4 : b.left < a.right - 4) continue;
         if (b.bottom <= a.top || b.top >= a.bottom) continue;   // not on this row
         gap = dir === 'left' ? a.left - b.right : b.left - a.right; cross = Math.abs(cb.y - ca.y);
       } else {
         if (dir === 'up' ? b.bottom > a.top + 4 : b.top < a.bottom - 4) continue;
-        gap = dir === 'up' ? a.top - b.bottom : b.top - a.bottom; cross = Math.abs(cb.x - ca.x);
+        gap = dir === 'up' ? a.top - b.bottom : b.top - a.bottom;
+        // Anything overlapping horizontally counts as straight above/below; ties go to the one lined up on the left,
+        // so "down" from a full-width field lands on the first button (Save), not the one nearest its centre.
+        var ov = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        cross = ov > 0 ? 0 : -ov; tie = Math.abs(b.left - a.left);
       }
       gap = Math.max(0, gap);
-      found.push({ el: el, gap: gap, cross: cross });
+      found.push({ el: el, gap: gap, cross: cross, tie: tie });
       if (gap < minGap) minGap = gap;
     }
     var best = null;
     for (i = 0; i < found.length; i++) {
       var f = found[i];
       if (f.gap > minGap + 40) continue;   // only the nearest row (or the next tile)
-      if (!best || f.cross + f.gap < best.cross + best.gap) best = f;
+      var sf = f.cross + f.gap, sb = best ? best.cross + best.gap : 0;
+      if (!best || sf < sb || (sf === sb && f.tie < best.tie)) best = f;
     }
     return best && best.el;
   }

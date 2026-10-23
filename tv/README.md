@@ -12,6 +12,7 @@ the first spot and it's one click away whenever you turn the monitor on.
 - **Add** at the end of each row adds an app or a website.
 - The **gear** at the top right (or the blue button) holds settings: your name for the greeting, the city for the
   weather, 12/24-hour clock, the color, and the screensaver.
+- In a text field, **OK** opens the on-screen keyboard and its **Done** moves on. Settings save as you leave them.
 - **Back** closes a dialog. On the home screen, Back hides Stupid TV, which keeps running so it opens instantly next time.
 
 An app tile opens the Samsung app when it's installed. When it isn't, the tile opens the service's website in the
@@ -25,20 +26,27 @@ opens settings. The page shrinks to fit the window. Apps can't open from a compu
 ## Install it on the monitor
 You do this once. It takes about 20 minutes, mostly downloads.
 
-1. **Install Tizen Studio** from [developer.samsung.com/smarttv](https://developer.samsung.com/smarttv/develop/getting-started/setting-up-sdk/installing-tv-sdk.html)
-   (the version with the command line tools is enough). In its Package Manager, add **TV Extensions** and
-   **Samsung Certificate Extension** under "Extension SDK".
+You need a Mac or Linux computer on the same network as the monitor (on Windows, use Git Bash or WSL for step 5).
+
+1. **Install Tizen Studio** (the full version with the IDE, not just the command line tools) from
+   [developer.samsung.com/smarttv](https://developer.samsung.com/smarttv/develop/getting-started/setting-up-sdk/installing-tv-sdk.html).
+   In its Package Manager, add **TV Extensions** and **Samsung Certificate Extension** under "Extension SDK".
+   Then, in the terminal you'll use for the rest, run:
+
+   ```bash
+   export PATH="$HOME/tizen-studio/tools:$HOME/tizen-studio/tools/ide/bin:$PATH"
+   ```
 2. **Find the monitor's IP address:** Settings → General → Network → Network Status → IP Settings.
-3. **Turn on developer mode on the monitor:** open **Apps**, then type **1 2 3 4 5** (use the remote's number pad or
-   the on-screen numbers). Switch Developer mode **On**, enter your computer's IP address, and restart the monitor
-   (hold the power button until it turns off and on again).
+3. **Turn on developer mode on the monitor:** open **Apps**, then type **1 2 3 4 5**. Smart Monitor remotes have no
+   number keys: press the **123** button (on some remotes you hold it) to get numbers on the screen. Switch
+   Developer mode **On**, enter your computer's IP address, and restart the monitor (hold the power button until it
+   turns off and on again).
 4. **Make a Samsung certificate:** in Tizen Studio open Tools → Certificate Manager → **+** → **Samsung** → **TV**,
    and name the profile `stupidtv`. Sign in with a free Samsung account when asked. Connect the monitor first
    (`sdb connect <monitor-ip>`) so it's added to the certificate automatically.
 5. **Install:** from the repository folder run
 
    ```bash
-   export PATH="$HOME/tizen-studio/tools:$HOME/tizen-studio/tools/ide/bin:$PATH"
    bash tv/install.sh <monitor-ip>
    ```
 

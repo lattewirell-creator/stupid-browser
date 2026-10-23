@@ -5,7 +5,7 @@
 var DEFAULT_ROWS = [
   {
     id: 'watch', title: 'Watch', tiles: [
-      { name: 'YouTube', color: '#E62117', apps: ['111299001912'], url: 'https://www.youtube.com/tv' },
+      { name: 'YouTube', color: '#E62117', apps: ['111299001912'], url: 'https://www.youtube.com' },
       { name: 'Netflix', color: '#141414', ink: '#E50914', apps: ['3201907018807', '11101200001'], url: 'https://www.netflix.com' },
       { name: 'SVT Play', color: '#1F8A4C', apps: ['3201608010191'], url: 'https://www.svtplay.se' },
       { name: 'Disney+', color: '#0B1B4D', apps: ['3201901017640'], url: 'https://www.disneyplus.com' },

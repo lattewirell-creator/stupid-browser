@@ -71,7 +71,7 @@
       return { lat: p.latitude, lon: p.longitude, label: p.name };
     });
   }
-  function weather() {
+  function weather(asked) {
     if (!state.city) { $('weather').classList.add('hidden'); return; }
     var placed = state.place && state.place.city === state.city ? Promise.resolve(state.place) : findPlace(state.city).then(function (p) { p.city = state.city; state.place = p; save(); return p; });
     placed.then(function (p) {
@@ -82,7 +82,7 @@
         $('wCity').textContent = p.label;
         $('weather').classList.remove('hidden');
       });
-    }).catch(function () { $('weather').classList.add('hidden'); });
+    }).catch(function () { $('weather').classList.add('hidden'); if (asked) toast('Couldn’t find the weather for ' + state.city); });
   }
 
   /* ---------------- opening apps and sites ---------------- */
@@ -90,7 +90,11 @@
     if (!TIZEN) { window.open(url, '_blank'); return; }
     try {
       var ctl = new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/view', url, null, null, null);
-      tizen.application.launchAppControl(ctl, BROWSER_APP, function () {}, function () { toast('Couldn’t open ' + name); });
+      var fail = function () { toast('Couldn’t open ' + name); };
+      // If this monitor's browser has another ID, let the system pick whatever can show web pages.
+      tizen.application.launchAppControl(ctl, BROWSER_APP, function () {}, function () {
+        try { tizen.application.launchAppControl(ctl, null, function () {}, fail); } catch (e) { fail(); }
+      });
     } catch (e) { toast('Couldn’t open ' + name); }
   }
   // Tries each installed-app ID in turn, then falls back to the website.
@@ -152,20 +156,27 @@
     }
   }
   function applyLook() {
-    document.documentElement.style.setProperty('--accent', ACCENTS[state.accent] || ACCENTS.clay);
+    var c = ACCENTS[state.accent] || ACCENTS.clay;
+    document.documentElement.style.setProperty('--accent', c);
+    document.documentElement.style.setProperty('--glow', 'rgba(' + parseInt(c.substr(1, 2), 16) + ',' + parseInt(c.substr(3, 2), 16) + ',' + parseInt(c.substr(5, 2), 16) + ',.16)');
   }
 
   /* ---------------- dialogs ---------------- */
-  var returnFocus = null;
-  function openSheet(title, build) {
+  var returnFocus = null, onClose = null;
+  // onClose runs however the dialog closes (Done, Back, or opening another dialog), so nothing typed is lost.
+  function openSheet(title, build, whenClosed) {
     if ($('sheet').classList.contains('hidden')) returnFocus = document.activeElement;
+    else runOnClose();
+    onClose = whenClosed || null;
     $('sheetTitle').textContent = title;
     var body = $('sheetBody'); body.innerHTML = '';
     build(body);
     $('sheet').classList.remove('hidden');
     Nav.focus(Nav.items()[0]);
   }
+  function runOnClose() { var f = onClose; onClose = null; if (f) f(); }
   function closeSheet() {
+    runOnClose();
     $('sheet').classList.add('hidden');
     var f = returnFocus; returnFocus = null;
     if (f && document.body.contains(f)) Nav.focus(f); else Nav.focus(Nav.items()[0]);
@@ -177,12 +188,16 @@
     return b;
   }
   function field(label, value, placeholder) {
-    var wrap = el('label', 'field');
+    // The field itself is what the remote lands on; OK opens the on-screen keyboard. Focusing the input directly
+    // would pop the keyboard up every time you moved past it.
+    var wrap = el('div', 'field');
+    wrap.setAttribute('data-nav', ''); wrap.tabIndex = -1;
     wrap.appendChild(el('span', 'field-label', label));
     var input = el('input', 'input');
     input.type = 'text'; input.value = value || ''; input.placeholder = placeholder || '';
-    input.setAttribute('data-nav', ''); input.spellcheck = false; input.autocomplete = 'off';
+    input.tabIndex = -1; input.spellcheck = false; input.autocomplete = 'off';
     wrap.appendChild(input);
+    wrap.addEventListener('click', function (e) { if (e.target !== input) input.focus(); });
     return { wrap: wrap, input: input };
   }
   function actions() { return el('div', 'actions'); }
@@ -198,9 +213,9 @@
     var row = state.rows[r], tile = row.tiles[t];
     openSheet(tile.name, function (body) {
       var a = el('div', 'menu');
+      a.appendChild(button('Edit name and address', function () { editSheet(r, t); }));
       if (t > 0) a.appendChild(button('Move left', function () { move(r, t, -1); }));
       if (t < row.tiles.length - 1) a.appendChild(button('Move right', function () { move(r, t, 1); }));
-      a.appendChild(button('Edit name and address', function () { editSheet(r, t); }));
       a.appendChild(button('Remove from ' + row.title, function () {
         row.tiles.splice(t, 1); save(); returnFocus = null; closeSheet();
         render(r, row.tiles.length ? Math.min(t, row.tiles.length - 1) : null);
@@ -225,8 +240,8 @@
     act.appendChild(button('Save', function () {
       var n = name.input.value.trim(), u = normalizeUrl(url.input.value);
       var ids = app.input.value.split(/[\s,]+/).filter(function (x) { return /^[A-Za-z0-9._]{3,40}$/.test(x); });
-      if (!n) { toast('Give it a name'); Nav.focus(name.input); return; }
-      if (!u && !ids.length) { toast('Add a website address or an app ID'); Nav.focus(url.input); return; }
+      if (!n) { toast('Give it a name'); Nav.focus(name.wrap); return; }
+      if (!u && !ids.length) { toast('Add a website address or an app ID'); Nav.focus(url.wrap); return; }
       onSave({ name: n.slice(0, 32), url: u, apps: ids });
     }, 'primary'));
     act.appendChild(button('Cancel', closeSheet, 'quiet'));
@@ -253,6 +268,7 @@
   }
 
   function settingsSheet() {
+    var commit = function () {};
     openSheet('Settings', function (body) {
       var name = field('Your name', state.name, 'Shown in the greeting');
       var city = field('Weather for', state.city, 'Stockholm');
@@ -284,15 +300,16 @@
       body.appendChild(sw);
 
       var act = actions();
-      act.appendChild(button('Done', function () {
-        state.name = name.input.value.trim().slice(0, 24);
-        var c = city.input.value.trim().slice(0, 60);
-        if (c !== state.city) { state.city = c; state.place = null; }
-        save(); tick(); weather(); closeSheet();
-      }, 'primary'));
+      act.appendChild(button('Done', closeSheet, 'primary'));
       act.appendChild(button('Reset home screen', function () { confirmReset(); }, 'quiet'));
       body.appendChild(act);
-    });
+      commit = function () {
+        state.name = name.input.value.trim().slice(0, 24);
+        var c = city.input.value.trim().slice(0, 60), moved = c !== state.city;
+        if (moved) { state.city = c; state.place = null; }
+        save(); tick(); if (moved) weather(true);
+      };
+    }, function () { commit(); });
   }
   function confirmReset() {
     openSheet('Reset the home screen?', function (body) {
@@ -318,8 +335,10 @@
   function hideSaver() { $('saver').classList.add('hidden'); clearInterval(driftT); }
 
   /* ---------------- key handling ---------------- */
-  var pressT = null, longFired = false;
+  var pressT = null, upT = null, enterHeld = false, longFired = false;
+  var IME_DONE = 65376, IME_CANCEL = 65385;
   function isInput(x) { return x && x.tagName === 'INPUT'; }
+  function leaveInput(a) { var f = a.closest('.field'); a.blur(); if (f) Nav.focus(f); }
   function goBack() {
     if (!$('sheet').classList.contains('hidden')) { closeSheet(); return; }
     // At the top level, Back hides the app (it keeps running, so it opens instantly next time).
@@ -335,30 +354,39 @@
     if (!$('saver').classList.contains('hidden')) { hideSaver(); e.preventDefault(); return; }
     var k = e.keyCode, a = document.activeElement, typing = isInput(a);
 
-    if (DIRS[k]) {
-      if (typing && (k === KEY.LEFT || k === KEY.RIGHT)) return;   // move the text cursor
-      e.preventDefault(); Nav.move(DIRS[k]); return;
-    }
-    if (k === KEY.ENTER) {
-      if (typing) { e.preventDefault(); Nav.move('down'); return; }
-      e.preventDefault();
-      if (e.repeat || pressT) return;
-      longFired = false;
-      // Hold OK on a tile to edit it (for remotes without colour buttons).
-      if (a && a.hasAttribute('data-tile')) pressT = setTimeout(function () { pressT = null; longFired = true; editFocused(); }, 700);
-      else pressT = -1;
+    if (typing) {
+      if (k === KEY.LEFT || k === KEY.RIGHT) return;   // move the text cursor
+      if (k === KEY.UP || k === KEY.DOWN) { e.preventDefault(); leaveInput(a); Nav.move(DIRS[k]); return; }
+      // The keyboard's Done (or Enter) moves on to the next thing; its Cancel, Back or Esc just closes the keyboard.
+      if (k === KEY.ENTER || k === IME_DONE) { e.preventDefault(); leaveInput(a); Nav.move('down'); return; }
+      if (k === IME_CANCEL || k === KEY.BACK || k === KEY.ESC) { e.preventDefault(); leaveInput(a); return; }
       return;
     }
-    if (k === KEY.BACK || k === KEY.ESC || (k === KEY.BACKSPACE && !typing)) { e.preventDefault(); goBack(); return; }
-    if (k === KEY.RED || (!typing && e.key === 'e')) { e.preventDefault(); editFocused(); return; }
-    if (k === KEY.BLUE || (!typing && e.key === 's')) { e.preventDefault(); if ($('sheet').classList.contains('hidden')) settingsSheet(); return; }
+    if (DIRS[k]) { e.preventDefault(); Nav.move(DIRS[k]); return; }
+    if (k === KEY.ENTER) {
+      e.preventDefault();
+      // Remotes repeat a held key, and some send a keyup with every repeat, so a release only counts once
+      // no keydown follows it for a moment.
+      if (upT) { clearTimeout(upT); upT = null; return; }
+      if (enterHeld) return;
+      enterHeld = true; longFired = false;
+      // Hold OK on a tile to edit it (most Smart Monitor remotes have no colour buttons).
+      if (a && a.hasAttribute('data-tile')) pressT = setTimeout(function () { pressT = null; longFired = true; editFocused(); }, 700);
+      return;
+    }
+    if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) { e.preventDefault(); goBack(); return; }
+    if (k === KEY.RED || e.key === 'e') { e.preventDefault(); editFocused(); return; }
+    if (k === KEY.BLUE || e.key === 's') { e.preventDefault(); if ($('sheet').classList.contains('hidden')) settingsSheet(); return; }
   });
   document.addEventListener('keyup', function (e) {
-    if (e.keyCode !== KEY.ENTER || pressT === null) return;
-    if (pressT !== -1) clearTimeout(pressT);
-    pressT = null;
-    var a = document.activeElement;
-    if (!longFired && a && !isInput(a) && a.click) a.click();
+    if (e.keyCode !== KEY.ENTER || !enterHeld) return;
+    clearTimeout(upT);
+    upT = setTimeout(function () {
+      upT = null; enterHeld = false;
+      if (pressT) { clearTimeout(pressT); pressT = null; }
+      var a = document.activeElement;
+      if (!longFired && a && !isInput(a) && a.click) a.click();
+    }, 120);
   });
   document.addEventListener('mousemove', idle);
   document.addEventListener('mousedown', function () { if (!$('saver').classList.contains('hidden')) hideSaver(); idle(); });
@@ -367,7 +395,10 @@
   $('settingsBtn').addEventListener('click', settingsSheet);
 
   // Coming back to the app (after watching something) lands on a fresh clock and weather.
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { tick(); weather(); idle(); } });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { clearTimeout(idleT); return; }
+    hideSaver(); tick(); weather(); idle();
+  });
 
   /* ---------------- preview scaling ---------------- */
   // The TV renders at 1920×1080; in an ordinary browser window, scale the whole page to fit.
