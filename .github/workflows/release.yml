@@ -1,0 +1,28 @@
+# Release from GitHub's own Windows machine: builds the Windows installer and publishes the GitHub Release that
+# installed copies update from (scripts/release.sh, the same as `npm run release` off a Mac). Bump "version" in
+# package.json on main first. Macs keep their version; the website's Mac download carries over. Run by hand from Actions.
+name: Release (Windows)
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: What's new (Markdown)
+        required: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Electron itself (newer npm may skip its download)
+        run: node node_modules/electron/install.js
+      - name: Build and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: bash scripts/release.sh "$NOTES"
