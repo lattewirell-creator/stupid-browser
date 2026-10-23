@@ -67,6 +67,7 @@ else
   for f in release/*-mac.dmg; do [ -f "$f" ] && FILES+=("$f"); done
 fi
 
-gh auth setup-git && git push origin HEAD
+# On GitHub's build machine the commit is already on GitHub (and main may have moved on meanwhile): nothing to push.
+if [ -z "${GITHUB_ACTIONS:-}" ]; then gh auth setup-git && git push origin HEAD; fi
 gh release create "$TAG" -R "$REPO" --target "$(git rev-parse HEAD)" --title "The Stupid Browser $VERSION" --notes "$NOTES" "${FILES[@]}"
 echo "Published https://github.com/$REPO/releases/tag/$TAG"
