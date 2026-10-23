@@ -635,6 +635,13 @@ handle('widgets:get', ['internal'], () => store.read('widgets.json', [{ id: 'w-w
 handle('widgets:set', ['internal'], (_e, list) => { if (Array.isArray(list)) { const l = cleanWidgets(list); store.write('widgets.json', l); broadcast('widgets:changed', l); } return true; });
 
 handle('history:suggest', ['shell'], (_e, q) => suggest(q));
+// Open the connection (DNS, TCP, TLS) to a site you're about to visit: the link under the mouse, or the address bar's
+// pick. Chrome does the same; it takes a few hundred milliseconds off the page load. Only the address, never a request.
+handle('net:preconnect', ['shell'], (e, url) => {
+  const w = entryFor(e.sender); let u;
+  try { u = new URL(url); } catch { return; }
+  if (w && /^https?:$/.test(u.protocol)) session.fromPartition(w.partition).preconnect({ url: u.origin, numSockets: 1 });
+});
 handle('history:query', ['internal'], (_e, q, limit = 300, before = Infinity) => {
   q = String(q || '').toLowerCase();
   const h = getHistory(); const out = [];
@@ -1062,6 +1069,9 @@ app.on('web-contents-created', (_e, contents) => {
     if (css) contents.insertCSS(css).catch(() => {});
   };
   contents.on('dom-ready', hideSearchAds);
+  // Tell the window when a tab starts or stops making sound, instead of the window asking every tab every second
+  // (each ask is a blocking call, and they added up with many tabs open).
+  contents.on('audio-state-changed', (ev) => { console.log('[dbg] audio', contents.id, ev && ev.audible, !!shellFor(contents)); const s = shellFor(contents); if (s) s.send('tab:audio', contents.id, !!ev.audible); });
   contents.setWindowOpenHandler(({ url, disposition }) => {
     const shellWc = shellFor(contents);
     if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
