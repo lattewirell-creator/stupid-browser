@@ -158,7 +158,11 @@ function fadeWin(win, to, ms = 180, done) {
 }
 function showSmooth(win) { if (win.isDestroyed()) return; win.setOpacity(0); win.show(); fadeWin(win, 1); }
 const windowTitle = (incognito) => { const n = (getSettings().wordmark || '').trim() || 'The Stupid Browser'; return incognito ? `Private — ${n}` : n; };
+// The first window appears the moment it exists (its background colour, then the UI as it paints), the way Firefox
+// shows its window before the browser has finished starting. Later windows fade in once painted.
+let shownFirstWindow = false;
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
+  const instant = !shownFirstWindow; shownFirstWindow = true;
   const partition = incognito ? `incognito-${++incognitoCounter}` : PERSIST;   // no "persist:" = in memory only
   const aiPartition = incognito ? `${partition}-ai` : PERSIST_AI;
   const appsPartition = incognito ? `${partition}-apps` : PERSIST_APPS;
@@ -175,7 +179,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
     ...(IS_MAC
       ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 } }
       : { titleBarStyle: 'hidden', titleBarOverlay: { color: c.bar, symbolColor: c.fg, height: 40 } }),
-    show: false,
+    show: instant,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true,
@@ -186,7 +190,7 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
-  win.once('ready-to-show', () => { showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
+  win.once('ready-to-show', () => { if (!instant) showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   win.webContents.on('context-menu', (_e, p) => { if (p.isEditable) shellEditMenu(win.webContents, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
   win.on('swipe', (_e, dir) => { if (dir === 'left' || dir === 'right') win.webContents.send('shortcut', dir === 'left' ? 'back' : 'forward'); });   // macOS trackpad swipe
   hookShortcuts(win.webContents);
@@ -277,7 +281,9 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs) {
     ses.__stupidTabs = true;
     ses.__incognito = incognito;
-    if (getSettings().adblock) setAdblock(true, ses);
+    // Turned on right after the window is created rather than before: loading the filter engine took ~100 ms (more
+    // from a cold disk) in front of the window. Tabs only exist once the window's own scripts have run, later still.
+    setImmediate(() => { if (getSettings().adblock) setAdblock(true, ses); });
   }
 }
 
