@@ -29,5 +29,9 @@ All three share the same look and features. The interface lives in `src/` and ru
 - Build it (needs JDK 17 and the Android SDK): `cd android && ./gradlew assembleRelease`.
   Release signing reads `android/keystore.properties` (not in git). Refresh the ad list with `node scripts/build-android-blocklist.js`.
 
+## Samsung Smart Monitor / TV
+- `tv/` is **Stupid TV**, a calm home screen for Samsung's Tizen monitors and TVs: clock, weather, and your apps and sites
+  as big tiles you reach with the remote. See [tv/README.md](tv/README.md) to try it in Chrome or install it on the monitor.
+
 ## Releasing
 `npm run release` (on a Mac) builds Windows and Mac and publishes a GitHub release that every installed copy updates from. See [RELEASING.md](RELEASING.md).

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, user-scalable=no">
+<title>Stupid TV</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="stage">
+  <header class="top">
+    <div class="hello">
+      <div id="clock" class="clock">--:--</div>
+      <div class="sub"><span id="greeting">Hello</span><span class="dot">·</span><span id="date"></span></div>
+    </div>
+    <div class="top-right">
+      <div id="weather" class="weather hidden"><span id="wTemp" class="w-temp"></span><span class="w-text"><span id="wSky"></span><span id="wCity" class="w-city"></span></span></div>
+      <button id="settingsBtn" class="round" data-nav aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></button>
+    </div>
+  </header>
+
+  <main id="rows"></main>
+
+  <footer class="hints">
+    <span><b class="k">OK</b>Open</span>
+    <span><b class="k">Hold OK</b>Edit tile</span>
+    <span><b class="k">Back</b>Close</span>
+  </footer>
+</div>
+
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+  <div class="sheet-card">
+    <h2 id="sheetTitle" class="serif"></h2>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+
+<div id="saver" class="saver hidden" aria-hidden="true">
+  <div id="saverInner" class="saver-inner">
+    <div id="saverClock" class="saver-clock"></div>
+    <div id="saverSub" class="saver-sub"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/data.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
