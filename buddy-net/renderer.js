@@ -107,7 +107,8 @@ function createTab(input, focus = true) {
     const now = Date.now(), g = tab.guard;
     tab.guard = g && g.target === target && now - g.time < 5000 ? { target, time: g.time, count: g.count + 1 } : { target, time: now, count: 1 };
     wv.stop();
-    if (tab.guard.count > 2) showFail(target, 'the archived page kept redirecting to the live site', true);
+    // The stopped load leaves no history entry, so Back from this error page is a single step.
+    if (tab.guard.count > 2) { tab.failNoEntry = true; showFail(target, 'the archived page kept redirecting to the live site', true); }
     else wv.src = toWayback(target);
     return true;
   };
@@ -120,7 +121,20 @@ function createTab(input, focus = true) {
   wv.addEventListener('did-start-navigation', (e) => { if (e.isMainFrame && !e.isInPlace) tab.title = ''; });
   wv.addEventListener('did-start-loading', () => { tab.loading = true; onTabUpdate(tab); });
   wv.addEventListener('did-stop-loading', () => { tab.loading = false; onTabUpdate(tab); });
-  wv.addEventListener('did-navigate', () => { onTabUpdate(tab); applyPageTweaks(tab); });
+  wv.addEventListener('did-navigate', (e) => {
+    if (!failedUrl(e.url)) tab.failNoEntry = false;
+    // Back/Forward can land on a start or error page saved in another era: redraw it for this one, in place.
+    if (isHome(e.url)) {
+      const saved = new URL(e.url).searchParams, now = new URL(abs(homeUrl())).searchParams;
+      if (['era', 'year', 'tt'].some((k) => saved.get(k) !== now.get(k))) {
+        for (const k of ['fail', 'why', 'archive']) if (saved.has(k)) now.set(k, saved.get(k));
+        const fresh = abs(`pages/home.html?${now}`);
+        wv.executeJavaScript(`location.replace(${JSON.stringify(fresh)})`).catch(() => {});
+      }
+    }
+    onTabUpdate(tab);
+    applyPageTweaks(tab);
+  });
   wv.addEventListener('did-navigate-in-page', (e) => {
     const m = /#ask=([^&]*)/.exec(e.url);
     if (m && tab === active) { openAI(true); ask(decodeURIComponent(m[1])); }
@@ -152,6 +166,7 @@ function closeTab(tab) {
 
 function activate(tab) {
   active = tab;
+  if (tab.eraKey && tab.eraKey !== eraKey()) reloadTab(tab);
   for (const t of tabs) {
     t.wv.classList.toggle('active', t === tab);
     t.el.classList.toggle('active', t === tab);
@@ -169,11 +184,11 @@ const FAIL_TITLES = { nineties: 'Unable to connect', explorer: 'The page cannot 
 // A failed load leaves its own history entry right before the error page; Back skips over it.
 function goBack() {
   const wv = active.wv;
-  if (failedUrl(safe(() => wv.getURL(), ''))) { if (wv.canGoToOffset(-2)) wv.goToOffset(-2); }
+  if (failedUrl(safe(() => wv.getURL(), '')) && !active.failNoEntry) { if (wv.canGoToOffset(-2)) wv.goToOffset(-2); }
   else if (wv.canGoBack()) wv.goBack();
 }
 function canBack(wv) {
-  return failedUrl(safe(() => wv.getURL(), '')) ? safe(() => wv.canGoToOffset(-2), false) : safe(() => wv.canGoBack(), false);
+  return failedUrl(safe(() => wv.getURL(), '')) && !active.failNoEntry ? safe(() => wv.canGoToOffset(-2), false) : safe(() => wv.canGoBack(), false);
 }
 // Tab-less eras (90s, 2000s) have one page; Ctrl+T and + just go home there.
 function newTab() { if (state.era.tabs) createTab(HOME); else go(HOME); }
@@ -276,14 +291,16 @@ function setEra(id, { animate = true } = {}) {
 // Re-open every tab's page as it looked in the chosen era (or the live web for the 2020s).
 // Tab-less eras only show the active tab, so the hidden ones catch up when tabs come back.
 function eraKey() { return `${state.era.id}:${state.years[state.era.id]}:${travelling()}`; }
+function reloadTab(t) {
+  t.eraKey = eraKey();
+  t.guard = null;
+  t.wv.src = abs(resolve(originalUrl(safe(() => t.wv.getURL(), ''))));
+}
 function reloadInEra() {
   const key = eraKey();
   for (const t of tabs) {
     if (t.eraKey === key || (!state.era.tabs && t !== active)) continue;
-    t.eraKey = key;
-    t.guard = null;
-    const orig = originalUrl(safe(() => t.wv.getURL(), ''));
-    t.wv.src = abs(resolve(orig));
+    reloadTab(t);
   }
   if (state.era.id === 'nineties') dialUp();
 }
