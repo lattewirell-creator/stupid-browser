@@ -63,6 +63,10 @@ h2 { font: 400 clamp(32px, 4.6vw, 48px)/1.1 var(--serif); letter-spacing: -.02em
 .app { position: relative; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 26px; padding: 26px; box-shadow: var(--shadow);
   text-decoration: none; transition: transform .2s, box-shadow .2s; }
 .app:hover { transform: translateY(-3px); }
+.app .card-link { position: absolute; inset: 0; border-radius: inherit; }   /* the whole card opens the app's site */
+.app .acts { position: relative; display: flex; gap: 8px; flex-wrap: wrap; }   /* above the card link */
+.app a { text-decoration: none; }
+.app .acts .go { flex: 1; white-space: nowrap; }
 .app .icon { width: 72px; height: 72px; border-radius: 18px; }
 .app h3 { font: 500 28px/1.15 var(--serif); margin: 18px 0 6px; }
 .app p { margin: 0; color: var(--text-2); flex: 1; }
@@ -181,17 +185,26 @@ const APPS = [
 ];
 const arrow = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 const list = document.getElementById('appList');
+// Which file is for this device: the card's button downloads it (the rest of the card opens the app's own site).
+const ua = navigator.userAgent, plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Mac/i.test(plat) && navigator.maxTouchPoints > 1);
+const device = /Android/i.test(ua) ? ['Android', /android\.apk$/] : isIOS ? null : /Win/i.test(plat) ? ['Windows', /(windows-setup|Setup)\.exe$/] : /Mac/i.test(plat) ? ['Mac', /mac\.(dmg|zip)$/] : /Linux/i.test(plat) ? ['Linux', /linux-amd64\.deb$/] : null;
 for (const a of APPS) {
-  const card = document.createElement('a'); card.className = 'app'; card.href = a.url;
-  card.innerHTML = `<img class="icon" src="${a.icon}" alt=""><h3></h3><p></p><div class="chips"></div><span class="go">Get it ${arrow}</span>`;
+  const card = document.createElement('div'); card.className = 'app';
+  card.innerHTML = `<a class="card-link" aria-hidden="true" tabindex="-1"></a><img class="icon" src="${a.icon}" alt=""><h3></h3><p></p><div class="chips"></div><div class="acts"><a class="go">Get it ${arrow}</a></div>`;
+  card.querySelector('.card-link').href = card.querySelector('.go').href = a.url;
   card.querySelector('h3').textContent = a.name; card.querySelector('p').textContent = a.text;
   const chips = card.querySelector('.chips');
   for (const p of a.plats) { const c = document.createElement('span'); c.className = 'chip'; c.textContent = p; chips.appendChild(c); }
   list.appendChild(card);
-  // The newest version, straight from its releases.
+  // The newest version, straight from its releases, and the download for this device.
   fetch(`https://api.github.com/repos/${a.repo}/releases/latest`).then((r) => (r.ok ? r.json() : null)).then((rel) => {
     const v = rel && String(rel.tag_name || '').replace(/^v/, '');
     if (v) { const c = document.createElement('span'); c.className = 'chip ver'; c.textContent = 'Version ' + v; chips.prepend(c); }
+    const file = rel && device && (rel.assets || []).find((x) => device[1].test(x.name));
+    if (file) {
+      const go = card.querySelector('.go'); go.href = file.browser_download_url; go.innerHTML = `Download for ${device[0]} ${arrow}`;
+    }
   }).catch(() => {});
 }
 const next = document.createElement('div'); next.className = 'app next';
