@@ -104,6 +104,10 @@ footer .f-brand img { width: 22px; height: 22px; }
   nav.links a:not(.gh) { display: none; }
   .brand { font-size: 19px; }
 }
+.film figure { margin: 0; }
+.film video { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; border-radius: 18px; background: #2b2a27; box-shadow: var(--shadow); }
+.film figcaption { margin-top: 12px; color: var(--muted); font-size: 15px; }
+@media (max-width: 520px) { .film video { border-radius: 12px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
 </head>
@@ -111,7 +115,7 @@ footer .f-brand img { width: 22px; height: 22px; }
 <header class="top">
   <div class="wrap">
     <a class="brand" href="#"><img src="img/mark.svg" alt="">The Stupid Company</a>
-    <nav class="links"><a href="#apps">Apps</a><a href="#promises">Promises</a><a class="gh" href="https://github.com/lattewirell-creator">GitHub</a></nav>
+    <nav class="links"><a href="#film">Film</a><a href="#apps">Apps</a><a href="#promises">Promises</a><a class="gh" href="https://github.com/lattewirell-creator">GitHub</a></nav>
   </div>
 </header>
 
@@ -123,6 +127,19 @@ footer .f-brand img { width: 22px; height: 22px; }
     <a class="cta" href="#apps">See the apps <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></a>
     <div class="plats">For Mac, Windows and Android</div>
   </div>
+
+  <section id="film" class="film">
+    <div class="wrap">
+      <div class="section-head"><h2>Buddy and the <em>messy</em> internet</h2><p>A short film from The Stupid Company. Sound on.</p></div>
+      <figure>
+        <video controls playsinline preload="metadata" poster="video/buddy-and-the-messy-internet.jpg">
+          <source src="video/buddy-and-the-messy-internet.mp4" type="video/mp4">
+          <a href="video/buddy-and-the-messy-internet.mp4">Watch the film</a>
+        </video>
+        <figcaption>53 seconds, starring Buddy.</figcaption>
+      </figure>
+    </div>
+  </section>
 
   <section id="apps">
     <div class="wrap">
