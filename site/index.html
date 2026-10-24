@@ -112,6 +112,8 @@ footer .f-brand img { width: 22px; height: 22px; }
 .film video { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; border-radius: 18px; background: #2b2a27; box-shadow: var(--shadow); }
 .film figcaption { margin-top: 12px; color: var(--muted); font-size: 15px; }
 @media (max-width: 520px) { .film video { border-radius: 12px; } }
+canvas.dots { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+main, footer { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
 </head>
@@ -214,5 +216,6 @@ document.getElementById('year').textContent = new Date().getFullYear();
 const headerBar = document.querySelector('header.top');
 addEventListener('scroll', () => headerBar.classList.toggle('scrolled', scrollY > 8), { passive: true });
 </script>
+<script src="dots.js"></script>
 </body>
 </html>
