@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome to Buddy Net</title>
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+<div id="fail" hidden>
+  <h1 id="fail-title"></h1>
+  <p id="fail-text"></p>
+  <ul id="fail-tips"></ul>
+</div>
+<!-- 90s: a proud personal home page -->
+<section data-era="nineties">
+  <div class="stars"></div>
+  <center>
+    <h1 class="rainbow">Welcome to Buddy Net!</h1>
+    <p class="blink-wrap"><span class="new">NEW!</span> The <b>Information Superhighway</b> is now open. Fasten your seatbelt!</p>
+    <div class="marquee"><span>*** Best viewed in Buddy Net Navigator at 800x600 *** Sign my guestbook! *** Now with 256 colors ***</span></div>
+    <hr class="fancy">
+    <div class="construction">&#9888; UNDER CONSTRUCTION &#9888;</div>
+    <h2>Cool Sites of the Week</h2>
+    <table class="cool" border="1" cellpadding="6">
+      <tbody data-links="nineties"></tbody>
+    </table>
+    <h2>Search the Web</h2>
+    <form class="hunt" data-search><input name="q" size="32"> <input type="submit" value="Search!"></form>
+    <hr class="fancy">
+    <p>You are visitor number <span class="counter" data-counter></span></p>
+    <p class="small">[ <a href="#">Guestbook</a> | <a href="#">Web Ring: Prev</a> | <a href="#">Random</a> | <a href="#">Next</a> ]</p>
+    <p class="small">This page was last updated <span data-year></span>. &copy; <span data-year></span> Buddy. Email me: buddy@buddynet.com</p>
+  </center>
+</section>
+
+<!-- 2000s: a portal with everything on it -->
+<section data-era="explorer">
+  <header class="portal-head">
+    <div class="logo">buddy<span>.com</span></div>
+    <form data-search class="portal-search"><input name="q" placeholder="Search the Web"><button>Search</button></form>
+  </header>
+  <nav class="portal-nav"><a>Mail</a><a>Messenger</a><a>News</a><a>Sports</a><a>Weather</a><a>Shopping</a><a>Games</a><a>Horoscopes</a></nav>
+  <div class="portal-grid">
+    <div class="box">
+      <h3>Top Sites, <span data-year></span></h3>
+      <ul data-links="explorer"></ul>
+    </div>
+    <div class="box ad">
+      <p class="flash">&#9733; CONGRATULATIONS! &#9733;</p>
+      <p>You are the <b>1,000,000th</b> visitor!<br>Click here to claim your FREE prize!*</p>
+      <p class="fine">*Not really. Buddy Net blocked this ad.</p>
+    </div>
+    <div class="box">
+      <h3>Buddy Messenger</h3>
+      <p><span class="dot on"></span> Buddy is <b>Online</b></p>
+      <p><span class="dot away"></span> xX_SkaterBoi_Xx is <b>Away</b></p>
+      <p><span class="dot off"></span> Mom is <b>Offline</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- Early Chrome: the new tab page with thumbnails -->
+<section data-era="chrome">
+  <div class="nt-wrap">
+    <h2>Most visited</h2>
+    <div class="thumbs" data-links="chrome"></div>
+    <form data-search class="nt-search"><input name="q" placeholder="Search"><button>Search</button></form>
+    <p class="nt-foot">Buddy Net Chrome <b>BETA</b> &middot; Recently closed: <a>Digg</a> &middot; <a>Flickr</a></p>
+  </div>
+</section>
+
+<!-- 2010s Labs: a colorful tile start screen -->
+<section data-era="labs">
+  <h1 class="start">Start</h1>
+  <div class="tiles" data-links="labs"></div>
+  <p class="labs-foot">Buddy Net Labs &middot; experimental build &middot; Tap the green <b>Labs</b> flask to try new features.</p>
+</section>
+
+<!-- AI 2020s: just ask -->
+<section data-era="ai">
+  <div class="ai-wrap">
+    <div class="orb"></div>
+    <h1>What do you want to know?</h1>
+    <form data-ask class="ai-ask"><input name="q" placeholder="Ask Buddy anything, or search the web" autocomplete="off"><button>&#8593;</button></form>
+    <div class="chips">
+      <a data-chip="Plan a weekend trip to Stockholm">&#9992; Plan a weekend trip</a>
+      <a data-chip="Explain how the internet changed since 1996">&#128336; How the web changed</a>
+      <a data-chip="Write a haiku about dial-up modems">&#9998; Haiku about dial-up</a>
+    </div>
+    <div class="shortcuts" data-links="ai"></div>
+    <p class="disclaimer">Buddy can make mistakes. Like the 90s, but faster.</p>
+  </div>
+</section>
+
+<script src="home.js"></script>
+</body>
+</html>

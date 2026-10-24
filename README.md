@@ -35,5 +35,8 @@ All three share the same look and features. The interface lives in `src/` and ru
 - Build it (needs JDK 17 and the Android SDK): `cd android && ./gradlew assembleRelease`.
   Release signing reads `android/keystore.properties` (not in git). Refresh the ad list with `node scripts/build-android-blocklist.js`.
 
+## Buddy Net
+A separate, playful time-travelling browser lives in [`buddy-net/`](buddy-net/README.md): switch between the 90s, Internet Explorer, early Chrome, the experimental 2010s and the AI-filled 2020s.
+
 ## Releasing
 `npm run release` (on a Mac) builds Windows and Mac and publishes a GitHub release that every installed copy updates from. See [RELEASING.md](RELEASING.md).
