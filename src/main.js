@@ -8,6 +8,9 @@ const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const store = require('./store');
+// Startup timing for the Windows benchmark (.github/workflows/perf.yml): ms since the process started.
+const perfMark = process.env.STUPID_PERF_LOG ? (label) => fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] ${label} ${Math.round(performance.now())}\n`) : () => {};
+perfMark('main-start');
 
 const IS_MAC = process.platform === 'darwin';
 app.setName('The Stupid Browser');
@@ -163,6 +166,7 @@ const windowTitle = (incognito) => { const n = (getSettings().wordmark || '').tr
 let shownFirstWindow = false;
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const instant = !shownFirstWindow; shownFirstWindow = true;
+  if (instant) perfMark('window-create');
   const partition = incognito ? `incognito-${++incognitoCounter}` : PERSIST;   // no "persist:" = in memory only
   const aiPartition = incognito ? `${partition}-ai` : PERSIST_AI;
   const appsPartition = incognito ? `${partition}-apps` : PERSIST_APPS;
@@ -190,7 +194,8 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
-  win.once('ready-to-show', () => { if (!instant) showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
+  if (instant) { win.once('show', () => perfMark('window-shown')); win.webContents.once('dom-ready', () => perfMark('shell-dom-ready')); win.webContents.once('did-finish-load', () => perfMark('shell-loaded')); }
+  win.once('ready-to-show', () => { if (instant) perfMark('ready-to-show'); if (!instant) showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   win.webContents.on('context-menu', (_e, p) => { if (p.isEditable) shellEditMenu(win.webContents, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
   win.on('swipe', (_e, dir) => { if (dir === 'left' || dir === 'right') win.webContents.send('shortcut', dir === 'left' ? 'back' : 'forward'); });   // macOS trackpad swipe
   hookShortcuts(win.webContents);
@@ -1104,6 +1109,7 @@ function selfTest(win) {
     const m = /^SHOT:(\S+)/.exec(e.message || '');
     if (m && !win.isDestroyed()) { const img = await win.capturePage(); fs.writeFileSync(process.env.STUPID_SELFTEST.replace('.png', '-' + m[1] + '.png'), img.toPNG()); console.log('[selftest] shot', m[1]); }
     if (/^QUIT$/.test(e.message || '')) app.quit();
+    if (/^PERF:/.test(e.message || '') && process.env.STUPID_PERF_LOG) fs.appendFileSync(process.env.STUPID_PERF_LOG, '[perf] ' + e.message.slice(5) + '\n');
     // SAMPLE:<ms>:<label> captures the middle of the window over and over for <ms> and reports how many frames were
     // (mostly) black: the flash a tab shows on Windows before it has painted (test/tab-flash.js).
     const sm = /^SAMPLE:(\d+):(\S+)/.exec(e.message || '');
@@ -1270,7 +1276,9 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', (_e, argv) => openFromOutside(normalizeArgUrl(urlFromArgv(argv))));
 
+  perfMark('main-loaded');
   app.whenReady().then(() => {
+    perfMark('app-ready');
     // When the computer runs low on memory, idle background tabs fall asleep right away (instead of after the
     // Settings → tab sleep delay), like the Mac app does. They wake when clicked; tabs playing sound, loading or
     // with half-typed text stay awake (the window's own sleepable/sleepTab rules).
