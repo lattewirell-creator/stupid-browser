@@ -65,7 +65,7 @@ function resolve(input) {
   if (/^https?:\/\//i.test(text)) url = text;
   else if (/^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(text) && !/\s/.test(text)) url = 'http://' + text;
   if (!url) return state.era.search + encodeURIComponent(text);
-  if (travelling() && !fromWayback(url)) return toWayback(url);
+  if (needsTravel(url) && !fromWayback(url)) return toWayback(url);
   return url;
 }
 // Search engines and the archive itself always load live; everything else gets sent back in time.
@@ -88,6 +88,7 @@ function createTab(input, focus = true) {
   wv.setAttribute('partition', 'persist:buddynet');
   const tab = { id: nextId++, wv, title: 'New Tab', loading: false, el: null };
   wv.src = abs(resolve(input));
+  tab.eraKey = eraKey();
   $('views').appendChild(wv);
   tabs.push(tab);
 
@@ -99,18 +100,29 @@ function createTab(input, focus = true) {
   tab.el = el;
   $('tabs').appendChild(el);
 
+  // Some archived pages redirect to their live address; after two bounces in a few seconds, give up.
   const guard = (url) => {
     const target = ddgTarget(url) || url;
-    if (needsTravel(target)) { wv.stop(); wv.src = toWayback(target); return true; }
-    return false;
+    if (!needsTravel(target)) return false;
+    const now = Date.now(), g = tab.guard;
+    tab.guard = g && g.target === target && now - g.time < 5000 ? { target, time: g.time, count: g.count + 1 } : { target, time: now, count: 1 };
+    wv.stop();
+    if (tab.guard.count > 2) showFail(target, 'the archived page kept redirecting to the live site', true);
+    else wv.src = toWayback(target);
+    return true;
+  };
+  const showFail = (url, why, archive) => {
+    const q = new URLSearchParams({ fail: url, why, archive: archive ? '1' : '0' });
+    wv.src = abs(`${homeUrl()}&${q}`);
   };
   wv.addEventListener('will-navigate', (e) => guard(e.url));
   wv.addEventListener('did-redirect-navigation', (e) => { if (e.isMainFrame) guard(e.url); });
+  wv.addEventListener('did-start-navigation', (e) => { if (e.isMainFrame && !e.isInPlace) tab.title = ''; });
   wv.addEventListener('did-start-loading', () => { tab.loading = true; onTabUpdate(tab); });
   wv.addEventListener('did-stop-loading', () => { tab.loading = false; onTabUpdate(tab); });
   wv.addEventListener('did-navigate', () => { onTabUpdate(tab); applyPageTweaks(tab); });
   wv.addEventListener('did-navigate-in-page', (e) => {
-    const m = /#ask=(.*)$/.exec(e.url);
+    const m = /#ask=([^&]*)/.exec(e.url);
     if (m && tab === active) { openAI(true); ask(decodeURIComponent(m[1])); }
     onTabUpdate(tab);
   });
@@ -119,8 +131,7 @@ function createTab(input, focus = true) {
   wv.addEventListener('did-fail-load', (e) => {
     if (!e.isMainFrame || e.errorCode === -3) return;
     // Show an era-styled "couldn't connect" page instead of a blank one.
-    const q = new URLSearchParams({ fail: originalUrl(e.validatedURL), why: e.errorDescription, archive: fromWayback(e.validatedURL) ? '1' : '0' });
-    wv.src = abs(`${homeUrl()}&${q}`);
+    showFail(originalUrl(e.validatedURL), e.errorDescription, !!fromWayback(e.validatedURL));
   });
   wv.addEventListener('update-target-url', (e) => { if (tab === active) status(e.url ? displayUrl(e.url) : doneText()); });
 
@@ -154,9 +165,21 @@ function onTabUpdate(tab) {
   tab.el.classList.toggle('loading', tab.loading);
   if (tab === active) refreshChrome();
 }
+const FAIL_TITLES = { nineties: 'Unable to connect', explorer: 'The page cannot be displayed', chrome: 'This webpage is not available', labs: 'Oops! This page went offline.', ai: "Buddy couldn't open that page" };
+// A failed load leaves its own history entry right before the error page; Back skips over it.
+function goBack() {
+  const wv = active.wv;
+  if (failedUrl(safe(() => wv.getURL(), ''))) { if (wv.canGoToOffset(-2)) wv.goToOffset(-2); }
+  else if (wv.canGoBack()) wv.goBack();
+}
+function canBack(wv) {
+  return failedUrl(safe(() => wv.getURL(), '')) ? safe(() => wv.canGoToOffset(-2), false) : safe(() => wv.canGoBack(), false);
+}
+// Tab-less eras (90s, 2000s) have one page; Ctrl+T and + just go home there.
+function newTab() { if (state.era.tabs) createTab(HOME); else go(HOME); }
 function safe(fn, fallback) { try { return fn(); } catch { return fallback; } }
 function tabTitle(tab, url) {
-  if (failedUrl(url)) return state.era.id === 'explorer' ? 'The page cannot be displayed' : 'Unable to connect';
+  if (failedUrl(url)) return FAIL_TITLES[state.era.id];
   if (isHome(url)) return state.era.live ? 'New tab' : state.era.tabs ? 'New Tab' : 'Welcome to Buddy Net';
   return tab.title || displayUrl(url) || 'Untitled';
 }
@@ -170,7 +193,7 @@ function refreshChrome() {
   $('title').textContent = state.era.id === 'nineties' ? `${name} - [${title}]` : `${title} - ${name}`;
   document.title = $('title').textContent;
   if (document.activeElement !== $('address')) $('address').value = displayUrl(url);
-  $('btn-back').disabled = !safe(() => wv.canGoBack(), false);
+  $('btn-back').disabled = !canBack(wv);
   $('btn-fwd').disabled = !safe(() => wv.canGoForward(), false);
   document.body.classList.toggle('loading', active.loading);
   $('btn-stop').disabled = !active.loading;
@@ -251,8 +274,14 @@ function setEra(id, { animate = true } = {}) {
 }
 
 // Re-open every tab's page as it looked in the chosen era (or the live web for the 2020s).
+// Tab-less eras only show the active tab, so the hidden ones catch up when tabs come back.
+function eraKey() { return `${state.era.id}:${state.years[state.era.id]}:${travelling()}`; }
 function reloadInEra() {
+  const key = eraKey();
   for (const t of tabs) {
+    if (t.eraKey === key || (!state.era.tabs && t !== active)) continue;
+    t.eraKey = key;
+    t.guard = null;
     const orig = originalUrl(safe(() => t.wv.getURL(), ''));
     t.wv.src = abs(resolve(orig));
   }
@@ -401,8 +430,8 @@ function wire() {
   $('btn-max').onclick = () => window.buddy.maximize();
   $('btn-close').onclick = () => window.buddy.close();
   $('titlebar').addEventListener('dblclick', (e) => { if (!e.target.closest('button, .tab')) window.buddy.maximize(); });
-  $('newtab').onclick = () => createTab(HOME);
-  $('btn-back').onclick = () => active.wv.goBack();
+  $('newtab').onclick = newTab;
+  $('btn-back').onclick = goBack;
   $('btn-fwd').onclick = () => active.wv.goForward();
   $('btn-reload').onclick = () => active.wv.reload();
   $('btn-stop').onclick = () => active.wv.stop();
@@ -465,13 +494,13 @@ function wire() {
 
   window.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key.toLowerCase() === 't') { e.preventDefault(); createTab(HOME); }
+    if (mod && e.key.toLowerCase() === 't') { e.preventDefault(); newTab(); }
     else if (mod && e.key.toLowerCase() === 'w') { e.preventDefault(); closeTab(active); }
     else if (mod && e.key.toLowerCase() === 'l') { e.preventDefault(); $('address').focus(); }
     else if (mod && e.key.toLowerCase() === 'r') { e.preventDefault(); active.wv.reload(); }
     else if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); if (state.era.live) openAI(); }
     else if (mod && e.key >= '1' && e.key <= '5') { e.preventDefault(); setEra(ERAS[Number(e.key) - 1].id); }
-    else if (e.altKey && e.key === 'ArrowLeft') active.wv.goBack();
+    else if (e.altKey && e.key === 'ArrowLeft') goBack();
     else if (e.altKey && e.key === 'ArrowRight') active.wv.goForward();
   });
 }

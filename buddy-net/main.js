@@ -46,6 +46,12 @@ app.on('web-contents-created', (_e, wc) => {
     prefs.contextIsolation = true;
     prefs.sandbox = true;
   });
+  // The browser UI itself never navigates or opens windows: a dropped link or file must not
+  // replace it and inherit the preload API (which can spend the user's API key).
+  if (wc.getType() === 'window') {
+    wc.on('will-navigate', (ev) => ev.preventDefault());
+    wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+  }
   if (wc.getType() === 'webview') {
     wc.setWindowOpenHandler(({ url }) => {
       const host = wc.hostWebContents;

@@ -103,7 +103,8 @@ for (const f of document.querySelectorAll(`section[data-era="${era}"] [data-sear
 // The AI start page hands questions to the Buddy sidebar through the URL hash.
 const askForm = document.querySelector('[data-ask]');
 if (askForm) {
-  const send = (q) => { if (q) location.hash = 'ask=' + encodeURIComponent(q); };
+  // The nonce makes asking the same thing twice still change the hash.
+  const send = (q) => { if (q) location.hash = 'ask=' + encodeURIComponent(q) + '&n=' + Date.now(); };
   askForm.addEventListener('submit', (e) => { e.preventDefault(); send(askForm.querySelector('input').value.trim()); });
   for (const c of document.querySelectorAll('[data-chip]')) c.addEventListener('click', () => send(c.dataset.chip));
   if (era === 'ai') askForm.querySelector('input').focus();
