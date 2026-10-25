@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const INVOKE = [
   'win:info', 'settings:get', 'settings:set', 'bookmarks:get', 'bookmarks:set', 'bookmarks:folderMenu',
   'bots:get', 'bots:set', 'bots:defaults', 'sidebar:get', 'sidebar:set', 'sidebar:defaults',
-  'history:suggest', 'downloads:list', 'downloads:action', 'downloads:clear',
+  'history:suggest', 'downloads:list', 'downloads:action', 'downloads:clear', 'downloads:drag',
   'perm:respond', 'perms:get', 'perms:set', 'site:clearData', 'adblock:set', 'adblock:get',
   'rewind:capture', 'rewind:status', 'win:trafficLights', 'profiles:list', 'profiles:open', 'profiles:create', 'profiles:remove', 'buddy:status', 'buddy:ask', 'buddy:reset', 'buddy:stop', 'launcher:get', 'launcher:set', 'launcher:defaults', 'session:save', 'win:new', 'win:fullscreen', 'win:close', 'pw:respond', 'update:status', 'update:check', 'update:install', 'shell:editMenu', 'clipboard:write', 'net:preconnect'
 ];

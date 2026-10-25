@@ -24,7 +24,9 @@ function render() {
     if (d.state === 'progressing') { btn(d.paused ? 'Resume' : 'Pause', d.paused ? 'resume' : 'pause'); btn('Cancel', 'cancel'); }
     else if (d.state === 'completed') {
       btn('Open', 'open', 'primary'); btn('Show in folder', 'show');
-      r.classList.add('openable'); r.title = 'Open ' + d.filename;   // click the row to open it (an installer starts right away)
+      r.classList.add('openable'); r.title = 'Open ' + d.filename + ', or drag it to a folder';   // click the row to open it (an installer starts right away)
+      r.draggable = true;   // or drag it out: onto the desktop, into a folder, or onto a page that takes files
+      r.addEventListener('dragstart', async (e) => { e.preventDefault(); if (await call('downloads:drag', d.id) === false) toast('File was moved or deleted'); });
       r.addEventListener('click', async (e) => { if (e.target.closest('button, a')) return; if (await call('downloads:action', d.id, 'open') === false) toast('File was moved or deleted'); });
     }
     else btn('Retry', 'retry');

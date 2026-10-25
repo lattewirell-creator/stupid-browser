@@ -727,6 +727,7 @@ function mainMenu() {
   showMenu('menu', [
     { label: 'New tab', key: 'Ctrl+T', fn: () => newTab() },
     { label: 'New window', key: 'Ctrl+N', fn: () => call('win:new', {}) },
+    { label: 'Customize toolbar…', fn: () => window.customizeToolbar && window.customizeToolbar() },
     { label: 'New private window', key: 'Ctrl+Shift+N', fn: () => call('win:new', { incognito: true }) },
     '-',
     { label: 'History', key: 'Ctrl+H', fn: () => openInternal('history') },
@@ -928,7 +929,10 @@ function dlPopover() {
     else if (d.state === 'completed') {
       act('Open', 'open'); act('Folder', 'show');
       // Click anywhere on a finished download to open it (an installer starts right away).
-      row.classList.add('openable'); row.title = 'Open ' + d.filename;
+      row.classList.add('openable'); row.title = 'Open ' + d.filename + ', or drag it to a folder';
+      // Drag it out of the browser: onto the desktop, into a folder, or onto a page that takes files.
+      row.draggable = true;
+      row.addEventListener('dragstart', (e) => { e.preventDefault(); call('downloads:drag', d.id).then((ok) => { if (!ok) toast('That file was moved or deleted'); }); });
       row.addEventListener('click', (e) => { if (e.target.closest('button')) return; hidePop(); call('downloads:action', d.id, 'open'); });
     }
     else act('Retry', 'retry');

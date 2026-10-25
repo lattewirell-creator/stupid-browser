@@ -703,3 +703,36 @@ body.look-modern.tint-strong #app { background: radial-gradient(120% 90% at 0% 0
 .logo-mark.buddy::before, .logo-mark.buddy::after { content: ''; position: absolute; top: 33%; width: 15%; height: 25%; inset-inline: auto; border-radius: 999px; background: #fff; }
 .logo-mark.buddy::before { left: 30%; } .logo-mark.buddy::after { right: 30%; left: auto; }
 .logo-mark.buddy { position: relative; inset: auto; }
+
+/* Slim scrollbars in the window itself, light and dark (tabs get the same from main.js). */
+::-webkit-scrollbar { width: 11px; height: 11px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 28%, transparent) padding-box; border: 3px solid transparent; border-radius: 10px; min-height: 36px; }
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text) 45%, transparent); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* Your own toolbar buttons, and editing the toolbar (customize.js). */
+.custom-btn .custom-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: 15px; line-height: 1; font-weight: 600; }
+.custom-btn .custom-icon:not(:empty) { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+body.tb-edit #toolbar [data-tb] { position: relative; cursor: grab; outline: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; animation: tbWiggle .5s ease-in-out infinite alternate; }
+body.tb-edit #toolbar [data-tb]:nth-child(even) { animation-delay: -.25s; }
+body.tb-edit #toolbar #dlBtn.hidden { display: inline-flex !important; opacity: .55; }   /* shown while editing, so you can move it */
+body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
+@keyframes tbWiggle { from { transform: rotate(-1.4deg); } to { transform: rotate(1.4deg); } }
+.tb-x { position: absolute; top: -6px; right: -6px; width: 17px; height: 17px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; cursor: pointer; z-index: 2; }
+#tbSheet { position: fixed; top: 92px; right: 14px; width: 380px; max-width: calc(100vw - 28px); z-index: 60; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 18px; background: var(--surface); color: var(--text); border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(0,0,0,.28); animation: fade .18s; }
+#tbSheet .tb-head { display: flex; flex-direction: column; gap: 2px; }
+#tbSheet .tb-head b { font-size: 15px; }
+#tbSheet .tb-head span, #tbSheet small { color: var(--muted); font-size: 12.5px; }
+#tbSheet .tb-hidden { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+#tbSheet .tb-hidden small { width: 100%; }
+#tbSheet .tb-fields { display: flex; gap: 6px; margin-top: 4px; }
+#tbSheet input { min-width: 0; flex: 1; height: 32px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }
+#tbSheet input.tb-icon { flex: 0 0 44px; text-align: center; }
+#tbSheet .tb-mine { display: flex; flex-direction: column; gap: 4px; }
+#tbSheet .tb-mine-row { display: flex; align-items: center; gap: 8px; }
+#tbSheet .tb-mine-name { flex: 1; font-size: 13px; }
+#tbSheet .tb-foot { display: flex; justify-content: flex-end; gap: 6px; }
+@media (prefers-reduced-motion: reduce) { body.tb-edit #toolbar [data-tb] { animation: none; } }
+/* A finished download can be dragged out (onto the desktop, into a folder). */
+.dl-row.openable[draggable="true"] { cursor: grab; }

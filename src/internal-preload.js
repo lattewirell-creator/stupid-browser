@@ -6,7 +6,7 @@ if (location.protocol === 'stupid:') {
   const INVOKE = [
     'settings:get', 'settings:set', 'settings:reset', 'bookmarks:get', 'bookmarks:set', 'bots:get', 'bots:set', 'bots:defaults',
     'sidebar:get', 'sidebar:set', 'sidebar:defaults',
-    'history:query', 'history:delete', 'downloads:list', 'downloads:action', 'downloads:clear', 'downloads:chooseDir',
+    'history:query', 'history:delete', 'downloads:list', 'downloads:action', 'downloads:clear', 'downloads:chooseDir', 'downloads:drag',
     'perms:get', 'perms:set', 'privacy:clear', 'adblock:set', 'adblock:get', 'pw:list', 'pw:reveal', 'pw:delete', 'pw:encryption',
     'rewind:search', 'rewind:status', 'rewind:delete', 'rewind:clear', 'profiles:picker', 'import:sources', 'import:browser', 'import:safariAccess', 'import:file', 'import:passwords', 'buddy:status', 'buddy:setKey', 'buddy:models', 'background:get', 'background:set', 'widgets:get', 'widgets:set', 'default:status', 'default:set', 'about:info', 'win:new', 'update:status', 'update:check', 'update:install'
   ];

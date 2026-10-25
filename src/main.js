@@ -13,6 +13,8 @@ const perfMark = process.env.STUPID_PERF_LOG ? (label) => fs.appendFileSync(proc
 perfMark('main-start');
 
 const IS_MAC = process.platform === 'darwin';
+// The toolbar buttons you can move, hide and add to (src/customize.js has their element ids).
+const TOOLBAR_IDS = ['dl', 'shield', 'sound', 'pip', 'ai', 'grid', 'profile'];
 app.setName('The Stupid Browser');
 
 const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
@@ -58,7 +60,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: 15, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], toolbar: { order: [], custom: [] }, brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -574,7 +576,19 @@ function cleanPatch(patch) {
   const pick = (k, list) => { if (k in p && !list.includes(p[k])) delete p[k]; };
   pick('uiFont', ['inter', 'system', 'serif', 'rounded', 'mono']); pick('density', ['compact', 'comfortable', 'spacious']);
   pick('corners', ['sharp', 'rounded', 'round']); pick('tabStyle', ['classic', 'pills', 'minimal']); pick('frameTint', ['none', 'soft', 'strong']);
-  if ('hideButtons' in p) p.hideButtons = (Array.isArray(p.hideButtons) ? p.hideButtons : []).filter((b) => ['shield', 'pip', 'ai', 'grid', 'profile', 'home', 'sidebarBtn'].includes(b));
+  if ('hideButtons' in p) p.hideButtons = [...new Set((Array.isArray(p.hideButtons) ? p.hideButtons : []).map(String))].filter((b) => ['home', 'sidebarBtn', ...TOOLBAR_IDS].includes(b) || /^c[a-z0-9]{1,12}$/.test(b));
+  if ('toolbar' in p) {   // the buttons right of the address bar: their order and your own (Customize toolbar)
+    const t = p.toolbar && typeof p.toolbar === 'object' ? p.toolbar : {};
+    const custom = (Array.isArray(t.custom) ? t.custom : []).slice(0, 12).map((c) => ({
+      id: /^c[a-z0-9]{1,12}$/.test(String(c && c.id)) ? String(c.id) : 'c' + Math.random().toString(36).slice(2, 8),
+      name: String((c && c.name) || '').trim().slice(0, 30) || 'Link',
+      url: /^https?:\/\/\S{1,500}$/i.test(String(c && c.url)) ? String(c.url) : '',
+      icon: String((c && c.icon) || '').trim().slice(0, 4)
+    })).filter((c) => c.url);
+    const ids = new Set([...TOOLBAR_IDS, ...custom.map((c) => c.id)]);
+    const order = [...new Set((Array.isArray(t.order) ? t.order : []).filter((k) => ids.has(k)))];
+    p.toolbar = { order, custom };
+  }
   if ('accent' in p && !(/^[a-z]{2,12}$/.test(String(p.accent)) || /^#[0-9a-f]{6}$/i.test(String(p.accent)))) delete p.accent;
   if ('rewindExclude' in p) p.rewindExclude = (Array.isArray(p.rewindExclude) ? p.rewindExclude : []).map((d) => String(d).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '')).filter((d) => /^[a-z0-9.-]{3,253}$/.test(d)).slice(0, 200);
   if ('appIcon' in p) p.appIcon = !!p.appIcon;
@@ -678,6 +692,15 @@ handle('downloads:action', ANY, async (_e, id, action) => {
     case 'retry': if (rec) session.fromPartition(PERSIST).downloadURL(rec.url); break;
     case 'remove': store.write('downloads.json', getDownloads().filter((d) => d.id !== id)); broadcast('downloads:removed', id); break;
   }
+  return true;
+});
+// Drag a finished download out of the browser: onto the desktop, into a folder, or onto a page that takes files.
+let dragIcon = null;
+handle('downloads:drag', ANY, (e, id) => {
+  const rec = getDownloads().find((d) => d.id === id);
+  if (!rec || rec.state !== 'completed' || !fs.existsSync(rec.savePath)) return false;
+  if (!dragIcon) dragIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 32, height: 32 });
+  e.sender.startDrag({ file: rec.savePath, icon: dragIcon });
   return true;
 });
 handle('downloads:clear', ANY, () => { const list = getDownloads().filter((d) => d.state === 'progressing'); store.write('downloads.json', list); broadcast('downloads:cleared', true); return true; });
@@ -1057,6 +1080,11 @@ const SEARCH_ADS = [
 ];
 function searchAdCss(url) { const hit = SEARCH_ADS.find(([re]) => re.test(url || '')); return hit ? hit[1] + ' { display: none !important; }' : ''; }
 
+const SCROLLBAR_CSS = `::-webkit-scrollbar { width: 11px; height: 11px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,.42) padding-box; border: 3px solid transparent; border-radius: 10px; min-height: 36px; }
+::-webkit-scrollbar-thumb:hover { background-color: rgba(128,128,128,.66); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }`;
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
@@ -1080,6 +1108,9 @@ app.on('web-contents-created', (_e, contents) => {
     if (css) contents.insertCSS(css).catch(() => {});
   };
   contents.on('dom-ready', hideSearchAds);
+  // Slim scrollbars that suit light and dark pages, instead of Windows' white bar with arrows. As a user style, a
+  // site that styles its own scrollbars keeps them.
+  contents.on('dom-ready', () => { if (!contents.isDestroyed()) contents.insertCSS(SCROLLBAR_CSS, { cssOrigin: 'user' }).catch(() => {}); });
   // Tell the window when a tab starts or stops making sound, instead of the window asking every tab every second
   // (each ask is a blocking call, and they added up with many tabs open).
   contents.on('audio-state-changed', (ev) => { console.log('[dbg] audio', contents.id, ev && ev.audible, !!shellFor(contents)); const s = shellFor(contents); if (s) s.send('tab:audio', contents.id, !!ev.audible); });
