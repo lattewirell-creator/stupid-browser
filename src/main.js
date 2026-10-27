@@ -281,6 +281,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Drag a picture out of a page as a real file (tabs only, private windows too).
+  if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'drag-preload.js') });
   // Highlighted text → "Ask Buddy" button in the browser UI (tabs only).
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'select-preload.js') });
   // Music island: lets the browser UI read "now playing" and press play/pause/next (all web sessions).
@@ -799,6 +801,67 @@ ipcMain.handle('pw:query', (e) => {
   if (!/^https?:/.test(origin)) return [];
   return getPasswords().filter((p) => p.origin === origin && !p.never).map((p) => ({ username: p.username, password: dec(p.password) }));
 });
+/* ---------- drag a picture out of a page as a file (drag-preload.js) ---------- */
+// The picture is saved in a temporary folder (emptied when the browser quits) and dragged as that file. It's
+// fetched with the tab's own session (its cookies), as you press on it, so the drag doesn't wait.
+const dragDir = path.join(os.tmpdir(), 'stupid-browser-drag');
+const dragFiles = new Map();   // address → Promise<file path>
+const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif', 'image/bmp': 'bmp', 'image/x-icon': 'ico' };
+function dragName(src, type, alt) {
+  let base = '';
+  try { if (/^https?:/.test(src)) base = decodeURIComponent(new URL(src).pathname.split('/').pop() || ''); } catch {}
+  base = (base || alt || 'picture').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[^\w\- ]+/g, ' ').trim().slice(0, 60) || 'picture';
+  return base + '.' + (EXT[type] || 'png');
+}
+function typeOf(buf) {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49) return 'image/gif';
+  if (buf.slice(8, 12).toString() === 'WEBP') return 'image/webp';
+  if (/^\s*<(\?xml|svg)/.test(buf.slice(0, 100).toString())) return 'image/svg+xml';
+  return '';
+}
+async function saveDrag(buf, src, alt, typeHint) {
+  if (!buf.length || buf.length > 40 * 1048576) throw new Error('too big');
+  const type = typeOf(buf) || typeHint || 'image/png';
+  if (!type.startsWith('image/')) throw new Error('not a picture');
+  fs.mkdirSync(dragDir, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(dragDir, 'd'));   // its own folder, so the file keeps its real name
+  const file = path.join(dir, dragName(src, type, alt));
+  fs.writeFileSync(file, buf);
+  return file;
+}
+function fetchDrag(wc, src) {
+  if (dragFiles.has(src)) return dragFiles.get(src);
+  const p = (async () => {
+    const r = await wc.session.fetch(src, { headers: { Referer: wc.getURL() } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return saveDrag(Buffer.from(await r.arrayBuffer()), src, '', (r.headers.get('content-type') || '').split(';')[0]);
+  })();
+  dragFiles.set(src, p); p.catch(() => dragFiles.delete(src));
+  if (dragFiles.size > 40) dragFiles.delete(dragFiles.keys().next().value);
+  return p;
+}
+ipcMain.on('img:prefetch', (e, src) => {
+  if (e.sender.getType() !== 'webview' || typeof src !== 'string' || !/^https?:\/\//.test(src) || src.length > 4000) return;
+  fetchDrag(e.sender, src).catch(() => {});
+});
+ipcMain.on('img:drag', async (e, d) => {
+  if (e.sender.getType() !== 'webview' || !d || typeof d.src !== 'string') return;
+  try {
+    const file = d.bytes && /^(blob|data):/.test(d.src) ? await saveDrag(Buffer.from(d.bytes), d.src, String(d.name || ''), '')
+      : /^https?:\/\//.test(d.src) ? await fetchDrag(e.sender, d.src) : null;
+    if (!file || e.sender.isDestroyed()) return;
+    // The picture itself as the drag icon (small), or the browser's icon for kinds it can't show.
+    let icon = nativeImage.createFromPath(file);
+    if (icon.isEmpty()) { if (!dragIcon) dragIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 32, height: 32 }); icon = dragIcon; }
+    else { const s = icon.getSize(); icon = icon.resize(s.width >= s.height ? { width: Math.min(96, s.width) } : { height: Math.min(96, s.height) }); }
+    if (process.env.STUPID_SELFTEST) console.log('[drag] file', file, fs.statSync(file).size, icon.getSize().width);   // the drag test reads this
+    e.sender.startDrag({ file, icon });
+  } catch (err) { console.log('[drag] picture', err.message); }
+});
+app.on('will-quit', () => { try { fs.rmSync(dragDir, { recursive: true, force: true }); } catch {} });
+
 ipcMain.on('pw:submitted', (e, data) => {
   if (e.sender.getType() !== 'webview' || !data || !getSettings().savePasswords) return;
   let origin; try { origin = e.senderFrame.origin; } catch { return; }
