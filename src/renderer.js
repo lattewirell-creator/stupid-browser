@@ -233,6 +233,22 @@ function newTab(url, opts = {}) {
   return tab;
 }
 
+/* Drop a link (or a picture's address) on the tab strip, or on the + button, and it opens in a new tab. */
+{
+  const linkOf = (dt) => { const u = (dt.getData('text/uri-list') || '').split('\n').find((l) => l && !l.startsWith('#')) || dt.getData('text/plain'); return /^https?:\/\/\S+$/.test((u || '').trim()) ? u.trim() : ''; };
+  for (const id of ['tabs', 'newTabBtn']) {
+    const z = $(id); if (!z) continue;
+    z.addEventListener('dragover', (ev) => { if (dragId != null || !ev.dataTransfer.types.includes('text/uri-list')) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; z.classList.add('drop-link'); });
+    z.addEventListener('dragleave', (ev) => { if (!z.contains(ev.relatedTarget)) z.classList.remove('drop-link'); });
+    z.addEventListener('drop', (ev) => {
+      z.classList.remove('drop-link');
+      if (dragId != null) return;
+      const u = linkOf(ev.dataTransfer); if (!u) return;
+      ev.preventDefault(); newTab(u);
+    });
+  }
+}
+
 /* Switching tabs without a flash. A tab that wasn't on screen has no picture yet, and on Windows that shows as black for
    a frame or two (worse when it was just created). So the tab you came from stays drawn on top until the new one has
    really painted two frames, then they swap in one go: it looks as if the new tab was always there. */
@@ -383,6 +399,12 @@ function buildTabEl(tab) {
   e.addEventListener('contextmenu', (ev) => { ev.preventDefault(); tabMenu(tab, ev.clientX, ev.clientY); });
   e.addEventListener('mouseenter', () => hoverCard(tab, e));
   e.addEventListener('mouseleave', hideHoverCard);
+  // Dragging something else (a picture, a file, a link) over a tab opens that tab after a moment, so you can drop it
+  // into the page there (a chat, an upload box), like in Chrome.
+  let hoverOpen = 0;
+  e.addEventListener('dragenter', (ev) => { if (dragId != null || tab.id === activeId) return; clearTimeout(hoverOpen); hoverOpen = setTimeout(() => activate_(tab.id), 550); e.classList.add('drag-hover'); });
+  e.addEventListener('dragleave', (ev) => { if (e.contains(ev.relatedTarget)) return; clearTimeout(hoverOpen); e.classList.remove('drag-hover'); });
+  e.addEventListener('drop', () => { clearTimeout(hoverOpen); e.classList.remove('drag-hover'); });
   // drag to reorder
   e.addEventListener('dragstart', (ev) => { dragId = tab.id; e.classList.add('dragging'); ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', tab.url); hideHoverCard(); });
   e.addEventListener('dragend', () => { dragId = null; e.classList.remove('dragging'); clearDropMarks(); });

@@ -736,3 +736,7 @@ body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
 @media (prefers-reduced-motion: reduce) { body.tb-edit #toolbar [data-tb] { animation: none; } }
 /* A finished download can be dragged out (onto the desktop, into a folder). */
 .dl-row.openable[draggable="true"] { cursor: grab; }
+
+/* Dragging a picture or link over a tab (it opens in a moment), or a link over the tab strip (it opens in a new tab). */
+.tab.drag-hover { background: var(--accent-soft, rgba(217,119,87,.15)); }
+#tabs.drop-link, #newTabBtn.drop-link { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 10px; }
