@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<style id="early-bg">html{background:#FAF9F5}@media (prefers-color-scheme: dark){html{background:#1F1E1D}}</style>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Ask Buddy</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="ask.css">
+</head>
+<body>
+<div class="ask-page">
+  <form id="form" class="ask-box">
+    <span class="ball" aria-hidden="true"><i></i><i></i></span>
+    <input id="q" placeholder="Ask Buddy anything" autocomplete="off" spellcheck="false">
+    <button class="btn primary" type="submit">Ask</button>
+  </form>
+  <div id="status" class="ask-status hidden"><span class="ball thinking" aria-hidden="true"><i></i><i></i></span><span id="step">Searching the web</span><span class="dots">•••</span></div>
+  <article id="answer" class="ask-answer hidden"></article>
+  <section id="sources" class="ask-sources hidden"><h2>Sources</h2><div id="srcList"></div></section>
+  <div id="error" class="ask-error hidden"></div>
+</div>
+<script src="keys.js"></script>
+<script src="common.js"></script>
+<script src="ask.js"></script>
+</body>
+</html>

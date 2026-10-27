@@ -740,3 +740,29 @@ body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
 /* Dragging a picture or link over a tab (it opens in a moment), or a link over the tab strip (it opens in a new tab). */
 .tab.drag-hover { background: var(--accent-soft, rgba(217,119,87,.15)); }
 #tabs.drop-link, #newTabBtn.drop-link { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 10px; }
+
+/* Search with Buddy: the button in the address bar, and Buddy mode */
+.ask-buddy-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 0 4px; margin-right: 4px; border-radius: 13px; font-size: 12px; font-weight: 600; color: var(--muted); flex: none; }
+.ask-buddy-btn:hover { background: var(--hover); color: var(--text); }
+.ask-buddy-btn.on { background: var(--accent); color: #fff; }
+.mini-ball { position: relative; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #EBA588, #D97757 68%); flex: none; }
+.mini-ball i { position: absolute; top: 31%; width: 15%; height: 30%; border-radius: 999px; background: #fff; }
+.mini-ball i:nth-of-type(1) { left: 29%; } .mini-ball i:nth-of-type(2) { right: 29%; }
+.ask-buddy-btn .ask-label { display: none; }
+#omnibox:focus-within .ask-buddy-btn .ask-label, .ask-buddy-btn.on .ask-label { display: inline; }
+#omnibox.buddy-mode { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+
+/* Screenshots and recordings (capture.js): picking a part of the page, the card, and the recording frame */
+.cap-veil { position: fixed; z-index: 70; cursor: crosshair; background: rgba(0,0,0,.28); }
+.cap-sel { position: absolute; border: 2px solid var(--accent); background: rgba(255,255,255,.08); box-shadow: 0 0 0 9999px rgba(0,0,0,.22); border-radius: 4px; pointer-events: none; }
+.cap-bar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 13px; cursor: default; white-space: nowrap; }
+.cap-card { position: fixed; right: 18px; bottom: 18px; z-index: 72; display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 16px 44px rgba(0,0,0,.28); max-width: 470px; animation: fade .18s; }
+.cap-pic { width: 150px; max-height: 110px; object-fit: cover; border-radius: 10px; cursor: grab; border: 1px solid var(--line); background: var(--bg); }
+.cap-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cap-info small { color: var(--muted); font-size: 12px; }
+.cap-acts { display: flex; gap: 6px; margin-top: 4px; }
+.rec-frame { position: fixed; z-index: 71; border: 3px solid #E5484D; border-radius: 6px; pointer-events: none; }
+.rec-pill { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 73; display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 12px; border-radius: 999px; background: #E5484D; color: #fff; font: 600 12.5px var(--sans); box-shadow: 0 6px 20px rgba(229,72,77,.4); }
+.rec-pill i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: recBlink 1s infinite; }
+.rec-pill button { background: #fff; color: #E5484D; border-radius: 999px; padding: 3px 10px; font-weight: 700; }
+@keyframes recBlink { 50% { opacity: .3; } }

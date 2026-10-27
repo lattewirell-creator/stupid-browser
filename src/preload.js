@@ -1,12 +1,12 @@
 'use strict';
 // Bridge for the browser UI (shell window). Only whitelisted channels are reachable.
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const INVOKE = [
   'win:info', 'settings:get', 'settings:set', 'bookmarks:get', 'bookmarks:set', 'bookmarks:folderMenu',
   'bots:get', 'bots:set', 'bots:defaults', 'sidebar:get', 'sidebar:set', 'sidebar:defaults',
   'history:suggest', 'downloads:list', 'downloads:action', 'downloads:clear', 'downloads:drag',
   'perm:respond', 'perms:get', 'perms:set', 'site:clearData', 'adblock:set', 'adblock:get',
-  'rewind:capture', 'rewind:status', 'win:trafficLights', 'profiles:list', 'profiles:open', 'profiles:create', 'profiles:remove', 'buddy:status', 'buddy:ask', 'buddy:reset', 'buddy:stop', 'launcher:get', 'launcher:set', 'launcher:defaults', 'session:save', 'win:new', 'win:fullscreen', 'win:close', 'pw:respond', 'update:status', 'update:check', 'update:install', 'shell:editMenu', 'clipboard:write', 'net:preconnect'
+  'rewind:capture', 'rewind:status', 'win:trafficLights', 'profiles:list', 'profiles:open', 'profiles:create', 'profiles:remove', 'buddy:status', 'buddy:ask', 'buddy:reset', 'buddy:stop', 'launcher:get', 'launcher:set', 'launcher:defaults', 'session:save', 'win:new', 'win:fullscreen', 'win:close', 'pw:respond', 'update:status', 'update:check', 'update:install', 'shell:editMenu', 'clipboard:write', 'net:preconnect', 'shot:take', 'shot:drag', 'shot:save', 'rec:source', 'rec:save'
 ];
 const EVENTS = [
   'shortcut', 'open-url', 'reopen-plain', 'paste-go', 'settings:changed', 'bookmarks:changed', 'bots:changed', 'sidebar:changed',
@@ -15,6 +15,8 @@ const EVENTS = [
 ];
 contextBridge.exposeInMainWorld('stupid', {
   platform: process.platform,
+  // Where a dropped file is on the computer (to open it in a tab); the page itself never learns paths.
+  pathForFile: (f) => { try { return webUtils.getPathForFile(f) || ''; } catch { return ''; } },
   invoke: (ch, ...args) => (INVOKE.includes(ch) ? ipcRenderer.invoke(ch, ...args) : Promise.reject(new Error('blocked ' + ch))),
   on: (ch, fn) => { if (EVENTS.includes(ch)) ipcRenderer.on(ch, (_e, ...a) => fn(...a)); }
 });
