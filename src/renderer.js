@@ -233,16 +233,21 @@ function newTab(url, opts = {}) {
   return tab;
 }
 
-/* Drop a link (or a picture's address) on the tab strip, or on the + button, and it opens in a new tab. */
+/* Drop a link, a picture's address or files from the computer on the tab strip (or the + button): they open in new tabs. */
 {
+  // Files from the computer (a PDF, a picture, a web page) open in new tabs.
+  const filesOf = (dt) => [...(dt.files || [])].map((f) => window.stupid.pathForFile && window.stupid.pathForFile(f)).filter(Boolean)
+    .map((p) => 'file:///' + p.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:'));
   const linkOf = (dt) => { const u = (dt.getData('text/uri-list') || '').split('\n').find((l) => l && !l.startsWith('#')) || dt.getData('text/plain'); return /^https?:\/\/\S+$/.test((u || '').trim()) ? u.trim() : ''; };
   for (const id of ['tabs', 'newTabBtn']) {
     const z = $(id); if (!z) continue;
-    z.addEventListener('dragover', (ev) => { if (dragId != null || !ev.dataTransfer.types.includes('text/uri-list')) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; z.classList.add('drop-link'); });
+    z.addEventListener('dragover', (ev) => { if (dragId != null || !(ev.dataTransfer.types.includes('text/uri-list') || ev.dataTransfer.types.includes('Files'))) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; z.classList.add('drop-link'); });
     z.addEventListener('dragleave', (ev) => { if (!z.contains(ev.relatedTarget)) z.classList.remove('drop-link'); });
     z.addEventListener('drop', (ev) => {
       z.classList.remove('drop-link');
       if (dragId != null) return;
+      const files = filesOf(ev.dataTransfer);
+      if (files.length) { ev.preventDefault(); files.slice(0, 10).forEach((u, k) => newTab(u, { activate: k === 0 })); return; }
       const u = linkOf(ev.dataTransfer); if (!u) return;
       ev.preventDefault(); newTab(u);
     });
@@ -293,6 +298,9 @@ function closeTab(id, { record = true } = {}) {
   if (record && !isNewtab(tab.url)) {
     closedStack.push({ url: tab.url, title: tab.title, favicon: tab.favicon, index: i, groupId: tab.groupId, pinned: tab.pinned });
     if (closedStack.length > 25) closedStack.shift();
+    // Closed by mistake? One click brings it back (Ctrl+Shift+T does too).
+    const name = (tab.title || tab.url.replace(/^https?:\/\//, '')).slice(0, 40);
+    setTimeout(() => toast(`Closed “${name}” · click to undo`, () => reopenClosed()), 0);
   }
   tabs.splice(i, 1);
   if (tab.wv) tab.wv.remove();
@@ -749,6 +757,8 @@ function mainMenu() {
   showMenu('menu', [
     { label: 'New tab', key: 'Ctrl+T', fn: () => newTab() },
     { label: 'New window', key: 'Ctrl+N', fn: () => call('win:new', {}) },
+    { label: 'Screenshot', key: 'Ctrl+Shift+X', fn: () => window.capture && window.capture.screenshot() },
+    { label: window.capture && window.capture.recording() ? 'Stop recording' : 'Screen recording', fn: () => window.capture && window.capture.record() },
     { label: 'Customize toolbar…', fn: () => window.customizeToolbar && window.customizeToolbar() },
     { label: 'New private window', key: 'Ctrl+Shift+N', fn: () => call('win:new', { incognito: true }) },
     '-',
@@ -988,6 +998,8 @@ async function updateSuggest(inline) {
   for (const r of res) if (r.url !== go) sugItems.push({ kind: r.kind, label: r.title || r.url, sub: r.url.replace(/^https?:\/\/(www\.)?/, ''), url: r.url, fav: faviconFor(r.url) });
   if (isSearch && !/^!\w+\s/.test(q)) sugItems.splice(1, 0, { kind: 'scopes', label: q, sub: '' });
   const buddyOn = window.buddy && !(settings.buddy && settings.buddy.enabled === false);
+  // Search with Buddy: he looks it up on the web, reads the best pages and answers with sources (stupid://ask).
+  if (isSearch) sugItems.splice(buddyMode ? 0 : 2, 0, { kind: 'askbuddy', label: q, sub: `Search with ${(settings.buddyLook && settings.buddyLook.name) || 'Buddy'}`, url: askUrl(q) });
   if (isSearch) sugItems.push({ kind: 'search', label: q, sub: buddyOn ? `Ask ${(settings.buddyLook && settings.buddyLook.name) || 'Buddy'}` : 'Ask Claude in the AI sidebar', ai: true, buddy: buddyOn });
   sugItems = sugItems.slice(0, 9);
   sugSel = 0;
@@ -1023,6 +1035,7 @@ function renderSuggest() {
     }
     const r = el('div', 'sug' + (i === sugSel ? ' sel' : ''));
     if (it.fav) { const im = el('img', 'sug-ic'); im.src = it.fav; im.onerror = () => im.replaceWith(svg(ICON.globe, 'sug-ic')); r.appendChild(im); }
+    else if (it.kind === 'askbuddy') { const b = el('span', 'mini-ball sug-ic'); b.append(el('i'), el('i')); r.appendChild(b); }
     else r.appendChild(svg(it.kind === 'search' ? ICON.search : it.kind === 'tab' ? ICON.tab : it.kind === 'bookmark' ? ICON.star : it.kind === 'history' ? ICON.clock : ICON.globe, 'sug-ic'));
     r.appendChild(el('span', 'sug-t', it.label));
     r.appendChild(el('span', 'sug-s', it.sub));
@@ -1031,6 +1044,15 @@ function renderSuggest() {
   });
   box.classList.remove('hidden');
 }
+/* Buddy mode: the address bar asks Buddy instead of a search engine (the Buddy button, or Shift+Enter once). */
+let buddyMode = false;
+const askUrl = (q) => 'stupid://ask/?q=' + encodeURIComponent(q);
+function setBuddyMode(on) {
+  buddyMode = !!on;
+  const b = $('askBuddyBtn'); if (b) { b.classList.toggle('on', buddyMode); b.setAttribute('aria-pressed', buddyMode); }
+  $('omnibox').classList.toggle('buddy-mode', buddyMode);
+  $('address').placeholder = buddyMode ? `Ask ${(settings.buddyLook && settings.buddyLook.name) || 'Buddy'} anything…` : 'Search or type a URL';
+}
 function pickSuggest() {
   const it = sugItems[sugSel];
   const input = $('address');
@@ -1038,6 +1060,7 @@ function pickSuggest() {
   if (!it) { navigate(input.value); return; }
   if (it.kind === 'tab') return activate_(it.id);
   if (it.kind === 'scopes') return navigate(scopeUrl(SCOPES[0], it.label));
+  if (it.kind === 'askbuddy') { setBuddyMode(false); return navigate(it.url); }
   if (it.ai && it.buddy) { window.buddy.show().then(() => window.buddy.ask(it.label)); return; }
   if (it.ai) { navigator.clipboard && navigator.clipboard.writeText(it.label).catch(() => {}); openAI(); toast('Question copied — paste it into Claude'); return; }
   navigate(sugSel === 0 && !it.url ? input.value : it.url);
@@ -1051,6 +1074,8 @@ $('address').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
     if (e.altKey) { newTab(toUrl($('address').value)); closeSuggest(); return; }
+    const typed0 = $('address').value.trim();
+    if ((e.shiftKey || buddyMode) && typed0 && !/^(https?:\/\/|stupid:\/\/)/i.test(typed0)) { closeSuggest(); $('address').blur(); setBuddyMode(false); navigate(askUrl(typed0)); return; }
     const word = $('address').value.trim();
     if ((e.ctrlKey || e.metaKey) && /^[a-z0-9-]+$/i.test(word)) { navigate('https://www.' + word + '.com'); closeSuggest(); $('address').blur(); return; }
     if (sugItems.length) pickSuggest(); else { navigate($('address').value); $('address').blur(); }
@@ -1062,6 +1087,8 @@ $('address').addEventListener('keydown', (e) => {
   }
 });
 $('address').addEventListener('focus', () => setTimeout(() => $('address').select(), 0));
+$('askBuddyBtn').addEventListener('mousedown', (e) => e.preventDefault());
+$('askBuddyBtn').addEventListener('click', () => { setBuddyMode(!buddyMode); $('address').focus(); if (buddyMode && isNewtab(activeTab().url)) $('address').value = ''; });
 $('address').addEventListener('contextmenu', (e) => { e.preventDefault(); const a = $('address'); call('shell:editMenu', { go: true, hasSelection: a.selectionStart !== a.selectionEnd }).catch(() => {}); });
 api.on('paste-go', (text) => { if (text) { closeSuggest(); navigate(text); $('address').blur(); } });
 $('address').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('address')) { closeSuggest(); const t = activeTab(); if (t) $('address').value = displayUrl(t.url); } }, 120));
@@ -1371,6 +1398,7 @@ function runCmd(cmd) {
     case 'open-ai': openAI(); toast('Selection copied — paste it into the chat'); break;
     case 'toggle-sidebar': call('settings:set', { showSidebar: settings.showSidebar === false }); break;
     case 'split': toggleSplit(); break;
+    case 'screenshot': window.capture && window.capture.screenshot(); break;
     case 'next-tab': cycle(1); break;
     case 'prev-tab': cycle(-1); break;
     case 'find': openFind(); break;

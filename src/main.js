@@ -93,7 +93,7 @@ const DEFAULT_LAUNCHER = [
   { id: 'news', name: 'News', url: 'https://news.google.com' },
   { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
-const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind'];
+const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind', 'ask'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -862,6 +862,49 @@ ipcMain.on('img:drag', async (e, d) => {
 });
 app.on('will-quit', () => { try { fs.rmSync(dragDir, { recursive: true, force: true }); } catch {} });
 
+/* ---------- screenshots and screen recordings of part of a tab (Ctrl+Shift+X, Menu) ---------- */
+// A screenshot is copied right away (paste it into any chat with Ctrl+V) and kept as a file you can drag out or save.
+// A recording is saved in your Videos folder. Both can be dragged straight into a chat, a folder or another app.
+const stamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`; };
+const madeFiles = new Set();   // files these features made: the only ones the window may drag or save
+handle('shot:take', ['shell'], async (e, wcId, rect) => {
+  const wc = webContents.fromId(+wcId);
+  if (!wc || wc.isDestroyed() || wc.getType() !== 'webview' || shellFor(wc) !== e.sender) return null;
+  const r = rect && rect.width > 4 && rect.height > 4 ? { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } : undefined;
+  const img = await wc.capturePage(r);
+  if (img.isEmpty()) return null;
+  clipboard.write({ image: img });   // (Electron 44: write() takes the image)
+  fs.mkdirSync(dragDir, { recursive: true });
+  const file = path.join(fs.mkdtempSync(path.join(dragDir, 's')), `Screenshot ${stamp()}.png`);
+  fs.writeFileSync(file, img.toPNG()); madeFiles.add(file);
+  const s = img.getSize();
+  return { file, width: s.width, height: s.height, thumb: img.resize(s.width >= s.height ? { width: Math.min(280, s.width) } : { height: Math.min(200, s.height) }).toDataURL() };
+});
+handle('shot:drag', ['shell'], (e, file) => {
+  if (!madeFiles.has(file) || !fs.existsSync(file)) return false;
+  let icon = nativeImage.createFromPath(file);
+  if (icon.isEmpty()) { if (!dragIcon) dragIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 32, height: 32 }); icon = dragIcon; }
+  else { const s = icon.getSize(); icon = icon.resize(s.width >= s.height ? { width: Math.min(96, s.width) } : { height: Math.min(96, s.height) }); }
+  e.sender.startDrag({ file, icon });
+  return true;
+});
+handle('shot:save', ['shell'], (e, file) => {
+  if (!madeFiles.has(file) || !fs.existsSync(file)) return null;
+  if (file.startsWith(app.getPath('videos'))) { shell.showItemInFolder(file); return file; }
+  const dir = path.join(app.getPath('pictures'), 'Screenshots'); fs.mkdirSync(dir, { recursive: true });
+  const out = path.join(dir, path.basename(file)); fs.copyFileSync(file, out); shell.showItemInFolder(out);
+  return out;
+});
+// Recording: the window's own picture (the page crops it to the part you picked) and where to save the video.
+handle('rec:source', ['shell'], (e) => { const w = BrowserWindow.fromWebContents(e.sender); return w ? w.getMediaSourceId() : null; });
+handle('rec:save', ['shell'], (e, bytes) => {
+  if (!bytes || !bytes.length || bytes.length > 1500 * 1048576) return null;
+  const dir = app.getPath('videos'); fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `Recording ${stamp()}.webm`);
+  fs.writeFileSync(file, Buffer.from(bytes)); madeFiles.add(file);
+  return file;
+});
+
 ipcMain.on('pw:submitted', (e, data) => {
   if (e.sender.getType() !== 'webview' || !data || !getSettings().savePasswords) return;
   let origin; try { origin = e.senderFrame.origin; } catch { return; }
@@ -963,6 +1006,7 @@ function shortcutFor(input) {
     if (k === 'o') return 'bookmarks';
     if (k === 'y') return 'rewind';
     if (k === 's') return 'split';
+    if (k === 'x') return 'screenshot';
     if (k === 'r') return 'hard-reload';
     if (k === 'delete') return 'clear-data';
     if (k === 'tab') return 'prev-tab';
