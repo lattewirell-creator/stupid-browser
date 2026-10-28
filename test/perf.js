@@ -30,5 +30,27 @@
   out('scroll-fps', Math.round(1000 / (r.reduce((a, b) => a + b, 0) / r.length)));
   out('scroll-p95-ms', Math.round(p95));
   out('scroll-janky-frames', r.filter((g) => g > 25).length + '/' + r.length);
+  // Real sites: how long each takes to load, then memory with all of them open, the CPU while nothing happens,
+  // and whether memory comes back when they're closed.
+  const metrics = async (label) => { console.log('PERF_METRICS:' + label); await sleep(300); };
+  await metrics('before-sites');
+  const SITES = ['https://en.wikipedia.org/wiki/Stockholm', 'https://www.bbc.com/news', 'https://github.com/electron/electron', 'https://www.reddit.com/r/sweden/',
+    'https://www.youtube.com/', 'https://www.theverge.com/', 'https://stackoverflow.com/questions', 'https://www.amazon.com/'];
+  const loads = [], opened = [];
+  for (const url of SITES) {
+    const t0 = performance.now(); const tab = newTab(url); opened.push(tab);
+    await new Promise((r) => { const done = () => r(); tab.wv.addEventListener('did-stop-loading', done, { once: true }); setTimeout(done, 20000); });
+    const ms = Math.round(performance.now() - t0); loads.push(ms);
+    out('load-' + new URL(url).hostname.replace(/^www\./, ''), ms);
+    await sleep(500);
+  }
+  out('load-median-ms', med(loads));
+  await sleep(3000);
+  await metrics('sites-open');
+  // Nothing happens for 15 s (the page in front is still and visible): how busy is the browser?
+  await metrics('idle-start'); await sleep(15000); await metrics('idle-15s');
+  for (const t of opened) closeTab(t.id);
+  await sleep(6000);
+  await metrics('sites-closed');
   console.log('QUIT');
 })();
