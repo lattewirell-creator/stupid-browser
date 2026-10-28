@@ -1258,6 +1258,11 @@ function selfTest(win) {
       let mem = 0, cpu = 0;
       for (const p of ms) { const mb = (p.memory.workingSetSize || 0) / 1024; mem += mb; cpu += p.cpu.percentCPUUsage || 0; const k = p.type === 'Tab' ? 'renderer' : p.type; by[k] = (by[k] || 0) + mb; }
       const parts = Object.entries(by).map(([k, v]) => `${k}=${Math.round(v)}`).join(' ');
+      // Which page each renderer is, biggest first (to see what uses the memory).
+      const pages = new Map(); for (const wc of webContents.getAllWebContents()) { try { pages.set(wc.getOSProcessId(), (wc.getType() === 'window' ? 'window ' : '') + (wc.getURL() || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 50)); } catch {} }
+      const top = ms.filter((p) => p.type === 'Tab' || p.type === 'Renderer').sort((a, b) => b.memory.workingSetSize - a.memory.workingSetSize)
+        .map((p) => `${Math.round(p.memory.workingSetSize / 1024)}MB ${pages.get(p.pid) || '?'}`).join(' | ');
+      fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] renderers-${pm[1]} ${top}\n`);
       fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] metrics-${pm[1]} memMB=${Math.round(mem)} cpu%=${cpu.toFixed(1)} procs=${ms.length} ${parts} mainLagMaxMs=${lag.max} mainLagP95Ms=${lag.p95()}\n`);
       lag.reset();
     }
