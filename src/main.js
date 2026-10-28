@@ -1239,6 +1239,9 @@ app.on('web-contents-created', (_e, contents) => {
 /* =========================================================================
    Self-test (dev only): STUPID_SELFTEST=/tmp/shot.png
    ========================================================================= */
+// How long the main process was busy (and so slow to answer the window) during the benchmark: timer drift.
+const lag = { samples: [], max: 0, reset() { this.samples = []; this.max = 0; }, p95() { const s = [...this.samples].sort((a, b) => a - b); return s.length ? Math.round(s[Math.floor(s.length * 0.95)]) : 0; } };
+if (process.env.STUPID_PERF_LOG) { let last = performance.now(); setInterval(() => { const now = performance.now(), d = Math.max(0, now - last - 50); last = now; lag.samples.push(d); if (lag.samples.length > 4000) lag.samples.shift(); lag.max = Math.max(lag.max, Math.round(d)); }, 50); }
 function selfTest(win) {
   // Benchmarks need the window on screen (pages in hidden windows are slowed down).
   if (process.env.STUPID_TEST_FRONT) { win.setAlwaysOnTop(true, 'screen-saver'); win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); app.focus({ steal: true }); }
@@ -1248,6 +1251,21 @@ function selfTest(win) {
     if (m && !win.isDestroyed()) { const img = await win.capturePage(); fs.writeFileSync(process.env.STUPID_SELFTEST.replace('.png', '-' + m[1] + '.png'), img.toPNG()); console.log('[selftest] shot', m[1]); }
     if (/^QUIT$/.test(e.message || '')) app.quit();
     if (/^PERF:/.test(e.message || '') && process.env.STUPID_PERF_LOG) fs.appendFileSync(process.env.STUPID_PERF_LOG, '[perf] ' + e.message.slice(5) + '\n');
+    // PERF_METRICS:<label> writes memory and CPU for every process of the browser right now (the speed benchmark).
+    const pm = /^PERF_METRICS:(\S+)/.exec(e.message || '');
+    if (pm && process.env.STUPID_PERF_LOG) {
+      const ms = app.getAppMetrics(); const by = {};
+      let mem = 0, cpu = 0;
+      for (const p of ms) { const mb = (p.memory.workingSetSize || 0) / 1024; mem += mb; cpu += p.cpu.percentCPUUsage || 0; const k = p.type === 'Tab' ? 'renderer' : p.type; by[k] = (by[k] || 0) + mb; }
+      const parts = Object.entries(by).map(([k, v]) => `${k}=${Math.round(v)}`).join(' ');
+      // Which page each renderer is, biggest first (to see what uses the memory).
+      const pages = new Map(); for (const wc of webContents.getAllWebContents()) { try { pages.set(wc.getOSProcessId(), (wc.getType() === 'window' ? 'window ' : '') + (wc.getURL() || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 50)); } catch {} }
+      const top = ms.filter((p) => p.type === 'Tab' || p.type === 'Renderer').sort((a, b) => b.memory.workingSetSize - a.memory.workingSetSize)
+        .map((p) => `${Math.round(p.memory.workingSetSize / 1024)}MB ${pages.get(p.pid) || '?'}`).join(' | ');
+      fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] renderers-${pm[1]} ${top}\n`);
+      fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] metrics-${pm[1]} memMB=${Math.round(mem)} cpu%=${cpu.toFixed(1)} procs=${ms.length} ${parts} mainLagMaxMs=${lag.max} mainLagP95Ms=${lag.p95()}\n`);
+      lag.reset();
+    }
     // SAMPLE:<ms>:<label> captures the middle of the window over and over for <ms> and reports how many frames were
     // (mostly) black: the flash a tab shows on Windows before it has painted (test/tab-flash.js).
     const sm = /^SAMPLE:(\d+):(\S+)/.exec(e.message || '');

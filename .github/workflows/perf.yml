@@ -37,6 +37,6 @@ jobs:
             timeout 60 node_modules/electron/dist/electron.exe . --user-data-dir="$D" || true
             echo "== start $i"; cat "$STUPID_PERF_LOG" || true
           done
-          export STUPID_PERF_LOG="$RUNNER_TEMP/run.txt" STUPID_SELFTEST_SCRIPT="$PWD/test/perf.js" STUPID_SELFTEST_STEPS="quit@90000"
-          timeout 120 node_modules/electron/dist/electron.exe . --user-data-dir="$D" || true
+          export STUPID_PERF_LOG="$RUNNER_TEMP/run.txt" STUPID_SELFTEST_SCRIPT="$PWD/test/perf.js" STUPID_SELFTEST_STEPS="quit@240000"
+          timeout 280 node_modules/electron/dist/electron.exe . --user-data-dir="$D" || true
           echo "== ${{ matrix.variant }}"; cat "$STUPID_PERF_LOG" || true
