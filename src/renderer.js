@@ -1470,7 +1470,9 @@ async function sleepTab(t, now = false) {
   // Don't throw away half-typed text.
   if (!now || t.ready) {
     let typing = false;
-    try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("input,textarea,[contenteditable=true]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 && document.activeElement === e : (e.type !== "hidden" && e.type !== "password" && e.type !== "checkbox" && e.type !== "radio" && e.value && e.value !== e.defaultValue))'); } catch {}
+    // Only text you typed yourself counts (drag-preload.js marks those fields). Before, any field holding a value kept
+    // the tab awake forever: a slider, a hidden field, or one the page filled in itself (like the New Tab page's).
+    try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("[data-sb-typed]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 : String(e.value || "").trim() && e.value !== e.defaultValue)'); } catch {}
     if (typing || !sleepable(t)) return false;
   }
   try { const u = t.wv.getURL(); if (u) t.url = u; const ti = t.wv.getTitle(); if (ti) t.title = ti; } catch {}
@@ -1478,6 +1480,12 @@ async function sleepTab(t, now = false) {
   renderTab(t);
   return true;
 }
+// A New Tab you've left behind holds a whole page process (~110 MB on Windows) for a page with nothing in it, so it
+// falls asleep after 30 seconds out of sight instead of the usual delay. Clicking it brings it back at once.
+setInterval(() => {
+  const cutoff = Date.now() - 30000;
+  for (const t of tabs) if (isNewtab(t.url) && sleepable(t) && (t.lastActive || 0) < cutoff) sleepTab(t);
+}, 10000);
 setInterval(() => {
   const mins = settings.tabSleep == null ? 15 : +settings.tabSleep;
   if (!mins) return;

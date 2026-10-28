@@ -4,6 +4,9 @@
 // its address). The file is fetched as you press on the picture, so the drag starts at once. Pages that make their
 // own pictures draggable (galleries you sort, editors) keep their own behaviour.
 const { ipcRenderer } = require('electron');
+// You typed in a field (a real key press, not a value the page set): it's marked, so a tab with your half-written
+// text is never put to sleep (renderer.js sleepTab). Every page, internal ones too.
+addEventListener('input', (e) => { if (e.isTrusted && e.target && e.target.dataset) e.target.dataset.sbTyped = '1'; }, true);
 if (/^(https?|file):$/.test(location.protocol)) {
   const srcOf = (img) => img.currentSrc || img.src || '';
   const ours = (img) => img && img.tagName === 'IMG' && srcOf(img) && img.draggable !== false && !img.closest('[draggable="true"]');
