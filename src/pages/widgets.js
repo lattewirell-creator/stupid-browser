@@ -44,7 +44,7 @@ function renderWidgets() {
     const head = el('div', 'w-head');
     head.appendChild(el('span', 'w-title', w.config.title || WIDGETS[w.type].name));
     const tools = el('div', 'w-tools');
-    if (['weather', 'clock', 'countdown'].includes(w.type)) {
+    if (['weather', 'clock', 'countdown', 'calendar'].includes(w.type)) {
       const g = el('button', 'w-tool'); g.title = 'Settings'; g.appendChild(svgIcon(ICO.gear));
       g.addEventListener('click', () => { card.classList.toggle('editing'); fill(); });
       tools.appendChild(g);
@@ -268,10 +268,24 @@ const RENDER = {
     body.append(time, sub);
   },
 
-  calendar(w, body) {
-    const cfg = w.config; const now = new Date();
-    let y = now.getFullYear(), m = now.getMonth();
+  calendar(w, body, card) {
+    const cfg = w.config;
+    // Connect a calendar: its private iCal address. Empty = back to the month view.
+    if (card.classList.contains('editing')) {
+      body.appendChild(el('div', 'w-muted cal-help', 'Paste your calendar’s private address. Google Calendar: Settings → your calendar → “Secret address in iCal format”. Outlook: Settings → Calendar → Shared calendars → Publish → ICS. Leave it empty to show the month instead.'));
+      settingsForm(card, body, [['Private calendar address', cfg.ics || '', { placeholder: 'https://calendar.google.com/calendar/ical/…/basic.ics' }]], async ([url]) => {
+        if (!url) { delete cfg.ics; delete cfg.cache; return true; }
+        const r = await window.stupid.invoke('calendar:fetch', url).catch(() => ({ error: 'Couldn’t reach the calendar.' }));
+        if (r.error) { toast(r.error); return false; }
+        cfg.ics = url.replace(/^webcal:\/\//i, 'https://'); cfg.cache = { at: Date.now(), events: Cal.upcoming(r.ics) };
+        cfg.title = cfg.title || Cal.name(r.ics) || '';
+      });
+      return;
+    }
+    if (cfg.ics) return Cal.agenda(w, body, card);
+    let y = new Date().getFullYear(), m = new Date().getMonth();
     const draw = () => {
+      const now = new Date();
       body.replaceChildren();
       const head = el('div', 'cal-head');
       const prev = el('button', 'w-tool', '‹'); const next = el('button', 'w-tool', '›');
@@ -284,9 +298,10 @@ const RENDER = {
       for (let i = 0; i < start; i++) grid.appendChild(el('span'));
       const days = new Date(y, m + 1, 0).getDate();
       for (let d = 1; d <= days; d++) grid.appendChild(el('span', 'cal-day' + (y === now.getFullYear() && m === now.getMonth() && d === now.getDate() ? ' today' : ''), String(d)));
-      body.append(head, grid);
+      const connect = el('button', 'cal-connect', 'Connect your calendar'); connect.addEventListener('click', () => { card.classList.add('editing'); renderWidgets(); });
+      body.append(head, grid, connect);
     };
-    void cfg; draw();
+    draw();
   },
 
   countdown(w, body, card) {
@@ -337,3 +352,116 @@ function paintWidgetPicker() {
 $('customizeBtn').addEventListener('click', () => paintWidgetPicker());
 S.on('widgets:changed', (l) => { if (JSON.stringify(l) === lastSaved) return; widgets = l; renderWidgets(); paintWidgetPicker(); });
 call('widgets:get').then((l) => { widgets = Array.isArray(l) ? l : []; renderWidgets(); paintWidgetPicker(); }).catch(() => {});
+
+
+/* ---------------- Calendar: reading a connected calendar (iCal) and showing what's coming up ---------------- */
+const Cal = (() => {
+  const unescape = (v) => v.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+  /** "20261102T145000Z" (UTC), "20261102T145000" (local), "20261102" (a whole day). */
+  function when(v, params) {
+    const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/.exec(v || '');
+    if (!m) return null;
+    const [, Y, Mo, D, h, mi, se, z] = m;
+    if (!h) return { t: new Date(+Y, +Mo - 1, +D).getTime(), allDay: true };
+    return { t: z ? Date.UTC(+Y, +Mo - 1, +D, +h, +mi, +se) : new Date(+Y, +Mo - 1, +D, +h, +mi, +se).getTime(), allDay: /VALUE=DATE(?!-)/.test(params || '') };
+  }
+  function parse(ics) {
+    const lines = ics.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);   // unfold long lines
+    const events = []; let ev = null, calName = '';
+    for (const line of lines) {
+      if (line === 'BEGIN:VEVENT') { ev = { ex: [] }; continue; }
+      if (line === 'END:VEVENT') { if (ev && ev.start) events.push(ev); ev = null; continue; }
+      const i = line.indexOf(':'); if (i < 0) continue;
+      const head = line.slice(0, i), value = line.slice(i + 1), name = head.split(';')[0].toUpperCase(), params = head.slice(name.length);
+      if (!ev) { if (name === 'X-WR-CALNAME') calName = unescape(value); continue; }
+      if (name === 'DTSTART') ev.start = when(value, params);
+      else if (name === 'DTEND') ev.end = when(value, params);
+      else if (name === 'DURATION') { const d = /P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/.exec(value); if (d) ev.dur = ((+d[1] || 0) * 1440 + (+d[2] || 0) * 60 + (+d[3] || 0)) * 60000; }
+      else if (name === 'SUMMARY') ev.title = unescape(value);
+      else if (name === 'LOCATION') ev.where = unescape(value);
+      else if (name === 'RRULE') ev.rule = Object.fromEntries(value.split(';').map((p) => p.split('=')));
+      else if (name === 'EXDATE') for (const v of value.split(',')) { const w = when(v, params); if (w) ev.ex.push(w.t); }
+      else if (name === 'RECURRENCE-ID') ev.recurrenceOf = when(value, params);
+      else if (name === 'UID') ev.uid = value;
+      else if (name === 'STATUS') ev.cancelled = /CANCELLED/i.test(value);
+    }
+    return { events, calName };
+  }
+  const DAYS = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+  /** Every time an event happens between from and to (repeating events too: daily, weekly, monthly, yearly). */
+  function occurrences(ev, from, to) {
+    const len = ev.end ? ev.end.t - ev.start.t : ev.dur != null ? ev.dur : ev.start.allDay ? 86400000 : 3600000;
+    const out = [], ex = new Set(ev.ex);
+    const push = (t) => { if (!ex.has(t) && t + len > from && t < to) out.push({ start: t, end: t + len }); };
+    if (!ev.rule) { push(ev.start.t); return out; }
+    const r = ev.rule, every = Math.max(1, +r.INTERVAL || 1), until = r.UNTIL ? (when(r.UNTIL) || {}).t : Infinity, count = +r.COUNT || Infinity;
+    const byDay = r.BYDAY ? r.BYDAY.split(',').map((d) => DAYS[d.slice(-2)]).filter((d) => d != null) : null;
+    const s = new Date(ev.start.t); let n = 0;
+    for (let k = 0; k < 3000 && n < count; k++) {
+      const d = new Date(s);
+      if (r.FREQ === 'DAILY') d.setDate(s.getDate() + k * every);
+      else if (r.FREQ === 'WEEKLY') d.setDate(s.getDate() + k * 7 * every);
+      else if (r.FREQ === 'MONTHLY') d.setMonth(s.getMonth() + k * every);
+      else if (r.FREQ === 'YEARLY') d.setFullYear(s.getFullYear() + k * every);
+      else break;
+      if (d.getTime() > Math.min(until, to)) break;
+      if (r.FREQ === 'WEEKLY' && byDay) {
+        const monday = new Date(d); monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+        for (const wd of byDay) {
+          const x = new Date(monday); x.setDate(monday.getDate() + ((wd + 6) % 7));
+          if (x.getTime() < ev.start.t || x.getTime() > until || n >= count) continue;
+          n++; push(x.getTime());
+        }
+      } else { n++; push(d.getTime()); }
+    }
+    return out;
+  }
+  /** The next two weeks of events, soonest first (small enough to keep with the widget). */
+  function upcoming(ics) {
+    const { events } = parse(ics), now = Date.now(), from = now - 12 * 3600e3, to = now + 14 * 86400e3;
+    const moved = new Map();   // one changed meeting of a repeating series replaces that day's one
+    for (const e of events) if (e.recurrenceOf && e.uid) { if (!moved.has(e.uid)) moved.set(e.uid, []); moved.get(e.uid).push(e.recurrenceOf.t); }
+    const list = [];
+    for (const e of events) {
+      if (e.cancelled) continue;
+      if (e.rule && moved.has(e.uid)) e.ex.push(...moved.get(e.uid));
+      for (const o of occurrences(e, from, to)) list.push({ title: e.title || '(No title)', where: e.where || '', start: o.start, end: o.end, allDay: !!e.start.allDay });
+    }
+    return list.filter((x) => x.end > now).sort((a, b) => a.start - b.start).slice(0, 40);
+  }
+  const name = (ics) => parse(ics).calName;
+  const time = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const day = (t) => { const d = new Date(t), today = new Date(); const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime(); const dd = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - t0) / 86400000); return dd === 0 ? 'Today' : dd === 1 ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' }); };
+  const openLink = (cfg) => (/google\.com/.test(cfg.ics) ? 'https://calendar.google.com/' : /outlook|office|live\.com/.test(cfg.ics) ? 'https://outlook.live.com/calendar/' : /icloud\.com/.test(cfg.ics) ? 'https://www.icloud.com/calendar/' : '');
+  /** What's coming up: the next few events, with Now on the one happening. Refreshes every 5 minutes. */
+  async function agenda(w, body, card) {
+    const cfg = w.config;
+    const show = () => {
+      body.replaceChildren();
+      const now = Date.now(), events = ((cfg.cache && cfg.cache.events) || []).filter((e) => e.end > now).slice(0, 4);
+      if (!events.length) body.appendChild(el('div', 'w-muted cal-empty', 'Nothing on your calendar in the next two weeks.'));
+      let lastDay = '';
+      for (const e of events) {
+        const d = day(e.start);
+        if (d !== lastDay && !(lastDay === '' && d === 'Today')) body.appendChild(el('div', 'cal-daylabel', d)); lastDay = d;
+        const row = el('div', 'cal-event' + (e.start <= now ? ' now' : ''));
+        const top = el('div', 'cal-ev-top');
+        top.append(el('span', 'cal-ev-time', e.allDay ? 'All day' : time(e.start) + ' – ' + time(e.end)));
+        if (e.start <= now) top.appendChild(el('span', 'cal-now', 'Now'));
+        row.append(top, el('div', 'cal-ev-title', e.title));
+        if (e.where) { const p = el('div', 'cal-ev-where'); p.appendChild(svgIcon('<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>')); p.appendChild(el('span', null, e.where)); row.appendChild(p); }
+        body.appendChild(row);
+      }
+      const link = openLink(cfg);
+      if (link) { const more = el('a', 'cal-more', 'See more'); more.href = link; body.appendChild(more); }
+    };
+    show();
+    // Fresh events now and then (the address is your calendar's own private one).
+    if (!cfg.cache || Date.now() - cfg.cache.at > 5 * 60e3) {
+      const r = await window.stupid.invoke('calendar:fetch', cfg.ics).catch(() => null);
+      if (r && r.ics) { cfg.cache = { at: Date.now(), events: upcoming(r.ics) }; saveWidgets(true); if (body.isConnected) show(); }
+    }
+    if (!body.__calTimer) body.__calTimer = setInterval(() => { if (!body.isConnected) { clearInterval(body.__calTimer); return; } if (!document.hidden) agenda(w, body, card); }, 5 * 60e3);
+  }
+  return { upcoming, name, agenda, parse };
+})();

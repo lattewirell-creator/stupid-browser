@@ -681,6 +681,21 @@ handle('history:query', ['internal'], (_e, q, limit = 300, before = Infinity) =>
 });
 handle('history:delete', ['internal'], (_e, ids) => { const set = new Set(ids || []); store.write('history.json', getHistory().filter((x) => !set.has(x.id))); return true; });
 
+// The Calendar widget's connected calendar: its private iCal address (Google Calendar, Outlook, Apple…), fetched here
+// because a page may not fetch other sites. Only https (webcal:// is the same address), and at most 5 MB.
+handle('calendar:fetch', ['internal'], async (_e, url) => {
+  url = String(url || '').trim().replace(/^webcal:\/\//i, 'https://');
+  if (!/^https:\/\/[^\s]{4,2000}$/i.test(url)) return { error: 'Paste the calendar’s private address (it starts with https:// or webcal://).' };
+  try {
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), 15000);
+    const r = await net.fetch(url, { signal: c.signal, headers: { Accept: 'text/calendar, */*' } }); clearTimeout(t);
+    if (!r.ok) return { error: r.status === 404 || r.status === 403 ? 'That calendar address didn’t work. Copy it again from your calendar’s settings.' : 'The calendar answered with an error (' + r.status + ').' };
+    const text = await r.text();
+    if (text.length > 5 * 1048576) return { error: 'That calendar is too big.' };
+    if (!/BEGIN:VCALENDAR/.test(text.slice(0, 2000))) return { error: 'That address isn’t a calendar. Use the private address in iCal format.' };
+    return { ics: text };
+  } catch (e) { return { error: 'Couldn’t reach the calendar. Are you online?' }; }
+});
 handle('downloads:list', ANY, () => getDownloads());
 handle('downloads:action', ANY, async (_e, id, action) => {
   const rec = getDownloads().find((d) => d.id === id);
