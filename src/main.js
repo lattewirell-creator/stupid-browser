@@ -24,6 +24,11 @@ if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser'
 const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; Win64; x64';
 const UA = `Mozilla/5.0 (${UA_OS}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
 app.userAgentFallback = UA;
+// Google refuses to sign you in from browsers it thinks are "embedded apps" ("This browser or app may not be secure"):
+// Chromium's client hints say Chromium, not Chrome. On Google's sign-in pages only, the browser presents itself as
+// Firefox (which sends no client hints), the way other independent browsers get Google sign-in to work.
+const FIREFOX_UA = `Mozilla/5.0 (${IS_MAC ? 'Macintosh; Intel Mac OS X 10.15' : 'Windows NT 10.0; Win64; x64'}; rv:133.0) Gecko/20100101 Firefox/133.0`;
+const isGoogleSignIn = (u) => /^https:\/\/accounts\.google\.[a-z.]+\//i.test(String(u || ''));
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'stupid', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false } }
@@ -271,6 +276,10 @@ function prepareSession(ses, { tabs, incognito }) {
 
   // Do Not Track / Global Privacy Control headers
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    if (isGoogleSignIn(details.url)) {
+      details.requestHeaders['User-Agent'] = FIREFOX_UA;
+      for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-ua/i.test(h)) delete details.requestHeaders[h];
+    }
     if (getSettings().dnt && /^https?:/.test(details.url)) {
       details.requestHeaders.DNT = '1';
       details.requestHeaders['Sec-GPC'] = '1';
@@ -1261,6 +1270,12 @@ app.on('web-contents-created', (_e, contents) => {
 
   if (contents.getType() !== 'webview') return;
   hookShortcuts(contents);
+  // On Google's sign-in pages the tab presents itself as Firefox (see FIREFOX_UA), everywhere else as Chrome.
+  contents.on('did-start-navigation', (d) => {
+    if (!d.isMainFrame || contents.isDestroyed()) return;
+    const want = isGoogleSignIn(d.url) ? FIREFOX_UA : UA;
+    if (contents.getUserAgent() !== want) contents.setUserAgent(want);
+  });
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
   const hideSearchAds = () => {
