@@ -152,3 +152,22 @@
 .wb-actions { display: flex; gap: 8px; align-items: center; padding-top: 8px; border-top: 1px solid var(--line); margin-top: 4px; }
 .cz-make { border-style: dashed; }
 @media (max-width: 760px) { .wb-dialog { grid-template-columns: 1fr; } .wb-preview { display: none; } }
+
+/* Calendar connected: what's coming up (widgets.js, Cal) */
+.cal-connect { margin-top: 10px; width: 100%; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600; font-size: 13px; }
+.cal-connect:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.cal-help { font-size: 12px; line-height: 1.45; margin-bottom: 8px; }
+.cal-daylabel { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 10px 2px 4px; }
+.cal-event { display: flex; flex-direction: column; gap: 3px; padding: 11px 13px; border-radius: 14px; background: color-mix(in srgb, var(--text) 5%, transparent); margin-bottom: 6px; }
+.cal-event.now { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.cal-ev-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.cal-ev-time { font-weight: 600; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cal-event.now .cal-ev-time { color: var(--accent); }
+.cal-ev-title { font-weight: 650; font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.cal-now { flex: none; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--accent); color: #fff; }
+.cal-ev-where { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); min-width: 0; }
+.cal-ev-where svg { width: 15px; height: 15px; flex: none; }
+.cal-ev-where span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-more { display: block; padding: 10px 13px; border-radius: 14px; background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--accent); font-weight: 600; font-size: 13px; text-decoration: none; }
+.cal-more:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
+.cal-empty { padding: 8px 2px; }

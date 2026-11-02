@@ -34,6 +34,10 @@ svg .fill { fill: currentColor; stroke: none; }
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px); }
 .mac #titlebar { padding-left: 82px; padding-right: 8px; }   /* room for the macOS traffic lights */
 .brand { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 6px; }
+/* The logo opens the menu (renderer.js): a button, not part of the window's drag area. */
+#titlebar .brand { -webkit-app-region: no-drag; cursor: pointer; border-radius: 10px; margin: 0 2px; transition: background .15s; }
+#titlebar .brand:hover { background: var(--hover); }
+#titlebar .brand:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .logo-mark { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: inset 0 0 0 4px var(--bar); outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
 .private-badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 #pinnedTabs, #tabs { display: flex; align-items: flex-end; gap: 1px; -webkit-app-region: no-drag; min-width: 0; }
@@ -741,15 +745,10 @@ body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
 .tab.drag-hover { background: var(--accent-soft, rgba(217,119,87,.15)); }
 #tabs.drop-link, #newTabBtn.drop-link { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 10px; }
 
-/* Search with Buddy: the button in the address bar, and Buddy mode */
-.ask-buddy-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 0 4px; margin-right: 4px; border-radius: 13px; font-size: 12px; font-weight: 600; color: var(--muted); flex: none; }
-.ask-buddy-btn:hover { background: var(--hover); color: var(--text); }
-.ask-buddy-btn.on { background: var(--accent); color: #fff; }
+/* Search with Buddy: Buddy's little ball on the suggestion row */
 .mini-ball { position: relative; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #EBA588, #D97757 68%); flex: none; }
 .mini-ball i { position: absolute; top: 31%; width: 15%; height: 30%; border-radius: 999px; background: #fff; }
 .mini-ball i:nth-of-type(1) { left: 29%; } .mini-ball i:nth-of-type(2) { right: 29%; }
-.ask-buddy-btn .ask-label { display: none; }
-#omnibox:focus-within .ask-buddy-btn .ask-label, .ask-buddy-btn.on .ask-label { display: inline; }
 #omnibox.buddy-mode { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
 
 /* Screenshots and recordings (capture.js): picking a part of the page, the card, and the recording frame */

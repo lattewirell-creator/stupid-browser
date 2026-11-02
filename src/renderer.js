@@ -703,7 +703,7 @@ function showMenu(target, items, x, y) {
   showPopAt(m, x, y);
 }
 document.addEventListener('mousedown', (e) => {
-  if (!$('ctxMenu').contains(e.target) && !$('menu').contains(e.target) && e.target.id !== 'menuBtn' && !$('menuBtn').contains(e.target)) hideMenus();
+  if (!$('ctxMenu').contains(e.target) && !$('menu').contains(e.target) && e.target.id !== 'menuBtn' && !$('menuBtn').contains(e.target) && !e.target.closest('#titlebar .brand')) hideMenus();
   if (!$('popover').contains(e.target) && !e.target.closest('#siteBtn,#starBtn,#dlBtn,.group-chip,.rail-add,#gridBtn,#profileBtn,#soundBtn') && !$('popover').classList.contains('sticky')) hidePop();
   if (!$('omnibox').contains(e.target)) closeSuggest();
 });
@@ -752,8 +752,8 @@ function zoomRow() {
   return { row };
 }
 function themeLabel() { const m = settings.theme || 'system'; return 'Theme: ' + m[0].toUpperCase() + m.slice(1); }
-function mainMenu() {
-  const r = $('menuBtn').getBoundingClientRect();
+function mainMenu(anchor) {
+  const r = (anchor || $('menuBtn')).getBoundingClientRect();
   showMenu('menu', [
     { label: 'New tab', key: 'Ctrl+T', fn: () => newTab() },
     { label: 'New window', key: 'Ctrl+N', fn: () => call('win:new', {}) },
@@ -782,9 +782,17 @@ function mainMenu() {
     '-',
     { label: 'Settings', key: 'Ctrl+,', fn: () => openInternal('settings') },
     { label: 'Close window', key: 'Ctrl+Shift+W', fn: () => call('win:close') }
-  ], r.right - 260, r.bottom + 4);
+  ], anchor ? r.left : r.right - 260, r.bottom + 4);
 }
 $('menuBtn').addEventListener('click', () => { if ($('menu').classList.contains('hidden')) mainMenu(); else hideMenus(); });
+// The logo in the corner opens the same menu, under the logo (like Vivaldi's V button).
+{
+  const brand = document.querySelector('#titlebar .brand');
+  brand.setAttribute('role', 'button'); brand.tabIndex = 0; brand.title = 'Menu';
+  const toggle = () => { if ($('menu').classList.contains('hidden')) mainMenu(brand); else hideMenus(); };
+  brand.addEventListener('click', toggle);
+  brand.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+}
 function cycleTheme() {
   const order = ['system', 'light', 'dark'];
   const m = order[(order.indexOf(settings.theme || 'system') + 1) % 3];
@@ -1044,12 +1052,11 @@ function renderSuggest() {
   });
   box.classList.remove('hidden');
 }
-/* Buddy mode: the address bar asks Buddy instead of a search engine (the Buddy button, or Shift+Enter once). */
+/* Buddy search: Shift+Enter or the "Search with Buddy" row asks Buddy instead of a search engine. */
 let buddyMode = false;
 const askUrl = (q) => 'stupid://ask/?q=' + encodeURIComponent(q);
 function setBuddyMode(on) {
   buddyMode = !!on;
-  const b = $('askBuddyBtn'); if (b) { b.classList.toggle('on', buddyMode); b.setAttribute('aria-pressed', buddyMode); }
   $('omnibox').classList.toggle('buddy-mode', buddyMode);
   $('address').placeholder = buddyMode ? `Ask ${(settings.buddyLook && settings.buddyLook.name) || 'Buddy'} anything…` : 'Search or type a URL';
 }
@@ -1087,8 +1094,6 @@ $('address').addEventListener('keydown', (e) => {
   }
 });
 $('address').addEventListener('focus', () => setTimeout(() => $('address').select(), 0));
-$('askBuddyBtn').addEventListener('mousedown', (e) => e.preventDefault());
-$('askBuddyBtn').addEventListener('click', () => { setBuddyMode(!buddyMode); $('address').focus(); if (buddyMode && isNewtab(activeTab().url)) $('address').value = ''; });
 $('address').addEventListener('contextmenu', (e) => { e.preventDefault(); const a = $('address'); call('shell:editMenu', { go: true, hasSelection: a.selectionStart !== a.selectionEnd }).catch(() => {}); });
 api.on('paste-go', (text) => { if (text) { closeSuggest(); navigate(text); $('address').blur(); } });
 $('address').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('address')) { closeSuggest(); const t = activeTab(); if (t) $('address').value = displayUrl(t.url); } }, 120));
