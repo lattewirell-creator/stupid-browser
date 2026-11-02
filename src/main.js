@@ -64,7 +64,7 @@ const DEFAULT_SETTINGS = () => ({
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
-  adblock: true, dnt: false, savePasswords: true,
+  adblock: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
   pinned: []
@@ -781,6 +781,45 @@ handle('pw:respond', ['shell'], (_e, id, action) => {
   else list.push({ id: 'p' + Date.now().toString(36), origin: p.origin, username: p.username, password: enc(p.password), created: Date.now() });
   store.write('passwords.json', list); broadcast('passwords:changed', true);
 });
+/* ---------- payment cards (page-preload.js offers to save them, and fills them in when you pick one) ----------
+   Like the big browsers: the card number is encrypted on this computer (enc/dec, like passwords), the security code
+   (CVC) is never saved, only secure (https) pages may offer or fill, and a page only ever gets a card's details
+   after you picked that card in the little list under the field. */
+const pendingCards = new Map(); let cardSeq = 0;
+const getCards = () => store.read('cards.json', []);
+const luhn = (n) => { let s = 0; for (let i = 0; i < n.length; i++) { let d = +n[n.length - 1 - i]; if (i % 2) { d *= 2; if (d > 9) d -= 9; } s += d; } return s % 10 === 0; };
+const cardBrand = (n) => (/^4/.test(n) ? 'Visa' : /^(5[1-5]|2[2-7])/.test(n) ? 'Mastercard' : /^3[47]/.test(n) ? 'Amex' : /^6(011|5)/.test(n) ? 'Discover' : /^35/.test(n) ? 'JCB' : 'Card');
+const cardView = (c) => { const n = dec(c.number); return { id: c.id, brand: cardBrand(n), last4: n.slice(-4), exp: c.month && c.year ? `${String(c.month).padStart(2, '0')}/${String(c.year).slice(-2)}` : '', name: c.name || '' }; };
+const secureFrame = (e) => { try { return e.sender.getType() === 'webview' && e.senderFrame.origin.startsWith('https:') && !entryFor(e.sender).incognito; } catch { return false; } };
+ipcMain.on('card:submitted', (e, d) => {
+  if (!getSettings().saveCards || !secureFrame(e) || !d) return;
+  const number = String(d.number || '').replace(/\D/g, '');
+  if (number.length < 13 || number.length > 19 || !luhn(number)) return;
+  const month = Math.max(0, Math.min(12, parseInt(d.month, 10) || 0)), y = parseInt(d.year, 10) || 0, year = y && y < 100 ? 2000 + y : y;
+  const name = String(d.name || '').trim().slice(0, 80);
+  const same = getCards().find((c) => dec(c.number) === number);
+  if (same && same.month === month && same.year === year && (same.name || '') === name) return;
+  const shellWc = shellFor(e.sender); if (!shellWc) return;
+  const id = ++cardSeq; pendingCards.set(id, { number, month, year, name });
+  shellWc.send('card:offer', { id, brand: cardBrand(number), last4: number.slice(-4), exp: month && year ? `${String(month).padStart(2, '0')}/${String(year).slice(-2)}` : '', update: !!same });
+});
+handle('card:respond', ['shell'], (_e, id, action) => {
+  const p = pendingCards.get(id); pendingCards.delete(id);
+  if (!p || action !== 'save') return;
+  const list = getCards(); const same = list.find((c) => dec(c.number) === p.number);
+  if (same) Object.assign(same, { month: p.month || same.month, year: p.year || same.year, name: p.name || same.name, updated: Date.now() });
+  else list.push({ id: 'c' + Date.now().toString(36), number: enc(p.number), month: p.month, year: p.year, name: p.name, created: Date.now() });
+  store.write('cards.json', list); broadcast('cards:changed', true);
+});
+// The page asks which cards there are (only masked ones) when you click a card field, and gets one only when you pick it.
+ipcMain.handle('card:list', (e) => (getSettings().saveCards && secureFrame(e) ? getCards().map(cardView) : []));
+ipcMain.handle('card:get', (e, id) => {
+  if (!getSettings().saveCards || !secureFrame(e)) return null;
+  const c = getCards().find((x) => x.id === id); if (!c) return null;
+  return { number: dec(c.number), month: c.month, year: c.year, name: c.name || '' };
+});
+handle('cards:list', ['internal'], () => getCards().map(cardView));
+handle('cards:delete', ['internal'], (_e, id) => { store.write('cards.json', getCards().filter((c) => c.id !== id)); broadcast('cards:changed', true); return true; });
 handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, origin: x.origin, username: x.username || '', never: !!x.never, created: x.created })));
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
