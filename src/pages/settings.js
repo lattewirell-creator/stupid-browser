@@ -73,6 +73,7 @@ function render() {
   $('dnt').checked = !!s.dnt; $('dnt').onchange = (e) => set({ dnt: e.target.checked });
   // passwords / downloads
   $('savePasswords').checked = s.savePasswords !== false; $('savePasswords').onchange = (e) => set({ savePasswords: e.target.checked });
+  $('saveCards').checked = s.saveCards !== false; $('saveCards').onchange = (e) => set({ saveCards: e.target.checked });
   $('dlDir').textContent = s.downloadDir || '';
   $('askWhereToSave').checked = !!s.askWhereToSave; $('askWhereToSave').onchange = (e) => set({ askWhereToSave: e.target.checked });
 }
@@ -124,8 +125,25 @@ $('pwImport').onclick = async () => {
   if (!r.ok) { if (r.error !== 'canceled') toast(r.error); return; }
   toast(`Imported ${r.added} password${r.added === 1 ? '' : 's'}${r.skipped ? ` (${r.skipped} skipped)` : ''} — now delete ${r.file}, it holds your passwords in plain text`);
   renderPasswords();
+  renderCards();
 };
 
+async function renderCards() {
+  const list = await call('cards:list');
+  const box = $('cardList'); box.innerHTML = '';
+  if (!list.length) { box.appendChild(el('div', 'row muted', 'No saved cards. When you pay on a site, The Stupid Browser offers to save the card.')); return; }
+  for (const c of list) {
+    const r = el('div', 'row list-row');
+    const b = el('b', null, c.brand); b.style.width = '110px'; r.appendChild(b);
+    const n = el('span', 'ellipsis', '•••• ' + c.last4); n.style.flex = '1'; r.appendChild(n);
+    r.appendChild(el('span', 'muted', c.exp ? 'Expires ' + c.exp : ''));
+    if (c.name) { const nm = el('span', 'ellipsis muted', c.name); nm.style.width = '160px'; r.appendChild(nm); }
+    const x = el('button', 'icon-btn'); x.title = 'Delete'; x.appendChild(icon(X_ICON));
+    x.onclick = async () => { if (!confirm(`Delete ${c.brand} •••• ${c.last4}?`)) return; await call('cards:delete', c.id); renderCards(); };
+    r.appendChild(x); box.appendChild(r);
+  }
+}
+if (window.stupid && window.stupid.on) window.stupid.on('cards:changed', () => renderCards());
 async function renderPasswords() {
   const enc = await call('pw:encryption');
   $('encNote').textContent = enc ? (IS_ANDROID ? 'Passwords are encrypted with a key kept in your phone’s secure hardware and stay on this phone.' : IS_MAC ? 'Passwords are encrypted with a key kept in your macOS Keychain and stay on this computer.' : 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.') : 'Warning: system encryption is not available, passwords are only obfuscated.';

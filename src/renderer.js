@@ -942,6 +942,22 @@ api.on('pw:offer', (p) => {
   showPopAt(pop, r.right - 320, r.bottom + 8);
 });
 
+// Save a card you just paid with? (main checks it's a real card on a secure page; the security code is never saved)
+api.on('card:offer', (p) => {
+  if ($('popover').classList.contains('sticky') && !$('popover').classList.contains('hidden')) return;
+  const pop = $('popover'); pop.innerHTML = ''; pop.className = 'pop pw-pop sticky';
+  pop.appendChild(el('div', 'pop-title serif', p.update ? 'Update card?' : 'Save card?'));
+  pop.appendChild(el('div', 'pop-text', `${p.brand} •••• ${p.last4}` + (p.exp ? ` · expires ${p.exp}` : '')));
+  pop.appendChild(el('div', 'pop-note', 'Next time you pay, pick it from the list under the card number. It’s encrypted on this computer, and the security code is never saved. Manage cards in Settings → Payment methods.'));
+  const row = el('div', 'pop-actions');
+  const done = (a) => { call('card:respond', p.id, a); hidePop(true); if (a === 'save') toast('Card saved'); };
+  const no = el('button', 'pill', 'Not now'); no.addEventListener('click', () => done('dismiss'));
+  const yes = el('button', 'pill solid', p.update ? 'Update' : 'Save'); yes.addEventListener('click', () => done('save'));
+  row.append(el('div', 'grow'), no, yes); pop.appendChild(row);
+  const r = $('starBtn').getBoundingClientRect();
+  showPopAt(pop, r.right - 320, r.bottom + 8);
+});
+
 /* ---------------- downloads ---------------- */
 const dls = new Map();
 const fmtBytes = (n) => (n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n > 1e3 ? Math.round(n / 1e3) + ' KB' : (n || 0) + ' B');
