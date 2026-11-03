@@ -292,7 +292,11 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       if (!dir || !fs.existsSync(dir)) return { error: 'Pick a folder first' };
       if (!pass || pass.length < 8) return { error: 'Use a passphrase of at least 8 characters' };
       try { readFile(fileIn(dir), pass); } catch (e) { return { error: e.message }; }
-      saveState({ me: state().me, dir, pass: enc(pass), base: {}, last: 0, error: '' });
+      // Back on with the same folder and passphrase: carry on from the history kept when it was turned off, so what you
+      // changed in between counts as changed here (not as a conflict with your own older version).
+      const prev = state().prev;
+      const same = prev && prev.dir === dir && prev.pass && dec(prev.pass) === pass;
+      saveState({ me: state().me, dir, pass: enc(pass), base: same ? prev.base || {} : {}, last: same ? prev.last || 0 : 0, error: '' });
       const r = await syncNow(); startPolling(); return r;
     },
     // Answer to a pause: 'delete' spreads the deletes everywhere; 'restore' brings them back here from the sync file.
@@ -313,7 +317,7 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       const s = state(); saveState({ ...s, dismiss: [...(s.dismiss || []), id] });
       return syncNow();
     },
-    disable() { clearInterval(poll); clearTimeout(timer); saveState({ me: state().me }); broadcast('sync:changed', status()); return status(); },
+    disable() { clearInterval(poll); clearTimeout(timer); const s = state(); saveState({ me: s.me, prev: s.dir ? { dir: s.dir, pass: s.pass, base: s.base, last: s.last } : s.prev }); broadcast('sync:changed', status()); return status(); },
     start() { watchStore(); if (status().on) { setTimeout(syncNow, 5000); startPolling(); } },
   };
 };
