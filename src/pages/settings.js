@@ -155,6 +155,16 @@ function renderSync(st) {
   $('syncInfo').textContent = st.error ? `${st.dir} · ${st.error}` : `${st.dir} · ${st.last ? 'last synced ' + ago(st.last) : 'syncing…'}${what ? ' · ' + what : ''}`;
   $('syncInfo').classList.toggle('warn', !!st.error);
   const box = $('syncPaused'); box.replaceChildren();
+  for (const c of st.conflicts || []) {
+    const r = el('div', 'row');
+    const l = el('div', 'lbl', c.label);
+    l.appendChild(el('small', null, `Two computers changed this without seeing each other’s change. The newer one is in use; the other is from ${new Date(c.t).toLocaleString()}${c.detail ? ' (' + c.detail + ')' : ''}.`));
+    const use = el('button', 'btn small', 'Use the other one'), keep = el('button', 'btn small primary', 'Keep the newer');
+    use.onclick = async () => renderSync(await call('sync:conflict', c.id, 'use'));
+    keep.onclick = async () => renderSync(await call('sync:conflict', c.id, 'keep'));
+    const btns = el('div'); btns.style.cssText = 'display:flex;gap:8px'; btns.append(keep, use);
+    r.append(l, btns); box.appendChild(r);
+  }
   const label = { bookmarks: 'bookmarks', passwords: 'passwords', cards: 'payment cards' };
   for (const name of st.paused || []) {
     const r = el('div', 'row');

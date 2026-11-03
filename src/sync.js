@@ -11,6 +11,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const FILE = 'Stupid Browser Sync.sbsync';
+const CONFLICT_KINDS = ['passwords', 'cards'];   // where a lost edit matters enough to offer it back
+const CONFLICT_DAYS = 30;
 const MAGIC = 'stupid-browser-sync';
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 // Keyed with the passphrase, so the hashes kept on disk say nothing about a password or card number to anyone without it
@@ -134,9 +136,10 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       if (!!a.del !== !!b.del) return !!a.del;
       return !a.del && hash(a.v) > hash(b.v);
     };
-    const best = new Map(), seen = new Map();
+    const best = new Map(), seen = new Map(), all = new Map();
     const offer = (k, c) => {
       const m = seen.get(k) || {}; for (const [id, n] of Object.entries(c.c)) if (n > (m[id] || 0)) m[id] = n; seen.set(k, m);
+      if (!all.has(k)) all.set(k, []); all.get(k).push(c);
       if (wins(c, best.get(k))) best.set(k, c);
     };
     const clockOf = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
@@ -157,17 +160,29 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       else offer(k, { v: e.v, t: Math.min(now, e.t), c: {}, u: true });                  // no sync history here: see wins()
     }
     for (const k of Object.keys(base)) if (!local.has(k)) offer(k, { del: true, t: Math.min(now, touched || now), c: tick(baseOf(k)[1]) });   // deleted here
+    // Edits that lost without the winner having seen them (made apart, decided by time) are handed back as "lost", so
+    // nothing anyone typed disappears silently: Settings → Sync offers them to pick instead.
+    const lost = [];
+    for (const [k, w] of best) {
+      if (w.del) continue;
+      const hw = hash(w.v), got = new Set([hw]);
+      for (const x of all.get(k)) {
+        if (x.del || got.has(hash(x.v))) continue;
+        if (!w.u && !x.u && covers(w.c, x.c)) continue;   // the winner was made after seeing this one: an ordinary update
+        got.add(hash(x.v)); lost.push({ key: k, v: x.v, t: x.t });
+      }
+    }
     const items = new Map(), deleted = new Map();
     for (const [k, w] of best) {
       const c = w.u ? tick(seen.get(k)) : seen.get(k);   // a winner without history now covers everything it beat
       if (!w.del) items.set(k, { v: w.v, t: w.t, c });
       else deleted.set(k, [w.t, c]);   // kept for good (a few dozen bytes each), so even a computer away for a year hears of it
     }
-    return { items, deleted };
+    return { items, deleted, lost };
   }
 
-  let running = null, timer = null, poll = null, lastMtime = 0, muted = false;
-  const status = () => { const s = state(); return { on: !!(s.dir && s.pass), dir: s.dir || '', last: s.last || 0, error: s.error || '', counts: s.counts || null, paused: s.paused || [] }; };
+  let running = null, timer = null, poll = null, lastMtime = 0, muted = false, lastConflicts = {};
+  const status = () => { const s = state(); return { on: !!(s.dir && s.pass), dir: s.dir || '', last: s.last || 0, error: s.error || '', counts: s.counts || null, paused: s.paused || [], conflicts: s.conflicts || [] }; };
 
   async function syncNow() {
     if (running) return running;
@@ -196,12 +211,14 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
           if (!locals[name].size && Object.keys(base[name] || {}).length >= 5 && !allow.includes(name)) paused.push(name);
         }
         let changedRemote = !main || copies.length > 0;
+        const newConflicts = {};
         muted = true;
         try {
           for (const [name, k] of Object.entries(kinds)) {
             if (paused.includes(name)) { next[name] = (main && main.data[name]) || { items: {}, deleted: {} }; nextBase[name] = base[name]; counts[name] = (s.counts || {})[name] || 0; continue; }
             const local = locals[name];
-            const { items, deleted } = merge(local, sources.map((d) => d[name] || {}), base[name] || {}, now, (s.touched || {})[name], me);
+            const { items, deleted, lost } = merge(local, sources.map((d) => d[name] || {}), base[name] || {}, now, (s.touched || {})[name], me);
+            if (CONFLICT_KINDS.includes(name)) for (const l of lost) { const id = hash([name, l.key, l.v, l.t]); newConflicts[id] = { kind: name, key: l.key, v: l.v, t: l.t, at: now }; }
             const sameAsLocal = items.size === local.size && [...items].every(([key, e]) => local.has(key) && hash(local.get(key).v) === hash(e.v) && local.get(key).t === e.t);
             if (!sameAsLocal) k.apply(items);
             const out = { items: Object.fromEntries(items), deleted: Object.fromEntries(deleted) };
@@ -214,12 +231,28 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
             counts[name] = items.size;
           }
         } finally { muted = false; }
+        // Conflicts travel in the file, so every computer can offer them; a choice made on one clears them everywhere.
+        const dismissed = {}, conflicts = {};
+        for (const d of sources) for (const [id, at] of Object.entries(d.dismissed || {})) dismissed[id] = Math.max(dismissed[id] || 0, +at || 0);
+        for (const id of s.dismiss || []) dismissed[id] = now;
+        for (const id of Object.keys(dismissed)) if (now - dismissed[id] > CONFLICT_DAYS * 864e5) delete dismissed[id];
+        for (const d of [...sources, { conflicts: newConflicts }]) for (const [id, c] of Object.entries(d.conflicts || {})) {
+          if (!c || !CONFLICT_KINDS.includes(c.kind) || dismissed[id] || now - (+c.at || 0) > CONFLICT_DAYS * 864e5) continue;
+          const cur = next[c.kind] && next[c.kind].items && next[c.kind].items[c.key];
+          if (!cur || hash(cur.v) === hash(c.v)) continue;   // gone, or the same as what's kept now: nothing to choose
+          conflicts[id] = c;
+        }
+        next.conflicts = conflicts; next.dismissed = dismissed;
+        const csig = (d) => JSON.stringify([Object.keys((d && d.conflicts) || {}).sort(), Object.keys((d && d.dismissed) || {}).sort()]);
+        if (!main || csig(main.data) !== csig(next)) changedRemote = true;
+        lastConflicts = conflicts;
+        const conflictView = Object.entries(conflicts).map(([id, c]) => ({ id, kind: c.kind, t: c.t, label: c.kind === 'passwords' ? `${String(c.v.origin || '').replace(/^https?:\/\//, '')} · ${c.v.username || '(no username)'}` : `Card •••• ${String(c.v.number || '').slice(-4)}`, detail: c.kind === 'cards' ? `expires ${String(c.v.month).padStart(2, '0')}/${String(c.v.year).slice(-2)}${c.v.name ? ' · ' + c.v.name : ''}` : '' }));
         if (changedRemote) lastMtime = writeRemote(s.dir, pass, salt, next);
         else try { lastMtime = fs.statSync(fileIn(s.dir)).mtimeMs; } catch {}
         for (const c of copies) try { fs.unlinkSync(c.file); } catch {}
         const label = { bookmarks: 'bookmarks', passwords: 'passwords', cards: 'payment cards' };
         const error = paused.length ? `All your ${paused.map((n) => label[n]).join(' and ')} are gone on this computer since the last sync. Sync left them alone on your other computers until you choose below.` : '';
-        saveState({ ...state(), me, base: nextBase, last: paused.length ? s.last || 0 : Date.now(), error, counts, paused, allowEmpty: [], touched: paused.length ? s.touched || {} : {} });
+        saveState({ ...state(), me, base: nextBase, last: paused.length ? s.last || 0 : Date.now(), error, counts, paused, allowEmpty: [], touched: paused.length ? s.touched || {} : {}, conflicts: conflictView, dismiss: [] });
       } catch (e) {
         saveState({ ...state(), error: e.message || 'Sync failed' });
       }
@@ -267,6 +300,17 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       const s = state(); if (!(s.paused || []).includes(name)) return status();
       if (choice === 'delete') saveState({ ...s, allowEmpty: [...(s.allowEmpty || []), name] });
       else if (choice === 'restore') saveState({ ...s, base: { ...(s.base || {}), [name]: {} } });
+      return syncNow();
+    },
+    // A conflict: 'use' makes the other version the current one everywhere (as a fresh edit here); 'keep' leaves it as is.
+    async conflict(id, choice) {
+      if (!lastConflicts[id]) await syncNow();
+      const c = lastConflicts[id]; if (!c) return status();
+      if (choice === 'use') {
+        const k = kinds[c.kind], local = k.local();
+        if (local.has(c.key) || c.kind === 'passwords' || c.kind === 'cards') { local.set(c.key, { v: c.v, t: Date.now() }); k.apply(local); }
+      }
+      const s = state(); saveState({ ...s, dismiss: [...(s.dismiss || []), id] });
       return syncNow();
     },
     disable() { clearInterval(poll); clearTimeout(timer); saveState({ me: state().me }); broadcast('sync:changed', status()); return status(); },
