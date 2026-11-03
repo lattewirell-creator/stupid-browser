@@ -144,6 +144,51 @@ async function renderCards() {
   }
 }
 if (window.stupid && window.stupid.on) window.stupid.on('cards:changed', () => renderCards());
+// Sync: a folder your cloud drive syncs + a passphrase (see sync.js in the app).
+let syncDir = '';
+const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : new Date(t).toLocaleString(); };
+function renderSync(st) {
+  $('syncOff').classList.toggle('hidden', st.on); $('syncOnCard').classList.toggle('hidden', !st.on);
+  if (!st.on) { $('syncDirLbl').textContent = syncDir || 'None picked yet'; return; }
+  const c = st.counts;
+  const what = c ? `${c.bookmarks} bookmark${c.bookmarks === 1 ? '' : 's'}, ${c.passwords} password${c.passwords === 1 ? '' : 's'}, ${c.cards} card${c.cards === 1 ? '' : 's'}` : '';
+  $('syncInfo').textContent = st.error ? `${st.dir} · ${st.error}` : `${st.dir} · ${st.last ? 'last synced ' + ago(st.last) : 'syncing…'}${what ? ' · ' + what : ''}`;
+  $('syncInfo').classList.toggle('warn', !!st.error);
+  const box = $('syncPaused'); box.replaceChildren();
+  for (const c of st.conflicts || []) {
+    const r = el('div', 'row');
+    const l = el('div', 'lbl', c.label);
+    l.appendChild(el('small', null, `Two computers changed this without seeing each other’s change. The newer one is in use; the other is from ${new Date(c.t).toLocaleString()}${c.detail ? ' (' + c.detail + ')' : ''}.`));
+    const use = el('button', 'btn small', 'Use the other one'), keep = el('button', 'btn small primary', 'Keep the newer');
+    use.onclick = async () => renderSync(await call('sync:conflict', c.id, 'use'));
+    keep.onclick = async () => renderSync(await call('sync:conflict', c.id, 'keep'));
+    const btns = el('div'); btns.style.cssText = 'display:flex;gap:8px'; btns.append(keep, use);
+    r.append(l, btns); box.appendChild(r);
+  }
+  const label = { bookmarks: 'bookmarks', passwords: 'passwords', cards: 'payment cards' };
+  for (const name of st.paused || []) {
+    const r = el('div', 'row');
+    const l = el('div', 'lbl', `Your ${label[name]} are empty here`); l.appendChild(el('small', null, 'Delete them on all your computers too, or bring them back here from the sync file?'));
+    const del = el('button', 'btn small', 'Delete everywhere'), back = el('button', 'btn small primary', 'Bring them back');
+    del.onclick = async () => { if (confirm(`Delete all your ${label[name]} on every computer?`)) renderSync(await call('sync:resolve', name, 'delete')); };
+    back.onclick = async () => renderSync(await call('sync:resolve', name, 'restore'));
+    const btns = el('div', 'inline'); btns.style.cssText = 'display:flex;gap:8px'; btns.append(back, del);
+    r.append(l, btns); box.appendChild(r);
+  }
+}
+$('syncPick').onclick = async () => { const d = await call('sync:chooseDir'); if (d) { syncDir = d; $('syncDirLbl').textContent = d; } };
+$('syncOn').onclick = async () => {
+  if (!syncDir) { toast('Choose a folder first'); return; }
+  $('syncOn').disabled = true;
+  const r = await call('sync:enable', syncDir, $('syncPass').value).catch((e) => ({ error: e.message }));
+  $('syncOn').disabled = false;
+  if (r.error && !r.on) { toast(r.error); return; }
+  $('syncPass').value = ''; renderSync(r); toast(r.error ? r.error : 'Sync is on');
+};
+$('syncNow').onclick = async () => { renderSync(await call('sync:now')); };
+$('syncOffBtn').onclick = async () => { if (!confirm('Turn off sync on this computer?')) return; renderSync(await call('sync:disable')); };
+call('sync:status').then(renderSync).catch(() => {});
+if (window.stupid && window.stupid.on) window.stupid.on('sync:changed', renderSync);
 async function renderPasswords() {
   const enc = await call('pw:encryption');
   $('encNote').textContent = enc ? (IS_ANDROID ? 'Passwords are encrypted with a key kept in your phone’s secure hardware and stay on this phone.' : IS_MAC ? 'Passwords are encrypted with a key kept in your macOS Keychain and stay on this computer.' : 'Passwords are encrypted with your Windows account (DPAPI) and stay on this computer.') : 'Warning: system encryption is not available, passwords are only obfuscated.';

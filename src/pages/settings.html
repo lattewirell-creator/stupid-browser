@@ -20,6 +20,7 @@
     <a href="#privacy">Privacy &amp; security</a>
     <a href="#passwords">Passwords</a>
     <a href="#cards">Payment methods</a>
+    <a href="#sync">Sync</a>
     <a href="#import">Import from another browser</a>
     <a href="#downloads">Downloads</a>
     <a href="#performance">Performance</a>
@@ -115,6 +116,20 @@
       <div class="card" id="cardList"></div>
     </section>
 
+    <section id="sync"><h2>Sync</h2>
+      <p class="muted section-note">Keep bookmarks, passwords and payment cards the same on all your computers, without an account. Pick a folder your cloud drive already syncs (OneDrive, Dropbox, iCloud Drive or Google Drive) and a passphrase. Everything goes into one file there, encrypted with your passphrase before it leaves this computer. Use the same folder and passphrase on your other computers.</p>
+      <div class="card" id="syncOff">
+        <div class="row"><div class="lbl">Folder<small id="syncDirLbl">None picked yet</small></div><button id="syncPick" class="btn small">Choose folder…</button></div>
+        <div class="row"><div class="lbl">Passphrase<small>At least 8 characters. Nobody can reset it, us included, so keep it somewhere safe.</small></div><input id="syncPass" class="input" type="password" autocomplete="new-password" placeholder="Passphrase"></div>
+        <div class="row"><div class="lbl"></div><button id="syncOn" class="btn small primary">Turn on sync</button></div>
+      </div>
+      <div class="card hidden" id="syncOnCard">
+        <div class="row"><div class="lbl">Sync is on<small id="syncInfo"></small></div><button id="syncNow" class="btn small">Sync now</button></div>
+        <div id="syncPaused"></div>
+        <div class="row"><div class="lbl">Turn off on this computer<small>Your other computers keep syncing with each other. Turn it back on here with the same folder and passphrase, and what you changed in the meantime syncs too, deletes included.</small></div><button id="syncOffBtn" class="btn small">Turn off</button></div>
+      </div>
+    </section>
+
     <section id="import"><h2>Import from another browser</h2>
       <p class="muted section-note">Bookmarks and history come from the browsers on this computer. If you’re signed in to a Google or Mozilla account there, you get everything that account has synced. Nothing is changed in the other browser.</p>
       <div class="card" id="importSources"></div>
@@ -139,7 +154,7 @@
     <section id="buddy"><h2>AI buddy</h2>
       <div class="card">
         <div class="row"><div class="lbl">AI buddy<small>The little helper in the corner. Turn off to never show it.</small></div><input type="checkbox" class="toggle" id="buddyOn"></div>
-        <div class="row"><div class="lbl">AI button<small>What the ✳ button and Ctrl+Shift+A do</small></div><select id="aiButton" class="input"><option value="buddy">Open AI buddy</option><option value="sidebar">Open AI sidebar (chat websites)</option><option value="off">Nothing — hide the AI button</option></select></div>
+        <div class="row"><div class="lbl">AI button<small>What the Buddy button and Ctrl+Shift+A do</small></div><select id="aiButton" class="input"><option value="buddy">Open AI buddy</option><option value="sidebar">Open AI sidebar (chat websites)</option><option value="off">Nothing — hide the AI button</option></select></div>
       </div>
       <div class="card" id="buddySetup">
         <div class="row"><div class="lbl">AI<small>Which AI Buddy talks to</small></div><select id="buddyProvider" class="input"></select></div>

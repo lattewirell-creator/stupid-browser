@@ -211,6 +211,9 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   win.once('ready-to-show', () => { if (instant) perfMark('ready-to-show'); if (!instant) showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   win.webContents.on('context-menu', (_e, p) => { if (p.isEditable) shellEditMenu(win.webContents, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
   win.on('swipe', (_e, dir) => { if (dir === 'left' || dir === 'right') win.webContents.send('shortcut', dir === 'left' ? 'back' : 'forward'); });   // macOS trackpad swipe
+  // The browser's own UI never opens windows or leaves index.html: a stray link in it (reader view, a widget) opens as a tab.
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) win.webContents.send('open-url', { url, where: 'foreground' }); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (e, url) => { e.preventDefault(); if (/^https?:/.test(url)) win.webContents.send('open-url', { url, where: 'foreground' }); });
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
@@ -299,6 +302,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Saved payment cards: offered and filled in private windows too (the cards themselves live in the normal profile).
+  if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'card-preload.js') });
   // Drag a picture out of a page as a real file (tabs only, private windows too).
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'drag-preload.js') });
   // Highlighted text → "Ask Buddy" button in the browser UI (tabs only).
@@ -636,7 +641,15 @@ const cleanEq = (eq) => {
 handle('settings:reset', ['internal'], () => { const keep = { pinned: getSettings().pinned }; store.write('settings.json', keep); applySettingsSideEffects(DEFAULT_SETTINGS()); broadcast('settings:changed', publicSettings()); return publicSettings(); });
 
 handle('bookmarks:get', ANY, () => getBookmarks());
-handle('bookmarks:set', ANY, (_e, list) => { if (Array.isArray(list)) { store.write('bookmarks.json', list); broadcast('bookmarks:changed', list); } return true; });
+handle('bookmarks:set', ANY, (_e, list) => {
+  if (!Array.isArray(list)) return true;
+  // Every place that edits bookmarks comes through here: a bookmark that was renamed, moved or changed gets the time of
+  // the change, which sync needs to tell the newer edit apart.
+  const now = Date.now(), old = new Map(getBookmarks().map((b) => [b.id, b]));
+  const same = (a, b) => { const x = { ...a }, y = { ...b }; delete x.ts; delete y.ts; return JSON.stringify(x) === JSON.stringify(y); };
+  list = list.map((b) => (b && b.id && (!old.has(b.id) ? !b.ts : !same(old.get(b.id), b)) ? { ...b, ts: now } : b));
+  store.write('bookmarks.json', list); broadcast('bookmarks:changed', list); return true;
+});
 handle('bookmarks:folderMenu', ['shell'], (e, folderId, x, y) => {
   const all = getBookmarks();
   const build = (pid) => {
@@ -816,7 +829,7 @@ const getCards = () => store.read('cards.json', []);
 const luhn = (n) => { let s = 0; for (let i = 0; i < n.length; i++) { let d = +n[n.length - 1 - i]; if (i % 2) { d *= 2; if (d > 9) d -= 9; } s += d; } return s % 10 === 0; };
 const cardBrand = (n) => (/^4/.test(n) ? 'Visa' : /^(5[1-5]|2[2-7])/.test(n) ? 'Mastercard' : /^3[47]/.test(n) ? 'Amex' : /^6(011|5)/.test(n) ? 'Discover' : /^35/.test(n) ? 'JCB' : 'Card');
 const cardView = (c) => { const n = dec(c.number); return { id: c.id, brand: cardBrand(n), last4: n.slice(-4), exp: c.month && c.year ? `${String(c.month).padStart(2, '0')}/${String(c.year).slice(-2)}` : '', name: c.name || '' }; };
-const secureFrame = (e) => { try { return e.sender.getType() === 'webview' && e.senderFrame.origin.startsWith('https:') && !entryFor(e.sender).incognito; } catch { return false; } };
+const secureFrame = (e) => { try { return e.sender.getType() === 'webview' && e.senderFrame.origin.startsWith('https:'); } catch { return false; } };
 ipcMain.on('card:submitted', (e, d) => {
   if (!getSettings().saveCards || !secureFrame(e) || !d) return;
   const number = String(d.number || '').replace(/\D/g, '');
@@ -846,6 +859,19 @@ ipcMain.handle('card:get', (e, id) => {
 });
 handle('cards:list', ['internal'], () => getCards().map(cardView));
 handle('cards:delete', ['internal'], (_e, id) => { store.write('cards.json', getCards().filter((c) => c.id !== id)); broadcast('cards:changed', true); return true; });
+/* ---------- sync between computers: one encrypted file in a folder your cloud drive syncs (see sync.js) ---------- */
+const sync = require('./sync')({ store, enc, dec, broadcast });
+const cloudFolder = () => [process.env.OneDrive, path.join(os.homedir(), 'OneDrive'), path.join(os.homedir(), 'Dropbox'), path.join(os.homedir(), 'Library', 'Mobile Documents', 'com~apple~CloudDocs'), path.join(os.homedir(), 'Google Drive'), path.join(os.homedir(), 'My Drive')].find((d) => d && fs.existsSync(d)) || os.homedir();
+handle('sync:status', ['internal'], () => sync.status());
+handle('sync:chooseDir', ['internal'], async (e) => {
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender.hostWebContents || e.sender), { title: 'Pick a folder your cloud drive syncs', properties: ['openDirectory', 'createDirectory'], defaultPath: sync.status().dir || cloudFolder() });
+  return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+});
+handle('sync:enable', ['internal'], (_e, dir, pass) => sync.enable(String(dir || ''), String(pass || '')));
+handle('sync:disable', ['internal'], () => sync.disable());
+handle('sync:now', ['internal'], () => sync.syncNow());
+handle('sync:resolve', ['internal'], (_e, name, choice) => sync.resolve(String(name), String(choice)));
+handle('sync:conflict', ['internal'], (_e, id, choice) => sync.conflict(String(id), String(choice)));
 handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, origin: x.origin, username: x.username || '', never: !!x.never, created: x.created })));
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });
@@ -1087,6 +1113,7 @@ function shortcutFor(input) {
     if (k === 'y') return 'rewind';
     if (k === 's') return 'split';
     if (k === 'x') return 'screenshot';
+    if (k === 'u') return 'buddy-summarize';
     if (k === 'r') return 'hard-reload';
     if (k === 'delete') return 'clear-data';
     if (k === 'tab') return 'prev-tab';
@@ -1246,6 +1273,9 @@ function pageContextMenu(wc, p) {
     T.push({ label: 'Back', enabled: wc.navigationHistory.canGoBack(), click: () => wc.navigationHistory.goBack() });
     T.push({ label: 'Forward', enabled: wc.navigationHistory.canGoForward(), click: () => wc.navigationHistory.goForward() });
     T.push({ label: 'Reload', click: () => wc.reload() });
+    sep();
+    T.push({ label: 'Summarize this page with Buddy', accelerator: 'CmdOrCtrl+Shift+U', registerAccelerator: false, click: () => shellWc.send('shortcut', 'buddy-summarize') });
+    T.push({ label: 'Reader view', click: () => shellWc.send('shortcut', 'reader') });
     sep();
     T.push({ label: 'Save page as…', click: () => wc.downloadURL(wc.getURL()) });
     T.push({ label: 'Print…', click: () => shellWc.send('shortcut', 'print') });
@@ -1529,6 +1559,7 @@ if (!app.requestSingleInstanceLock()) {
   perfMark('main-loaded');
   app.whenReady().then(() => {
     perfMark('app-ready');
+    sync.start();
     // When the computer runs low on memory, idle background tabs fall asleep right away (instead of after the
     // Settings → tab sleep delay), like the Mac app does. They wake when clicked; tabs playing sound, loading or
     // with half-typed text stay awake (the window's own sleepable/sleepTab rules).
@@ -1552,6 +1583,7 @@ if (!app.requestSingleInstanceLock()) {
     if (s.appIcon) setTimeout(applyAppIcon, 500);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
     if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
+    else if (process.env.STUPID_SELFTEST && process.env.STUPID_SELFTEST_PRIVATE) createWindow({ incognito: true });   // dev test of private windows
     else if (profiles.CURRENT === 'default' && !argUrl && !pendingOpen.length && profiles.list().length > 1 && profiles.pickerEnabled() && !process.env.STUPID_SELFTEST) showProfilePicker();
     else openStartupWindows([...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)]);
     app.on('activate', () => {

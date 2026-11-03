@@ -106,7 +106,7 @@ function createWebview(tab) {
   tab.internal = isInternal(tab.url);
   tab.wv = wv; tab.ready = false;
   wv.addEventListener('did-start-loading', () => { tab.loading = true; tab.crashed = false; renderTab(tab); if (tab.id === activeId) updateNav(); });
-  wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); rewindSoon(tab); });
+  wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) { updateNav(); if (window.reader) window.reader.check(tab); } scheduleSave(); rewindSoon(tab); });
   wv.addEventListener('dom-ready', () => { tab.ready = true; tab.wcId = wv.getWebContentsId(); if (tab.muted) wv.setAudioMuted(true); applySiteZoom(tab); readZoom(tab); if (tab.id === activeId) updateNav(); });
   wv.addEventListener('page-title-updated', (e) => { tab.title = e.title; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); });
   wv.addEventListener('page-favicon-updated', (e) => { tab.favicon = (e.favicons || []).find((f) => /^(https?|data):/.test(f)) || null; renderTab(tab); scheduleSave(); });
@@ -119,6 +119,8 @@ function createWebview(tab) {
     scheduleSave();
   };
   wv.addEventListener('did-navigate', onNav);
+  // a new page in this tab: the reader view of the old one goes away
+  wv.addEventListener('did-start-navigation', (e) => { if (e.isMainFrame && !e.isInPlace && tab.id === activeId && window.reader && window.reader.isOpen()) window.reader.close(); });
   wv.addEventListener('did-navigate-in-page', onNav);
   wv.addEventListener('focus', () => { if (split && split.includes(tab.id) && activeId !== tab.id) { activeId = tab.id; renderAll(); } closeSuggest(); hideAllPops(); });
   wv.addEventListener('did-fail-load', (e) => { if (e.isMainFrame && e.errorCode !== -3) { tab.title = "Can't reach this page"; tab.loadError = e.errorDescription; renderTab(tab); } });
@@ -290,7 +292,7 @@ function activate_(id) {
   tab.lastActive = Date.now();
   if (changed) rewindSoon(tab);
   if (!tab.wv) { tab.asleep = false; createWebview(tab); }
-  if (changed) holdUntilPainted(tab, prev);
+  if (changed) { holdUntilPainted(tab, prev); if (window.reader) { window.reader.close(); window.reader.check(tab); } }
   renderAll();
   if (changed) { closeFind(); hideAllPops(); showQueuedPrompt(); }
   if (isNewtab(tab.url)) setTimeout(() => { $('address').focus(); }, 30);
@@ -1441,6 +1443,9 @@ function runCmd(cmd) {
     case 'toggle-sidebar': call('settings:set', { showSidebar: settings.showSidebar === false }); break;
     case 'split': toggleSplit(); break;
     case 'screenshot': window.capture && window.capture.screenshot(); break;
+    // Buddy reads the page you're on and sums it up (his panel opens if it isn't).
+    case 'buddy-summarize': if (window.buddySummarize) window.buddySummarize(); else toggleAI(); break;
+    case 'reader': window.reader && window.reader.toggle(); break;
     case 'next-tab': cycle(1); break;
     case 'prev-tab': cycle(-1); break;
     case 'find': openFind(); break;

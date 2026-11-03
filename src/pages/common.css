@@ -43,3 +43,4 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .toggle:checked { background: var(--accent); }
 .toggle:checked::after { transform: translateX(16px); }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 12.5px; z-index: 50; animation: rise .18s var(--ease); }
+.lbl small.warn { color: #C2410C; }

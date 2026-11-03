@@ -235,6 +235,12 @@
     if (settings.aiButton === 'off') return;
     if (settings.aiButton === 'sidebar' || !buddyOn()) toggleAI(); else window.toggleBuddy();
   };
+  // "Summarize this page" (Ctrl+Shift+U, page menu). Asking for it is asking Buddy to read the page, except in a
+  // private window, where Buddy only looks if his eye is on. Buddy turned off → the AI sidebar, like the AI button.
+  window.buddySummarize = () => {
+    if (!buddyOn()) { toggleAI(); return; }
+    showBuddy().then(() => ask('Summarize this page in a few short points.', !(typeof info !== 'undefined' && info.incognito)));
+  };
   function applyAiPrefs() {
     $('aiBtn').classList.toggle('hidden', settings.aiButton === 'off');
     $('aiBtn').title = keyLabel(settings.aiButton === 'sidebar' || !buddyOn() ? 'AI sidebar (Ctrl+Shift+A)' : 'AI buddy (Ctrl+Shift+A)');
