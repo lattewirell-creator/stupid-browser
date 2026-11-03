@@ -125,7 +125,9 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
     const covers = (a, b) => Object.entries(b).every(([id, n]) => (a[id] || 0) >= n);
     const wins = (a, b) => {
       if (!b) return true;
-      const ab = covers(a.c, b.c), ba = covers(b.c, a.c);
+      // something saved here with no sync history (new, saved again after a delete, or changed while sync was off) has
+      // no clock to compare: only time can say which is newer
+      const ab = !a.u && !b.u && covers(a.c, b.c), ba = !a.u && !b.u && covers(b.c, a.c);
       if (ab && !ba) return true;
       if (ba && !ab) return false;
       if (T(a) !== T(b)) return T(a) > T(b);
@@ -151,12 +153,13 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
     for (const [k, e] of local) {
       const b = baseOf(k);
       if (b && hash(e.v) === b[0]) offer(k, { v: e.v, t: e.t, c: b[1] });                 // unchanged here
-      else offer(k, { v: e.v, t: b ? fresh(e.t) : Math.min(now, e.t), c: tick(b ? b[1] : {}) });   // changed here, or never synced from here
+      else if (b) offer(k, { v: e.v, t: fresh(e.t), c: tick(b[1]) });                       // changed here
+      else offer(k, { v: e.v, t: Math.min(now, e.t), c: {}, u: true });                  // no sync history here: see wins()
     }
     for (const k of Object.keys(base)) if (!local.has(k)) offer(k, { del: true, t: Math.min(now, touched || now), c: tick(baseOf(k)[1]) });   // deleted here
     const items = new Map(), deleted = new Map();
     for (const [k, w] of best) {
-      const c = seen.get(k);
+      const c = w.u ? tick(seen.get(k)) : seen.get(k);   // a winner without history now covers everything it beat
       if (!w.del) items.set(k, { v: w.v, t: w.t, c });
       else deleted.set(k, [w.t, c]);   // kept for good (a few dozen bytes each), so even a computer away for a year hears of it
     }
