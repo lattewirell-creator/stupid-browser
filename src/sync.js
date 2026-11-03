@@ -30,6 +30,7 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
     return keys.get(id);
   };
   const fileIn = (dir) => path.join(dir, FILE);
+  const passCheck = (pass, salt) => crypto.scryptSync(pass, Buffer.from('check:' + salt), 32, SCRYPT).toString('base64');
   // Cloud drives keep a losing write as a copy ("… (conflicted copy …)", "… 2.sbsync", "…-DESKTOP-1.sbsync"). Those are
   // read and merged too, then removed, so nothing written on another computer is lost to a race.
   const badCopies = new Set();   // "path|mtime" of copies that can't be read (other passphrase, broken): not retried until they change
@@ -295,7 +296,7 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       // Back on with the same folder and passphrase: carry on from the history kept when it was turned off, so what you
       // changed in between counts as changed here (not as a conflict with your own older version).
       const prev = state().prev;
-      const same = prev && prev.dir === dir && prev.pass && dec(prev.pass) === pass;
+      const same = prev && prev.dir === dir && prev.salt && prev.check && crypto.timingSafeEqual(Buffer.from(passCheck(pass, prev.salt), 'base64'), Buffer.from(prev.check, 'base64'));
       saveState({ me: state().me, dir, pass: enc(pass), base: same ? prev.base || {} : {}, last: same ? prev.last || 0 : 0, error: '' });
       const r = await syncNow(); startPolling(); return r;
     },
@@ -317,7 +318,12 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       const s = state(); saveState({ ...s, dismiss: [...(s.dismiss || []), id] });
       return syncNow();
     },
-    disable() { clearInterval(poll); clearTimeout(timer); const s = state(); saveState({ me: s.me, prev: s.dir ? { dir: s.dir, pass: s.pass, base: s.base, last: s.last } : s.prev }); broadcast('sync:changed', status()); return status(); },
+    disable() { clearInterval(poll); clearTimeout(timer); const s = state();
+      // The passphrase itself is not kept once sync is off: only a slow, salted check value, enough to recognise it if
+      // you turn sync back on with the same folder (and then carry on from this history).
+      let prev = s.prev;
+      if (s.dir && s.pass) { const p = dec(s.pass); const salt = crypto.randomBytes(16).toString('base64'); prev = p ? { dir: s.dir, salt, check: passCheck(p, salt), base: s.base, last: s.last } : null; }
+      saveState({ me: s.me, prev }); broadcast('sync:changed', status()); return status(); },
     start() { watchStore(); if (status().on) { setTimeout(syncNow, 5000); startPolling(); } },
   };
 };
