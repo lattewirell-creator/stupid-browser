@@ -641,7 +641,15 @@ const cleanEq = (eq) => {
 handle('settings:reset', ['internal'], () => { const keep = { pinned: getSettings().pinned }; store.write('settings.json', keep); applySettingsSideEffects(DEFAULT_SETTINGS()); broadcast('settings:changed', publicSettings()); return publicSettings(); });
 
 handle('bookmarks:get', ANY, () => getBookmarks());
-handle('bookmarks:set', ANY, (_e, list) => { if (Array.isArray(list)) { store.write('bookmarks.json', list); broadcast('bookmarks:changed', list); } return true; });
+handle('bookmarks:set', ANY, (_e, list) => {
+  if (!Array.isArray(list)) return true;
+  // Every place that edits bookmarks comes through here: a bookmark that was renamed, moved or changed gets the time of
+  // the change, which sync needs to tell the newer edit apart.
+  const now = Date.now(), old = new Map(getBookmarks().map((b) => [b.id, b]));
+  const same = (a, b) => { const x = { ...a }, y = { ...b }; delete x.ts; delete y.ts; return JSON.stringify(x) === JSON.stringify(y); };
+  list = list.map((b) => (b && b.id && (!old.has(b.id) ? !b.ts : !same(old.get(b.id), b)) ? { ...b, ts: now } : b));
+  store.write('bookmarks.json', list); broadcast('bookmarks:changed', list); return true;
+});
 handle('bookmarks:folderMenu', ['shell'], (e, folderId, x, y) => {
   const all = getBookmarks();
   const build = (pid) => {
