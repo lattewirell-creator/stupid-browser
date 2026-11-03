@@ -258,7 +258,14 @@ function newTab(url, opts = {}) {
    a frame or two (worse when it was just created). So the tab you came from stays drawn on top until the new one has
    really painted two frames, then they swap in one go: it looks as if the new tab was always there. */
 let held = null;
-function releaseHeld() { if (held) { held.classList.remove('holding'); held = null; } }
+function releaseHeld(fade = false) {
+  if (!held) return;
+  const o = held; held = null;
+  clearTimeout(o.__relT);
+  if (!fade || calmMotion()) { o.classList.remove('holding', 'releasing'); return; }
+  o.classList.add('releasing');   // fades out over the new tab, which is already painted underneath
+  o.__relT = setTimeout(() => o.classList.remove('holding', 'releasing'), 160);
+}
 function painted(tab) {
   const wv = tab.wv;
   const frames = () => wv.executeJavaScript('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))').catch(() => {});
@@ -267,8 +274,8 @@ function painted(tab) {
 function holdUntilPainted(incoming, outgoing) {
   releaseHeld();
   if (split || !outgoing || outgoing === incoming || !outgoing.wv || !incoming.wv || !outgoing.ready) return;
-  const o = outgoing.wv; o.classList.add('holding'); held = o;
-  const done = () => { if (held === o) releaseHeld(); };
+  const o = outgoing.wv; clearTimeout(o.__relT); o.classList.remove('releasing'); o.classList.add('holding'); held = o;
+  const done = () => { if (held === o) releaseHeld(true); };
   painted(incoming).then(done);
   setTimeout(done, incoming.ready ? 300 : 800);   // never wait long on a page that is slow to load
 }
@@ -539,10 +546,10 @@ function hoverCard(tab, anchor) {
     const r = anchor.getBoundingClientRect();
     card.style.left = Math.max(6, Math.min(r.left, innerWidth - 300)) + 'px';
     card.style.top = r.bottom + 6 + 'px';
-    card.classList.remove('hidden');
+    arrive(card);
   }, 450);
 }
-function hideHoverCard() { clearTimeout(hcTimer); $('hoverCard').classList.add('hidden'); }
+function hideHoverCard() { clearTimeout(hcTimer); leave($('hoverCard'), 100); }
 
 function renderAll() {
   const visible = split ? split : [activeId];
@@ -677,15 +684,25 @@ function toggleSplit(withId) {
 }
 
 /* ---------------- popovers & menus ---------------- */
+/* Leaving smoothly: pop-ups, menus, the tab card and suggestions fade and shrink away (~120 ms) instead of
+   vanishing. Only opacity and transform move, which the graphics card does without extra memory. */
+const calmMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function leave(el, ms = 120) {
+  if (!el || el.classList.contains('hidden') || el.classList.contains('leaving')) return;
+  if (calmMotion()) { el.classList.add('hidden'); return; }
+  el.classList.add('leaving');
+  clearTimeout(el.__leaveT); el.__leaveT = setTimeout(() => { el.classList.add('hidden'); el.classList.remove('leaving'); }, ms);
+}
+function arrive(el) { clearTimeout(el.__leaveT); el.classList.remove('leaving', 'hidden'); }
 function showPopAt(pop, x, y) {
-  pop.classList.remove('hidden');
+  arrive(pop);
   const r = pop.getBoundingClientRect();
   pop.style.left = Math.max(6, Math.min(x, innerWidth - r.width - 8)) + 'px';
   pop.style.top = Math.max(6, Math.min(y, innerHeight - r.height - 8)) + 'px';
 }
 // Sticky popovers (permission prompts, save-password offers) stay until answered, like Chrome's bubbles.
-function hidePop(force = false) { const p = $('popover'); if (p.classList.contains('sticky') && !force) return; p.classList.remove('sticky'); p.classList.add('hidden'); }
-function hideMenus() { $('menu').classList.add('hidden'); $('ctxMenu').classList.add('hidden'); }
+function hidePop(force = false) { const p = $('popover'); if (p.classList.contains('sticky') && !force) return; p.classList.remove('sticky'); leave(p); }
+function hideMenus() { leave($('menu')); leave($('ctxMenu')); }
 function hideAllPops() { hidePop(); hideMenus(); }
 function showMenu(target, items, x, y) {
   const m = $(target); m.innerHTML = '';
@@ -1007,7 +1024,7 @@ api.on('downloads:cleared', () => { for (const [k, d] of dls) if (d.state !== 'p
 
 /* ---------------- address bar autocomplete ---------------- */
 let sugItems = [], sugSel = 0, typed = '', sugTimer;
-function closeSuggest() { $('suggest').classList.add('hidden'); sugItems = []; }
+function closeSuggest() { leave($('suggest'), 100); sugItems = []; }
 async function updateSuggest(inline) {
   const q = $('address').value.slice(0, $('address').selectionStart === $('address').selectionEnd ? undefined : $('address').selectionStart).trim();
   typed = q;
@@ -1066,7 +1083,7 @@ function renderSuggest() {
     r.addEventListener('mousedown', (e) => { e.preventDefault(); sugSel = i; pickSuggest(); });
     box.appendChild(r);
   });
-  box.classList.remove('hidden');
+  arrive(box);
 }
 /* Buddy search: Shift+Enter or the "Search with Buddy" row asks Buddy instead of a search engine. */
 let buddyMode = false;
@@ -1233,11 +1250,11 @@ function openApp(id) {
   }
   for (const [k, wv] of appViews) wv.classList.toggle('visible', k === id);
   $('appTitle').textContent = it.name;
-  $('appPanel').classList.remove('hidden'); $('appResizer').classList.remove('hidden');
+  arrive($('appPanel')); $('appResizer').classList.remove('hidden');
   $('appPanel').style.width = (settings.appWidth || 400) + 'px';
   renderRail();
 }
-function closeApp() { activeApp = null; $('appPanel').classList.add('hidden'); $('appResizer').classList.add('hidden'); renderRail(); }
+function closeApp() { activeApp = null; leave($('appPanel'), 180); $('appResizer').classList.add('hidden'); renderRail(); }
 $('appClose').addEventListener('click', closeApp);
 $('appReload').addEventListener('click', () => { const wv = appViews.get(activeApp); if (wv) wv.reload(); });
 $('appOpenTab').addEventListener('click', () => { const it = sideItems.find((x) => x.id === activeApp); if (it) openUrl(appViews.get(activeApp).getURL() || it.url); });

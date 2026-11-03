@@ -9,6 +9,7 @@
   --accent: #D97757; --accent-soft: rgba(217,119,87,.14); --good: #6F9161;
   --shadow: 0 10px 40px rgba(61,57,41,.14), 0 2px 8px rgba(61,57,41,.06);
   --ease: cubic-bezier(.2,.8,.2,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);   /* quick start, soft landing: the feel of the whole browser */
   --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
   --sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
   color-scheme: light;
@@ -201,7 +202,7 @@ body.no-rail #rail { display: none; }
 
 /* ---------- popovers & menus ---------- */
 .pop { position: fixed; z-index: 60; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 14px; width: 300px; animation: pop .16s var(--ease); }
-@keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+@keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
 @keyframes fade { from { opacity: 0; } }
 .pop.menu { width: 260px; padding: 5px; border-radius: 14px; }
 .menu-item { display: flex; align-items: center; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 9px; gap: 12px; }
@@ -765,3 +766,26 @@ body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
 .rec-pill i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: recBlink 1s infinite; }
 .rec-pill button { background: #fff; color: #E5484D; border-radius: 999px; padding: 3px 10px; font-weight: 700; }
 @keyframes recBlink { 50% { opacity: .3; } }
+
+/* ---------------- motion: soft in, soft out, and buttons that answer (only opacity and transform move) ---------------- */
+.pop, #hoverCard, #suggest, #findBar, .cmd-card { animation-duration: .18s; animation-timing-function: var(--ease-out); }
+.pop.menu { transform-origin: top right; }
+#hoverCard, #suggest { transform-origin: top left; }
+/* Leaving (renderer.js leave()): fade and shrink back a little toward where it came from. */
+.leaving { animation: popOut .12s cubic-bezier(.4,0,1,1) forwards !important; pointer-events: none !important; }
+@keyframes popOut { to { opacity: 0; transform: translateY(-4px) scale(.97); } }
+.panel.leaving { animation: panelOut .18s cubic-bezier(.4,0,1,1) forwards !important; }
+@keyframes panelOut { to { opacity: 0; transform: translateX(16px); } }
+/* Switching tabs: the tab you left fades out over the new one, which has already painted underneath. */
+#views webview.holding.releasing { animation: viewOut .16s var(--ease-out) forwards; }
+@keyframes viewOut { to { opacity: 0; } }
+/* Hover and press: soft colour changes, and a small press-in on click. */
+.icon-btn, .pill, .rail-item, .menu-item, .scope-chip, .chip { transition: background-color .16s var(--ease-out), color .16s var(--ease-out), border-color .16s var(--ease-out), box-shadow .16s var(--ease-out), transform .14s var(--ease-out), opacity .16s; }
+.icon-btn:active, .pill:active, .rail-item:active, .scope-chip:active { transform: scale(.94); }
+.menu-item:active { transform: scale(.985); }
+.tab { transition: background-color .16s var(--ease-out), color .16s var(--ease-out), transform .15s var(--ease-out), filter .15s, opacity .2s; }
+.sug { transition: background-color .12s var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .leaving, #views webview.holding.releasing { animation: none !important; }
+  .icon-btn:active, .pill:active, .rail-item:active, .scope-chip:active, .menu-item:active { transform: none; }
+}
