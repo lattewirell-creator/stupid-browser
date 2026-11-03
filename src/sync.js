@@ -31,7 +31,9 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
   const fileIn = (dir) => path.join(dir, FILE);
   // Cloud drives keep a losing write as a copy ("… (conflicted copy …)", "… 2.sbsync", "…-DESKTOP-1.sbsync"). Those are
   // read and merged too, then removed, so nothing written on another computer is lost to a race.
-  const copiesIn = (dir) => { try { return fs.readdirSync(dir).filter((f) => f !== FILE && /^Stupid Browser Sync.*\.sbsync$/i.test(f)).map((f) => path.join(dir, f)); } catch { return []; } };
+  const badCopies = new Set();   // "path|mtime" of copies that can't be read (other passphrase, broken): not retried until they change
+  const copyId = (f) => { try { return f + '|' + fs.statSync(f).mtimeMs; } catch { return f; } };
+  const copiesIn = (dir) => { try { return fs.readdirSync(dir).filter((f) => f !== FILE && /^Stupid Browser Sync.*\.sbsync$/i.test(f)).map((f) => path.join(dir, f)).filter((f) => !badCopies.has(copyId(f))); } catch { return []; } };
 
   function readFile(file, pass) {
     let raw; try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return null; throw new Error('The sync file can’t be read right now'); }
@@ -114,20 +116,36 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
     },
   };
 
-  // One kind. local: Map from local(); remotes: [{ items, deleted }] from the file(s); base: { key: hash } as of this
-  // computer's last sync, used only to notice what changed or was deleted here since then (that gets the time now).
-  function merge(local, remotes, base, now) {
-    const items = new Map(), deleted = new Map();
-    const offer = (k, e) => { const cur = items.get(k); if (!cur || e.t > cur.t || (e.t === cur.t && hash(e.v) > hash(cur.v))) items.set(k, e); };
-    const tomb = (k, t) => { if (t > (deleted.get(k) || 0)) deleted.set(k, t); };
-    for (const [k, e] of local) offer(k, base[k] !== undefined && hash(e.v) !== base[k] ? { v: e.v, t: Math.max(e.t, now) } : e);
-    for (const k of Object.keys(base)) if (!local.has(k)) tomb(k, now);   // was here at the last sync, gone now: deleted here
+  // One kind. local: Map from local(); remotes: [{ items, deleted }] from the file(s); base: { key: [hash, version] } as of
+  // this computer's last sync. Every item (and every delete mark) has a version that goes up by one with each change.
+  // A higher version wins: it was made by someone who had already seen the lower one, whatever the clocks say. Only
+  // when two computers changed the same thing from the same version (both offline, say) does the newer time decide.
+  function merge(local, remotes, base, now, touched) {
+    const clamp = (t) => Math.min(+t || 0, now);   // a time from the future (a clock that runs ahead) counts as now
+    const wins = (a, b) => (!b ? true : a.r !== b.r ? a.r > b.r : a.t !== b.t ? a.t > b.t : !!a.del !== !!b.del ? !!a.del : !a.del && hash(a.v) > hash(b.v));
+    const best = new Map();
+    const offer = (k, c) => { if (wins(c, best.get(k))) best.set(k, c); };
     for (const r of remotes) {
-      for (const [k, e] of Object.entries(r.items || {})) if (e && 'v' in e) offer(k, { v: e.v, t: +e.t || 0 });
-      for (const [k, t] of Object.entries(r.deleted || {})) tomb(k, +t || 0);
+      for (const [k, e] of Object.entries(r.items || {})) if (e && 'v' in e) offer(k, { v: e.v, t: clamp(e.t), r: +e.r || 0 });
+      for (const [k, d] of Object.entries(r.deleted || {})) offer(k, { del: true, t: clamp(Array.isArray(d) ? d[0] : d), r: Array.isArray(d) ? +d[1] || 0 : 0 });
     }
-    for (const [k, t] of deleted) { const e = items.get(k); if (e && e.t <= t) items.delete(k); else if (e) deleted.delete(k); }
-    for (const [k, t] of deleted) if (now - t > TOMB_DAYS * 864e5) deleted.delete(k);
+    // Changed here since the last sync: dated by its own change time if that's after the last sync, else by when this
+    // computer last changed that kind of data (noted as it happened), so an edit made offline doesn't look newer than it is.
+    const lastSync = local.__last || 0;
+    const fresh = (t) => clamp(t > lastSync ? t : touched || now);
+    const baseOf = (k) => { const b = base[k]; return b === undefined ? null : Array.isArray(b) ? b : [b, 0]; };
+    for (const [k, e] of local) {
+      const b = baseOf(k), h = hash(e.v);
+      if (b && h === b[0]) offer(k, { v: e.v, t: clamp(e.t), r: b[1] });                // unchanged here
+      else if (b) offer(k, { v: e.v, t: fresh(e.t), r: b[1] + 1 });                      // changed here
+      else { const R = best.get(k); offer(k, { v: e.v, t: clamp(e.t), r: R ? R.r : 1 }); }   // never synced from here: the newer one wins
+    }
+    for (const k of Object.keys(base)) if (!local.has(k)) offer(k, { del: true, t: clamp(touched || now), r: baseOf(k)[1] + 1 });   // deleted here
+    const items = new Map(), deleted = new Map();
+    for (const [k, c] of best) {
+      if (!c.del) items.set(k, { v: c.v, t: c.t, r: c.r });
+      else if (now - c.t < TOMB_DAYS * 864e5) deleted.set(k, [c.t, c.r]);
+    }
     return { items, deleted };
   }
 
@@ -146,34 +164,38 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
         if (!fs.existsSync(s.dir)) throw new Error('The sync folder isn’t there right now');
         const main = readFile(fileIn(s.dir), pass);
         const copies = [];
-        for (const f of copiesIn(s.dir)) { try { const r = readFile(f, pass); if (r) copies.push({ file: f, data: r.data }); } catch { /* another passphrase or a broken copy: leave it alone */ } }
+        for (const f of copiesIn(s.dir)) { try { const r = readFile(f, pass); if (r) copies.push({ file: f, data: r.data }); } catch { badCopies.add(copyId(f)); /* another passphrase or a broken copy: leave it alone */ } }
         const salt = main ? main.salt : crypto.randomBytes(16);
         const sources = [main && main.data, ...copies.map((c) => c.data)].filter(Boolean);
         const base = s.base || {}, now = Date.now();
         const next = {}, nextBase = {}, counts = {};
         const locals = {};
-        for (const [name, k] of Object.entries(kinds)) locals[name] = k.local();   // all of them first: a keychain error stops before anything is written
+        for (const [name, k] of Object.entries(kinds)) {   // all of them first: an error here stops before anything is written
+          locals[name] = k.local(); locals[name].__last = s.last || 0;
+          // everything gone at once looks more like a lost or unreadable file than a choice; don't spread it
+          if (!locals[name].size && Object.keys(base[name] || {}).length >= 5) throw new Error(`All your ${name} are gone on this computer since the last sync, so sync paused to keep them on your other computers. If you meant it, turn sync off and on.`);
+        }
         let changedRemote = !main || copies.length > 0;
         muted = true;
         try {
           for (const [name, k] of Object.entries(kinds)) {
             const local = locals[name];
-            const { items, deleted } = merge(local, sources.map((d) => d[name] || {}), base[name] || {}, now);
+            const { items, deleted } = merge(local, sources.map((d) => d[name] || {}), base[name] || {}, now, (s.touched || {})[name]);
             const sameAsLocal = items.size === local.size && [...items].every(([key, e]) => local.has(key) && hash(local.get(key).v) === hash(e.v) && local.get(key).t === e.t);
             if (!sameAsLocal) k.apply(items);
             const out = { items: Object.fromEntries(items), deleted: Object.fromEntries(deleted) };
             const before = main && main.data[name];
-            const sig = (o) => JSON.stringify([Object.entries(o.items || {}).map(([key, e]) => [key, hash(e.v), +e.t]).sort(), Object.entries(o.deleted || {}).sort()]);
+            const sig = (o) => JSON.stringify([Object.entries(o.items || {}).map(([key, e]) => [key, hash(e.v), +e.t, +e.r]).sort(), Object.entries(o.deleted || {}).map(([key, d]) => [key, String(d)]).sort()]);
             if (!before || sig(before) !== sig(out)) changedRemote = true;
             next[name] = out;
-            nextBase[name] = Object.fromEntries([...items].map(([key, e]) => [key, hash(e.v)]));
+            nextBase[name] = Object.fromEntries([...items].map(([key, e]) => [key, [hash(e.v), e.r]]));
             counts[name] = items.size;
           }
         } finally { muted = false; }
         if (changedRemote) lastMtime = writeRemote(s.dir, pass, salt, next);
         else try { lastMtime = fs.statSync(fileIn(s.dir)).mtimeMs; } catch {}
         for (const c of copies) try { fs.unlinkSync(c.file); } catch {}
-        saveState({ ...state(), base: nextBase, last: Date.now(), error: '', counts });
+        saveState({ ...state(), base: nextBase, last: Date.now(), error: '', counts, touched: {} });
       } catch (e) {
         saveState({ ...state(), error: e.message || 'Sync failed' });
       }
@@ -187,7 +209,12 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
   const soon = () => { clearTimeout(timer); timer = setTimeout(syncNow, 4000); };
   function watchStore() {
     const write = store.write;
-    store.write = function (name) { const r = write.apply(this, arguments); if (!muted && /^(bookmarks|passwords|cards)\.json$/.test(name) && status().on) soon(); return r; };
+    store.write = function (name) {
+      const r = write.apply(this, arguments);
+      const m = /^(bookmarks|passwords|cards)\.json$/.exec(name);
+      if (!muted && m && status().on) { const st = state(); write.call(store, 'sync-state.json', { ...st, touched: { ...(st.touched || {}), [m[1]]: Date.now() } }); soon(); }
+      return r;
+    };
   }
   function startPolling() {
     clearInterval(poll);
