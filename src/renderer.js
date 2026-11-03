@@ -119,6 +119,8 @@ function createWebview(tab) {
     scheduleSave();
   };
   wv.addEventListener('did-navigate', onNav);
+  // a new page in this tab: the reader view of the old one goes away
+  wv.addEventListener('did-start-navigation', (e) => { if (e.isMainFrame && !e.isInPlace && tab.id === activeId && window.reader && window.reader.isOpen()) window.reader.close(); });
   wv.addEventListener('did-navigate-in-page', onNav);
   wv.addEventListener('focus', () => { if (split && split.includes(tab.id) && activeId !== tab.id) { activeId = tab.id; renderAll(); } closeSuggest(); hideAllPops(); });
   wv.addEventListener('did-fail-load', (e) => { if (e.isMainFrame && e.errorCode !== -3) { tab.title = "Can't reach this page"; tab.loadError = e.errorDescription; renderTab(tab); } });
@@ -1442,7 +1444,7 @@ function runCmd(cmd) {
     case 'split': toggleSplit(); break;
     case 'screenshot': window.capture && window.capture.screenshot(); break;
     // Buddy reads the page you're on and sums it up (his panel opens if it isn't).
-    case 'buddy-summarize': if (window.buddy && window.buddy.ask) window.buddy.show().then(() => window.buddy.ask('Summarize this page in a few short points.', true)); else toggleAI(); break;
+    case 'buddy-summarize': if (window.buddySummarize) window.buddySummarize(); else toggleAI(); break;
     case 'reader': window.reader && window.reader.toggle(); break;
     case 'next-tab': cycle(1); break;
     case 'prev-tab': cycle(-1); break;

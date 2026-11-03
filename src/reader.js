@@ -61,7 +61,7 @@
         if (!OK.has(c.tagName)) { c.replaceWith(...(/^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT|TITLE|TEXTAREA|XMP|IFRAME|OBJECT|EMBED|SVG|MATH)$/i.test(c.tagName) ? [] : c.childNodes)); continue; }
         for (const a of [...c.attributes]) if (!((c.tagName === 'A' && a.name === 'href') || (c.tagName === 'IMG' && a.name === 'src'))) c.removeAttribute(a.name);
         if (c.tagName === 'A' && !/^https?:/.test(c.getAttribute('href') || '')) c.removeAttribute('href');
-        if (c.tagName === 'A') { c.setAttribute('target', '_blank'); c.setAttribute('rel', 'noopener'); }
+        if (c.tagName === 'IMG') { c.setAttribute('referrerpolicy', 'no-referrer'); c.setAttribute('loading', 'lazy'); }
         if (c.tagName === 'IMG' && !/^https?:/.test(c.getAttribute('src') || '')) c.remove();
       }
     };
@@ -100,6 +100,14 @@
     if (dup) dup.remove();
     art.appendChild(body);
     const scroller = el('div', 'reader-scroll'); scroller.appendChild(art);
+    // Links open as tabs of this window (never as windows of the browser's own UI).
+    const follow = (e) => {
+      const l = e.target.closest && e.target.closest('a[href]'); if (!l) return;
+      e.preventDefault(); if (e.type === 'auxclick' && e.button !== 1) return;
+      const href = l.getAttribute('href'); if (!/^https?:/.test(href)) return;
+      openUrl(href, e.button === 1 || e.ctrlKey || e.metaKey ? 'background' : 'foreground');
+    };
+    art.addEventListener('click', follow); art.addEventListener('auxclick', follow);
     view.append(bar, scroller);
     $('views').appendChild(view);
     $('readerBtn').classList.add('on');

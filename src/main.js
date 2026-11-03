@@ -211,6 +211,9 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   win.once('ready-to-show', () => { if (instant) perfMark('ready-to-show'); if (!instant) showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   win.webContents.on('context-menu', (_e, p) => { if (p.isEditable) shellEditMenu(win.webContents, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
   win.on('swipe', (_e, dir) => { if (dir === 'left' || dir === 'right') win.webContents.send('shortcut', dir === 'left' ? 'back' : 'forward'); });   // macOS trackpad swipe
+  // The browser's own UI never opens windows or leaves index.html: a stray link in it (reader view, a widget) opens as a tab.
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) win.webContents.send('open-url', { url, where: 'foreground' }); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (e, url) => { e.preventDefault(); if (/^https?:/.test(url)) win.webContents.send('open-url', { url, where: 'foreground' }); });
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
