@@ -392,6 +392,7 @@ function handleDownload(item, wc, incognito) {
   liveDownloads.set(id, item);
   const list = getDownloads(); list.unshift(rec); store.write('downloads.json', incognito ? list : list.slice(0, 500));
   const update = (patch) => {
+    if (!getDownloads().some((d) => d.id === id)) return;   // removed from the list: it stays gone
     Object.assign(rec, patch, { savePath: item.getSavePath() || rec.savePath, filename: path.basename(item.getSavePath() || rec.filename) });
     store.write('downloads.json', getDownloads(), 1000);
     broadcast('downloads:update', dlPublic(rec));
@@ -735,18 +736,34 @@ handle('tab:memory', ['shell'], (e, wcId) => {
   const p = app.getAppMetrics().find((x) => x.pid === pid);
   return p ? Math.round((p.memory.privateBytes || p.memory.workingSetSize || 0) / 1024) : null;
 });
-handle('downloads:list', ANY, () => getDownloads());
+// A download only lives as long as this run of the browser. One still marked "in progress" with nothing behind it (the
+// browser was closed, crashed or updated mid-download) is shown as interrupted, so it can be retried or removed.
+function settleDownloads() {
+  const list = getDownloads(); let changed = false;
+  for (const d of list) if (d.state === 'progressing' && !liveDownloads.has(d.id)) { d.state = 'interrupted'; d.paused = false; changed = true; }
+  if (changed) store.write('downloads.json', list);
+  return list;
+}
+handle('downloads:list', ANY, () => settleDownloads());
 handle('downloads:action', ANY, async (_e, id, action) => {
   const rec = getDownloads().find((d) => d.id === id);
   const item = liveDownloads.get(id);
   switch (action) {
     case 'open': if (rec) { const err = await shell.openPath(rec.savePath); return !err; } break;
     case 'show': if (rec) shell.showItemInFolder(rec.savePath); break;
-    case 'cancel': if (item) item.cancel(); break;
+    case 'cancel':
+      if (item) item.cancel();
+      else if (rec && rec.state === 'progressing') { const list = getDownloads(); const r = list.find((d) => d.id === id); r.state = 'cancelled'; store.write('downloads.json', list); broadcast('downloads:update', dlPublic(r)); }
+      break;
     case 'pause': if (item) item.pause(); break;
     case 'resume': if (item && item.canResume()) item.resume(); break;
-    case 'retry': if (rec) session.fromPartition(PERSIST).downloadURL(rec.url); break;
-    case 'remove': store.write('downloads.json', getDownloads().filter((d) => d.id !== id)); broadcast('downloads:removed', id); break;
+    case 'retry':
+      if (item && item.getState() === 'interrupted' && item.canResume()) item.resume();   // pick up where it stopped
+      else if (rec) { if (item) { liveDownloads.delete(id); item.cancel(); } session.fromPartition(PERSIST).downloadURL(rec.url); }
+      break;
+    case 'remove':   // works in every state; a download still running is stopped first
+      if (item) { liveDownloads.delete(id); try { item.cancel(); } catch {} }
+      store.write('downloads.json', getDownloads().filter((d) => d.id !== id)); broadcast('downloads:removed', id); break;
   }
   return true;
 });
@@ -759,7 +776,7 @@ handle('downloads:drag', ANY, (e, id) => {
   e.sender.startDrag({ file: rec.savePath, icon: dragIcon });
   return true;
 });
-handle('downloads:clear', ANY, () => { const list = getDownloads().filter((d) => d.state === 'progressing'); store.write('downloads.json', list); broadcast('downloads:cleared', true); return true; });
+handle('downloads:clear', ANY, () => { const list = getDownloads().filter((d) => liveDownloads.has(d.id)); store.write('downloads.json', list); broadcast('downloads:cleared', true); return true; });
 handle('downloads:chooseDir', ['internal'], async (e) => {
   const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender.hostWebContents || e.sender), { properties: ['openDirectory', 'createDirectory'], defaultPath: getSettings().downloadDir });
   if (r.canceled || !r.filePaths[0]) return null;
