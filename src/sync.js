@@ -13,7 +13,6 @@ const crypto = require('crypto');
 const FILE = 'Stupid Browser Sync.sbsync';
 const MAGIC = 'stupid-browser-sync';
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
-const TOMB_DAYS = 180;   // a delete mark is kept this long, so a computer that was away for months still hears of it
 // Keyed with the passphrase, so the hashes kept on disk say nothing about a password or card number to anyone without it
 // (and are the same on every computer that uses the same passphrase).
 let secret = '';
@@ -159,7 +158,7 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
     for (const [k, w] of best) {
       const c = seen.get(k);
       if (!w.del) items.set(k, { v: w.v, t: w.t, c });
-      else if (now - w.t < TOMB_DAYS * 864e5) deleted.set(k, [w.t, c]);
+      else deleted.set(k, [w.t, c]);   // kept for good (a few dozen bytes each), so even a computer away for a year hears of it
     }
     return { items, deleted };
   }
@@ -257,7 +256,7 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       if (!dir || !fs.existsSync(dir)) return { error: 'Pick a folder first' };
       if (!pass || pass.length < 8) return { error: 'Use a passphrase of at least 8 characters' };
       try { readFile(fileIn(dir), pass); } catch (e) { return { error: e.message }; }
-      saveState({ dir, pass: enc(pass), base: {}, last: 0, error: '' });
+      saveState({ me: state().me, dir, pass: enc(pass), base: {}, last: 0, error: '' });
       const r = await syncNow(); startPolling(); return r;
     },
     // Answer to a pause: 'delete' spreads the deletes everywhere; 'restore' brings them back here from the sync file.
@@ -267,7 +266,7 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       else if (choice === 'restore') saveState({ ...s, base: { ...(s.base || {}), [name]: {} } });
       return syncNow();
     },
-    disable() { clearInterval(poll); clearTimeout(timer); saveState({}); broadcast('sync:changed', status()); return status(); },
+    disable() { clearInterval(poll); clearTimeout(timer); saveState({ me: state().me }); broadcast('sync:changed', status()); return status(); },
     start() { watchStore(); if (status().on) { setTimeout(syncNow, 5000); startPolling(); } },
   };
 };
