@@ -154,6 +154,17 @@ function renderSync(st) {
   const what = c ? `${c.bookmarks} bookmark${c.bookmarks === 1 ? '' : 's'}, ${c.passwords} password${c.passwords === 1 ? '' : 's'}, ${c.cards} card${c.cards === 1 ? '' : 's'}` : '';
   $('syncInfo').textContent = st.error ? `${st.dir} · ${st.error}` : `${st.dir} · ${st.last ? 'last synced ' + ago(st.last) : 'syncing…'}${what ? ' · ' + what : ''}`;
   $('syncInfo').classList.toggle('warn', !!st.error);
+  const box = $('syncPaused'); box.replaceChildren();
+  const label = { bookmarks: 'bookmarks', passwords: 'passwords', cards: 'payment cards' };
+  for (const name of st.paused || []) {
+    const r = el('div', 'row');
+    const l = el('div', 'lbl', `Your ${label[name]} are empty here`); l.appendChild(el('small', null, 'Delete them on all your computers too, or bring them back here from the sync file?'));
+    const del = el('button', 'btn small', 'Delete everywhere'), back = el('button', 'btn small primary', 'Bring them back');
+    del.onclick = async () => { if (confirm(`Delete all your ${label[name]} on every computer?`)) renderSync(await call('sync:resolve', name, 'delete')); };
+    back.onclick = async () => renderSync(await call('sync:resolve', name, 'restore'));
+    const btns = el('div', 'inline'); btns.style.cssText = 'display:flex;gap:8px'; btns.append(back, del);
+    r.append(l, btns); box.appendChild(r);
+  }
 }
 $('syncPick').onclick = async () => { const d = await call('sync:chooseDir'); if (d) { syncDir = d; $('syncDirLbl').textContent = d; } };
 $('syncOn').onclick = async () => {

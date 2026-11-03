@@ -862,6 +862,7 @@ handle('sync:chooseDir', ['internal'], async (e) => {
 handle('sync:enable', ['internal'], (_e, dir, pass) => sync.enable(String(dir || ''), String(pass || '')));
 handle('sync:disable', ['internal'], () => sync.disable());
 handle('sync:now', ['internal'], () => sync.syncNow());
+handle('sync:resolve', ['internal'], (_e, name, choice) => sync.resolve(String(name), String(choice)));
 handle('pw:list', ['internal'], () => getPasswords().map((x) => ({ id: x.id, origin: x.origin, username: x.username || '', never: !!x.never, created: x.created })));
 handle('pw:reveal', ['internal'], (_e, id) => { const x = getPasswords().find((p) => p.id === id); return x && !x.never ? dec(x.password) : ''; });
 handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', getPasswords().filter((p) => p.id !== id)); return true; });

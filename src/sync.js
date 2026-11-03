@@ -116,41 +116,51 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
     },
   };
 
-  // One kind. local: Map from local(); remotes: [{ items, deleted }] from the file(s); base: { key: [hash, version] } as of
-  // this computer's last sync. Every item (and every delete mark) has a version that goes up by one with each change.
-  // A higher version wins: it was made by someone who had already seen the lower one, whatever the clocks say. Only
-  // when two computers changed the same thing from the same version (both offline, say) does the newer time decide.
-  function merge(local, remotes, base, now, touched) {
-    const clamp = (t) => Math.min(+t || 0, now);   // a time from the future (a clock that runs ahead) counts as now
-    const wins = (a, b) => (!b ? true : a.r !== b.r ? a.r > b.r : a.t !== b.t ? a.t > b.t : !!a.del !== !!b.del ? !!a.del : !a.del && hash(a.v) > hash(b.v));
+  // One kind. local: Map from local(); remotes: [{ items, deleted }] from the file(s); base: { key: [hash, r, o, f] } as
+  // of this computer's last sync. Every item and delete mark carries: r, a version that goes up with each change; o, the
+  // computer that made it; f, the newest version from another computer it was built on. One that was built on the other
+  // wins, whatever the clocks say. Two edits made apart (both offline, say) are compared by time: the newer one wins.
+  function merge(local, remotes, base, now, touched, me) {
+    // times are compared as at most now (a clock running ahead can't win forever), but stored as they are, so two
+    // computers whose clocks differ a little don't keep rewriting each other's times
+    const T = (c) => Math.min(c.t, now);
+    const after = (a, b) => (a.n || b.n ? null : a.o !== undefined && a.o === b.o ? a.r > b.r : (a.f || 0) >= b.r && !a.n ? true : (b.f || 0) >= a.r && !b.n ? false : null);
+    const wins = (a, b) => {
+      if (!b) return true;
+      const d = after(a, b); if (d !== null && a.r !== b.r) return d;
+      if (T(a) !== T(b)) return T(a) > T(b);
+      if (!!a.del !== !!b.del) return !!a.del;
+      return !a.del && hash(a.v) > hash(b.v);
+    };
     const best = new Map();
     const offer = (k, c) => { if (wins(c, best.get(k))) best.set(k, c); };
     for (const r of remotes) {
-      for (const [k, e] of Object.entries(r.items || {})) if (e && 'v' in e) offer(k, { v: e.v, t: clamp(e.t), r: +e.r || 0 });
-      for (const [k, d] of Object.entries(r.deleted || {})) offer(k, { del: true, t: clamp(Array.isArray(d) ? d[0] : d), r: Array.isArray(d) ? +d[1] || 0 : 0 });
+      for (const [k, e] of Object.entries(r.items || {})) if (e && 'v' in e) offer(k, { v: e.v, t: +e.t || 0, r: +e.r || 0, o: e.o, f: +e.f || 0 });
+      for (const [k, d] of Object.entries(r.deleted || {})) { const a = Array.isArray(d) ? d : [d]; offer(k, { del: true, t: +a[0] || 0, r: +a[1] || 0, o: a[2], f: +a[3] || 0 }); }
     }
     // Changed here since the last sync: dated by its own change time if that's after the last sync, else by when this
     // computer last changed that kind of data (noted as it happened), so an edit made offline doesn't look newer than it is.
     const lastSync = local.__last || 0;
-    const fresh = (t) => clamp(t > lastSync ? t : touched || now);
+    const fresh = (t) => Math.min(now, t > lastSync ? t : touched || now);
     const baseOf = (k) => { const b = base[k]; return b === undefined ? null : Array.isArray(b) ? b : [b, 0]; };
+    const bump = (b) => ({ r: b[1] + 1, o: me, f: b[2] === me ? b[3] || 0 : b[1] });   // a change here, built on what was seen at the last sync
     for (const [k, e] of local) {
-      const b = baseOf(k), h = hash(e.v);
-      if (b && h === b[0]) offer(k, { v: e.v, t: clamp(e.t), r: b[1] });                // unchanged here
-      else if (b) offer(k, { v: e.v, t: fresh(e.t), r: b[1] + 1 });                      // changed here
-      else { const R = best.get(k); offer(k, { v: e.v, t: clamp(e.t), r: R ? R.r : 1 }); }   // never synced from here: the newer one wins
+      const b = baseOf(k);
+      if (b && hash(e.v) === b[0]) offer(k, { v: e.v, t: e.t, r: b[1], o: b[2], f: b[3] || 0 });   // unchanged here
+      else if (b) offer(k, { v: e.v, t: fresh(e.t), ...bump(b) });                            // changed here
+      else offer(k, { v: e.v, t: Math.min(now, e.t), r: 1, o: me, f: 0, n: true });           // never synced from here: the newer one wins
     }
-    for (const k of Object.keys(base)) if (!local.has(k)) offer(k, { del: true, t: clamp(touched || now), r: baseOf(k)[1] + 1 });   // deleted here
+    for (const k of Object.keys(base)) if (!local.has(k)) offer(k, { del: true, t: Math.min(now, touched || now), ...bump(baseOf(k)) });   // deleted here
     const items = new Map(), deleted = new Map();
     for (const [k, c] of best) {
-      if (!c.del) items.set(k, { v: c.v, t: c.t, r: c.r });
-      else if (now - c.t < TOMB_DAYS * 864e5) deleted.set(k, [c.t, c.r]);
+      if (!c.del) items.set(k, { v: c.v, t: c.t, r: c.r, o: c.o, f: c.f });
+      else if (now - c.t < TOMB_DAYS * 864e5) deleted.set(k, [c.t, c.r, c.o, c.f]);
     }
     return { items, deleted };
   }
 
   let running = null, timer = null, poll = null, lastMtime = 0, muted = false;
-  const status = () => { const s = state(); return { on: !!(s.dir && s.pass), dir: s.dir || '', last: s.last || 0, error: s.error || '', counts: s.counts || null }; };
+  const status = () => { const s = state(); return { on: !!(s.dir && s.pass), dir: s.dir || '', last: s.last || 0, error: s.error || '', counts: s.counts || null, paused: s.paused || [] }; };
 
   async function syncNow() {
     if (running) return running;
@@ -170,32 +180,38 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
         const base = s.base || {}, now = Date.now();
         const next = {}, nextBase = {}, counts = {};
         const locals = {};
+        const me = s.me || (s.me = crypto.randomBytes(6).toString('base64'));
+        const paused = [], allow = s.allowEmpty || [];
         for (const [name, k] of Object.entries(kinds)) {   // all of them first: an error here stops before anything is written
           locals[name] = k.local(); locals[name].__last = s.last || 0;
-          // everything gone at once looks more like a lost or unreadable file than a choice; don't spread it
-          if (!locals[name].size && Object.keys(base[name] || {}).length >= 5) throw new Error(`All your ${name} are gone on this computer since the last sync, so sync paused to keep them on your other computers. If you meant it, turn sync off and on.`);
+          // everything gone at once looks more like a lost or unreadable file than a choice: that kind waits for you to
+          // say which (Settings → Sync), the others go on
+          if (!locals[name].size && Object.keys(base[name] || {}).length >= 5 && !allow.includes(name)) paused.push(name);
         }
         let changedRemote = !main || copies.length > 0;
         muted = true;
         try {
           for (const [name, k] of Object.entries(kinds)) {
+            if (paused.includes(name)) { next[name] = (main && main.data[name]) || { items: {}, deleted: {} }; nextBase[name] = base[name]; counts[name] = (s.counts || {})[name] || 0; continue; }
             const local = locals[name];
-            const { items, deleted } = merge(local, sources.map((d) => d[name] || {}), base[name] || {}, now, (s.touched || {})[name]);
+            const { items, deleted } = merge(local, sources.map((d) => d[name] || {}), base[name] || {}, now, (s.touched || {})[name], me);
             const sameAsLocal = items.size === local.size && [...items].every(([key, e]) => local.has(key) && hash(local.get(key).v) === hash(e.v) && local.get(key).t === e.t);
             if (!sameAsLocal) k.apply(items);
             const out = { items: Object.fromEntries(items), deleted: Object.fromEntries(deleted) };
             const before = main && main.data[name];
-            const sig = (o) => JSON.stringify([Object.entries(o.items || {}).map(([key, e]) => [key, hash(e.v), +e.t, +e.r]).sort(), Object.entries(o.deleted || {}).map(([key, d]) => [key, String(d)]).sort()]);
+            const sig = (o) => JSON.stringify([Object.entries(o.items || {}).map(([key, e]) => [key, hash(e.v), +e.t, +e.r, e.o, +e.f]).sort(), Object.entries(o.deleted || {}).map(([key, d]) => [key, String(d)]).sort()]);
             if (!before || sig(before) !== sig(out)) changedRemote = true;
             next[name] = out;
-            nextBase[name] = Object.fromEntries([...items].map(([key, e]) => [key, [hash(e.v), e.r]]));
+            nextBase[name] = Object.fromEntries([...items].map(([key, e]) => [key, [hash(e.v), e.r, e.o, e.f]]));
             counts[name] = items.size;
           }
         } finally { muted = false; }
         if (changedRemote) lastMtime = writeRemote(s.dir, pass, salt, next);
         else try { lastMtime = fs.statSync(fileIn(s.dir)).mtimeMs; } catch {}
         for (const c of copies) try { fs.unlinkSync(c.file); } catch {}
-        saveState({ ...state(), base: nextBase, last: Date.now(), error: '', counts, touched: {} });
+        const label = { bookmarks: 'bookmarks', passwords: 'passwords', cards: 'payment cards' };
+        const error = paused.length ? `All your ${paused.map((n) => label[n]).join(' and ')} are gone on this computer since the last sync. Sync left them alone on your other computers until you choose below.` : '';
+        saveState({ ...state(), me, base: nextBase, last: paused.length ? s.last || 0 : Date.now(), error, counts, paused, allowEmpty: [], touched: paused.length ? s.touched || {} : {} });
       } catch (e) {
         saveState({ ...state(), error: e.message || 'Sync failed' });
       }
@@ -237,6 +253,13 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
       try { readFile(fileIn(dir), pass); } catch (e) { return { error: e.message }; }
       saveState({ dir, pass: enc(pass), base: {}, last: 0, error: '' });
       const r = await syncNow(); startPolling(); return r;
+    },
+    // Answer to a pause: 'delete' spreads the deletes everywhere; 'restore' brings them back here from the sync file.
+    resolve(name, choice) {
+      const s = state(); if (!(s.paused || []).includes(name)) return status();
+      if (choice === 'delete') saveState({ ...s, allowEmpty: [...(s.allowEmpty || []), name] });
+      else if (choice === 'restore') saveState({ ...s, base: { ...(s.base || {}), [name]: {} } });
+      return syncNow();
     },
     disable() { clearInterval(poll); clearTimeout(timer); saveState({}); broadcast('sync:changed', status()); return status(); },
     start() { watchStore(); if (status().on) { setTimeout(syncNow, 5000); startPolling(); } },
