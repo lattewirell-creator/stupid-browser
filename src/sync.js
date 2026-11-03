@@ -116,45 +116,50 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
     },
   };
 
-  // One kind. local: Map from local(); remotes: [{ items, deleted }] from the file(s); base: { key: [hash, r, o, f] } as
-  // of this computer's last sync. Every item and delete mark carries: r, a version that goes up with each change; o, the
-  // computer that made it; f, the newest version from another computer it was built on. One that was built on the other
-  // wins, whatever the clocks say. Two edits made apart (both offline, say) are compared by time: the newer one wins.
+  // One kind. local: Map from local(); remotes: [{ items, deleted }] from the file(s); base: { key: [hash, clock] } as of
+  // this computer's last sync. Every item and delete mark carries a version clock: { computer id: how many changes that
+  // computer has made to it }. An edit whose clock covers another's was made after seeing it, so it wins whatever the
+  // wall clocks say. Two edits made without seeing each other (offline, say) are compared by time: the newer one wins.
+  // The result carries both clocks merged, so the next edit anywhere counts as having seen both.
   function merge(local, remotes, base, now, touched, me) {
-    // times are compared as at most now (a clock running ahead can't win forever), but stored as they are, so two
-    // computers whose clocks differ a little don't keep rewriting each other's times
-    const T = (c) => Math.min(c.t, now);
-    const after = (a, b) => (a.n || b.n ? null : a.o !== undefined && a.o === b.o ? a.r > b.r : (a.f || 0) >= b.r && !a.n ? true : (b.f || 0) >= a.r && !b.n ? false : null);
+    const T = (c) => Math.min(c.t, now);   // compared as at most now (a clock running ahead can't win forever); stored as is
+    const covers = (a, b) => Object.entries(b).every(([id, n]) => (a[id] || 0) >= n);
     const wins = (a, b) => {
       if (!b) return true;
-      const d = after(a, b); if (d !== null && a.r !== b.r) return d;
+      const ab = covers(a.c, b.c), ba = covers(b.c, a.c);
+      if (ab && !ba) return true;
+      if (ba && !ab) return false;
       if (T(a) !== T(b)) return T(a) > T(b);
       if (!!a.del !== !!b.del) return !!a.del;
       return !a.del && hash(a.v) > hash(b.v);
     };
-    const best = new Map();
-    const offer = (k, c) => { if (wins(c, best.get(k))) best.set(k, c); };
+    const best = new Map(), seen = new Map();
+    const offer = (k, c) => {
+      const m = seen.get(k) || {}; for (const [id, n] of Object.entries(c.c)) if (n > (m[id] || 0)) m[id] = n; seen.set(k, m);
+      if (wins(c, best.get(k))) best.set(k, c);
+    };
+    const clockOf = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
     for (const r of remotes) {
-      for (const [k, e] of Object.entries(r.items || {})) if (e && 'v' in e) offer(k, { v: e.v, t: +e.t || 0, r: +e.r || 0, o: e.o, f: +e.f || 0 });
-      for (const [k, d] of Object.entries(r.deleted || {})) { const a = Array.isArray(d) ? d : [d]; offer(k, { del: true, t: +a[0] || 0, r: +a[1] || 0, o: a[2], f: +a[3] || 0 }); }
+      for (const [k, e] of Object.entries(r.items || {})) if (e && 'v' in e) offer(k, { v: e.v, t: +e.t || 0, c: clockOf(e.c) });
+      for (const [k, d] of Object.entries(r.deleted || {})) { const a = Array.isArray(d) ? d : [d]; offer(k, { del: true, t: +a[0] || 0, c: clockOf(a[1]) }); }
     }
     // Changed here since the last sync: dated by its own change time if that's after the last sync, else by when this
     // computer last changed that kind of data (noted as it happened), so an edit made offline doesn't look newer than it is.
     const lastSync = local.__last || 0;
     const fresh = (t) => Math.min(now, t > lastSync ? t : touched || now);
-    const baseOf = (k) => { const b = base[k]; return b === undefined ? null : Array.isArray(b) ? b : [b, 0]; };
-    const bump = (b) => ({ r: b[1] + 1, o: me, f: b[2] === me ? b[3] || 0 : b[1] });   // a change here, built on what was seen at the last sync
+    const baseOf = (k) => { const b = base[k]; return b === undefined ? null : [Array.isArray(b) ? b[0] : b, Array.isArray(b) ? clockOf(b[1]) : {}]; };
+    const tick = (c) => ({ ...c, [me]: (c[me] || 0) + 1 });
     for (const [k, e] of local) {
       const b = baseOf(k);
-      if (b && hash(e.v) === b[0]) offer(k, { v: e.v, t: e.t, r: b[1], o: b[2], f: b[3] || 0 });   // unchanged here
-      else if (b) offer(k, { v: e.v, t: fresh(e.t), ...bump(b) });                            // changed here
-      else offer(k, { v: e.v, t: Math.min(now, e.t), r: 1, o: me, f: 0, n: true });           // never synced from here: the newer one wins
+      if (b && hash(e.v) === b[0]) offer(k, { v: e.v, t: e.t, c: b[1] });                 // unchanged here
+      else offer(k, { v: e.v, t: b ? fresh(e.t) : Math.min(now, e.t), c: tick(b ? b[1] : {}) });   // changed here, or never synced from here
     }
-    for (const k of Object.keys(base)) if (!local.has(k)) offer(k, { del: true, t: Math.min(now, touched || now), ...bump(baseOf(k)) });   // deleted here
+    for (const k of Object.keys(base)) if (!local.has(k)) offer(k, { del: true, t: Math.min(now, touched || now), c: tick(baseOf(k)[1]) });   // deleted here
     const items = new Map(), deleted = new Map();
-    for (const [k, c] of best) {
-      if (!c.del) items.set(k, { v: c.v, t: c.t, r: c.r, o: c.o, f: c.f });
-      else if (now - c.t < TOMB_DAYS * 864e5) deleted.set(k, [c.t, c.r, c.o, c.f]);
+    for (const [k, w] of best) {
+      const c = seen.get(k);
+      if (!w.del) items.set(k, { v: w.v, t: w.t, c });
+      else if (now - w.t < TOMB_DAYS * 864e5) deleted.set(k, [w.t, c]);
     }
     return { items, deleted };
   }
@@ -199,10 +204,11 @@ module.exports = function createSync({ store, enc, dec, broadcast }) {
             if (!sameAsLocal) k.apply(items);
             const out = { items: Object.fromEntries(items), deleted: Object.fromEntries(deleted) };
             const before = main && main.data[name];
-            const sig = (o) => JSON.stringify([Object.entries(o.items || {}).map(([key, e]) => [key, hash(e.v), +e.t, +e.r, e.o, +e.f]).sort(), Object.entries(o.deleted || {}).map(([key, d]) => [key, String(d)]).sort()]);
+            const canon = (c) => JSON.stringify(Object.entries(c || {}).sort());
+            const sig = (o) => JSON.stringify([Object.entries(o.items || {}).map(([key, e]) => [key, hash(e.v), +e.t, canon(e.c)]).sort(), Object.entries(o.deleted || {}).map(([key, d]) => [key, +d[0], canon(d[1])]).sort()]);
             if (!before || sig(before) !== sig(out)) changedRemote = true;
             next[name] = out;
-            nextBase[name] = Object.fromEntries([...items].map(([key, e]) => [key, [hash(e.v), e.r, e.o, e.f]]));
+            nextBase[name] = Object.fromEntries([...items].map(([key, e]) => [key, [hash(e.v), e.c]]));
             counts[name] = items.size;
           }
         } finally { muted = false; }
