@@ -32,7 +32,8 @@ function render() {
     else btn('Retry', 'retry');
     const x = el('button', 'icon-btn'); x.title = 'Remove from list'; x.appendChild(icon(X_ICON));
     x.onclick = () => call('downloads:action', d.id, 'remove');
-    if (d.state !== 'progressing') acts.appendChild(x);
+    if (d.state === 'progressing') x.title = 'Stop and remove from list';
+    acts.appendChild(x);
     r.appendChild(acts);
     card.appendChild(r);
   }
