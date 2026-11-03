@@ -298,7 +298,7 @@ const RENDER = {
       for (let i = 0; i < start; i++) grid.appendChild(el('span'));
       const days = new Date(y, m + 1, 0).getDate();
       for (let d = 1; d <= days; d++) grid.appendChild(el('span', 'cal-day' + (y === now.getFullYear() && m === now.getMonth() && d === now.getDate() ? ' today' : ''), String(d)));
-      const connect = el('button', 'cal-connect', 'Connect your calendar'); connect.addEventListener('click', () => { card.classList.add('editing'); renderWidgets(); });
+      const connect = el('button', 'cal-connect', 'Connect your calendar'); connect.addEventListener('click', () => { card.classList.add('editing'); body.replaceChildren(); RENDER.calendar(w, body, card); body.querySelector('input') && body.querySelector('input').focus(); });   // redraw just this card: renderWidgets() rebuilds every card and dropped the editing state
       body.append(head, grid, connect);
     };
     draw();

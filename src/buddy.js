@@ -25,7 +25,15 @@
       let img = faceBox.querySelector('img');
       if (!img) { img = el('img'); img.alt = ''; faceBox.replaceChildren(img); faceBox.classList.add('pic'); }
       img.src = url;
-      faceBox.classList.toggle('round', ['ball', 'eye'].includes(look3d().shape));   // round Buddies sit lower in the picture
+      const round = ['ball', 'eye'].includes(look3d().shape);
+      faceBox.classList.toggle('round', round);   // round Buddies sit lower in the picture
+      // The toolbar's Buddy button wears the same look: the hiker shows the hiker, a hat shows the hat, and so on.
+      const btn = $('aiBtn');
+      if (btn) {
+        let pic = btn.querySelector('.buddy-pic');
+        if (!pic) { pic = el('span', 'buddy-pic'); pic.setAttribute('aria-hidden', 'true'); pic.appendChild(el('img')); btn.appendChild(pic); btn.classList.add('has-pic'); }
+        pic.firstChild.src = url; pic.classList.toggle('round', round);
+      }
     }, delay);
   };
   const titleBox = el('div', 'bd-titles'); const modelLine = el('small', null, '');
