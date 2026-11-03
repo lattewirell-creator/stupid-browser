@@ -543,6 +543,10 @@ function hoverCard(tab, anchor) {
     const card = $('hoverCard');
     card.querySelector('.hc-title').textContent = prettyTitle(tab);
     card.querySelector('.hc-url').textContent = isInternal(tab.url) ? 'The Stupid Browser' : (hostOf(tab.url) || tab.url) + (tab.wv ? '' : ' · sleeping') + (tab.muted ? ' · muted' : '');
+    // Memory usage, like Chrome (a sleeping tab uses none).
+    const mem = card.querySelector('.hc-mem');
+    mem.textContent = tab.wv ? 'Memory usage: …' : 'Sleeping · uses no memory';
+    if (tab.wv) call('tab:memory', wvId(tab.wv)).then((mb) => { if (mem.isConnected && mb != null) mem.textContent = `Memory usage: ${mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB'}`; else if (mb == null) mem.textContent = ''; }).catch(() => { mem.textContent = ''; });
     const r = anchor.getBoundingClientRect();
     card.style.left = Math.max(6, Math.min(r.left, innerWidth - 300)) + 'px';
     card.style.top = r.bottom + 6 + 'px';

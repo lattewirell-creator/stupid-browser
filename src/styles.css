@@ -789,3 +789,6 @@ body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
   .leaving, #views webview.holding.releasing { animation: none !important; }
   .icon-btn:active, .pill:active, .rail-item:active, .scope-chip:active, .menu-item:active { transform: none; }
 }
+/* The tab card's memory line (like Chrome) */
+#hoverCard .hc-mem { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+#hoverCard .hc-mem:empty { display: none; }
