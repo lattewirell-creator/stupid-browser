@@ -24,10 +24,16 @@ if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser'
 const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; Win64; x64';
 const UA = `Mozilla/5.0 (${UA_OS}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
 app.userAgentFallback = UA;
-// Google refuses to sign you in from browsers it thinks are "embedded apps" ("This browser or app may not be secure"):
-// Chromium's client hints say Chromium, not Chrome. On Google's sign-in pages only, the browser presents itself as
-// Firefox (which sends no client hints), the way other independent browsers get Google sign-in to work.
-const FIREFOX_UA = `Mozilla/5.0 (${IS_MAC ? 'Macintosh; Intel Mac OS X 10.15' : 'Windows NT 10.0; Win64; x64'}; rv:133.0) Gecko/20100101 Firefox/133.0`;
+// Google refuses to sign you in from browsers it thinks are "embedded apps" ("This browser or app may not be secure").
+// Chromium tells pages it is "Chromium", not "Google Chrome": in its client hints (Sec-CH-UA headers) and in
+// navigator.userAgentData, which Google's sign-in page checks. On Google's sign-in pages only, the browser says what
+// Chrome itself says, the same in every place (see googleIdentity below).
+const CHROME_MAJOR = process.versions.chrome.split('.')[0];
+const CHROME_BRANDS = [{ brand: 'Google Chrome', version: CHROME_MAJOR }, { brand: 'Chromium', version: CHROME_MAJOR }, { brand: 'Not_A Brand', version: '24' }];
+const CHROME_FULL = [{ brand: 'Google Chrome', version: process.versions.chrome }, { brand: 'Chromium', version: process.versions.chrome }, { brand: 'Not_A Brand', version: '24.0.0.0' }];
+const SEC_CH_UA = CHROME_BRANDS.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
+const CHROME_HINTS = { brands: CHROME_BRANDS, fullVersionList: CHROME_FULL, fullVersion: process.versions.chrome, platform: IS_MAC ? 'macOS' : 'Windows', platformVersion: IS_MAC ? '14.6.0' : '15.0.0',
+  architecture: process.arch === 'arm64' ? 'arm' : 'x86', bitness: '64', model: '', mobile: false, wow64: false };
 const isGoogleSignIn = (u) => /^https:\/\/accounts\.google\.[a-z.]+\//i.test(String(u || ''));
 
 protocol.registerSchemesAsPrivileged([
@@ -277,8 +283,11 @@ function prepareSession(ses, { tabs, incognito }) {
   // Do Not Track / Global Privacy Control headers
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
     if (isGoogleSignIn(details.url)) {
-      details.requestHeaders['User-Agent'] = FIREFOX_UA;
-      for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-ua/i.test(h)) delete details.requestHeaders[h];
+      details.requestHeaders['User-Agent'] = UA;
+      for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-ua$/i.test(h)) delete details.requestHeaders[h];
+      details.requestHeaders['Sec-CH-UA'] = SEC_CH_UA;
+      details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
+      details.requestHeaders['Sec-CH-UA-Platform'] = IS_MAC ? '"macOS"' : '"Windows"';
     }
     if (getSettings().dnt && /^https?:/.test(details.url)) {
       details.requestHeaders.DNT = '1';
@@ -704,6 +713,14 @@ handle('calendar:fetch', ['internal'], async (_e, url) => {
     if (!/BEGIN:VCALENDAR/.test(text.slice(0, 2000))) return { error: 'That address isn’t a calendar. Use the private address in iCal format.' };
     return { ics: text };
   } catch (e) { return { error: 'Couldn’t reach the calendar. Are you online?' }; }
+});
+// The tab card's "Memory usage" (like Chrome): what the tab's page process uses now, in MB.
+handle('tab:memory', ['shell'], (e, wcId) => {
+  const wc = webContents.fromId(+wcId);
+  if (!wc || wc.isDestroyed() || shellFor(wc) !== e.sender) return null;
+  const pid = wc.getOSProcessId();
+  const p = app.getAppMetrics().find((x) => x.pid === pid);
+  return p ? Math.round((p.memory.privateBytes || p.memory.workingSetSize || 0) / 1024) : null;
 });
 handle('downloads:list', ANY, () => getDownloads());
 handle('downloads:action', ANY, async (_e, id, action) => {
@@ -1255,6 +1272,18 @@ const SCROLLBAR_CSS = `::-webkit-scrollbar { width: 11px; height: 11px; backgrou
 ::-webkit-scrollbar-thumb { background: rgba(128,128,128,.42) padding-box; border: 3px solid transparent; border-radius: 10px; min-height: 36px; }
 ::-webkit-scrollbar-thumb:hover { background-color: rgba(128,128,128,.66); }
 ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }`;
+// Chromium's own way to set what a tab says about itself (the DevTools protocol, the same tool its "device
+// emulation" uses): user agent and client hints together, so the headers and navigator.userAgentData agree.
+function googleIdentity(contents, on) {
+  const dbg = contents.debugger;
+  try {
+    if (on) {
+      if (!dbg.isAttached()) dbg.attach('1.3');
+      dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: UA, platform: IS_MAC ? 'MacIntel' : 'Win32', userAgentMetadata: CHROME_HINTS }).catch(() => {});
+    } else if (dbg.isAttached() && contents.__googleIdentity) dbg.detach();
+    contents.__googleIdentity = on;
+  } catch (e) { console.log('[google sign-in]', e.message); }
+}
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
@@ -1270,12 +1299,8 @@ app.on('web-contents-created', (_e, contents) => {
 
   if (contents.getType() !== 'webview') return;
   hookShortcuts(contents);
-  // On Google's sign-in pages the tab presents itself as Firefox (see FIREFOX_UA), everywhere else as Chrome.
-  contents.on('did-start-navigation', (d) => {
-    if (!d.isMainFrame || contents.isDestroyed()) return;
-    const want = isGoogleSignIn(d.url) ? FIREFOX_UA : UA;
-    if (contents.getUserAgent() !== want) contents.setUserAgent(want);
-  });
+  // On Google's sign-in pages the tab tells the page it is Google Chrome (see CHROME_HINTS); elsewhere it's left alone.
+  contents.on('did-start-navigation', (d) => { if (d.isMainFrame && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); });
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
   const hideSearchAds = () => {
