@@ -218,7 +218,12 @@ function linkSignIns(partitions) {
         if (to === from) continue;
         const there = await find(to, c);
         if (now && (!there || (there.value !== now.value && !ROTATING_NAME.test(now.name)))) await put(to, now);
-        else if (!now && there && !ROTATING_NAME.test(there.name)) await put(to, { ...there, value: '', expirationDate: 1 });   // expire exactly this one (not a same-named one elsewhere)
+        else if (!now && there && !ROTATING_NAME.test(there.name)) {
+          await put(to, { ...there, value: '', expirationDate: 1 });
+          // signed out: that session's rotating cookies for the same domain go too, so the next sign-in fills them fresh
+          let rot = []; try { rot = (await to.cookies.get({ domain: there.domain })).filter((x) => x.domain === there.domain && ROTATING_NAME.test(x.name)); } catch {}
+          for (const r of rot) await put(to, { ...r, value: '', expirationDate: 1 });
+        }   // expire exactly this one (not a same-named one elsewhere)
       }
     };
     pending.set(k, { timer: setTimeout(run, 250), run });
