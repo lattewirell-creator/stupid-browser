@@ -1395,7 +1395,7 @@ $('vpnBtn').addEventListener('click', async () => {
   row.appendChild(go); pop.appendChild(row);
   const r = $('vpnBtn').getBoundingClientRect(); showPopAt(pop, r.right - 300, r.bottom + 8);
 });
-setInterval(renderVpn, 20000); setTimeout(renderVpn, 3000);
+setInterval(() => { if (!document.hidden && !$('vpnBtn').classList.contains('user-hidden')) renderVpn(); }, 20000); setTimeout(renderVpn, 3000);
 $('adblockBtn').addEventListener('click', async () => { const s = await call('adblock:set', !settings.adblock); renderShield(s); toast(s.error ? 'Blocker could not start' : s.on ? 'Shield on — reload to apply' : 'Shield off'); });
 api.on('adblock:count', (n) => { $('blockedCount').textContent = n; });
 

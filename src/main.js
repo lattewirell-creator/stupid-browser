@@ -1,8 +1,9 @@
 'use strict';
 const {
   app, BrowserWindow, ipcMain, session, shell, webContents, nativeTheme, protocol, net,
-  Menu, clipboard, dialog, safeStorage, nativeImage, screen
+  Menu, clipboard, dialog, safeStorage, nativeImage
 } = require('electron');
+const screen = new Proxy({}, { get: (_t, k) => require('electron').screen[k] });   // only usable once the app is ready
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -14,7 +15,7 @@ perfMark('main-start');
 
 const IS_MAC = process.platform === 'darwin';
 // The toolbar buttons you can move, hide and add to (src/customize.js has their element ids).
-const TOOLBAR_IDS = ['dl', 'shield', 'sound', 'pip', 'ai', 'grid', 'profile'];
+const TOOLBAR_IDS = ['dl', 'shield', 'vpn', 'sound', 'pip', 'ai', 'grid', 'profile'];
 app.setName('The Stupid Browser');
 
 const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
@@ -29,8 +30,13 @@ app.userAgentFallback = UA;
 // Instead, on Google's sign-in pages the tab is Firefox through and through: the user agent, no client hints, and in
 // the page itself none of Chromium's tells (see google-preload.js). Independent browsers get Google sign-in to work
 // this way; everywhere else the browser stays Chrome.
-const FIREFOX_UA = `Mozilla/5.0 (${IS_MAC ? 'Macintosh; Intel Mac OS X 10.15' : 'Windows NT 10.0; Win64; x64'}; rv:146.0) Gecko/20100101 Firefox/146.0`;
-const isGoogleSignIn = (u) => /^https:\/\/accounts\.google\.[a-z.]+\//i.test(String(u || ''));
+// Firefox ships a new version every four weeks (133 came out on 26 Nov 2024): say a current one, for this OS.
+const FIREFOX_V = 133 + Math.max(0, Math.floor((Date.now() - Date.UTC(2024, 10, 26)) / (28 * 864e5)) - 1);   // one behind: never a version that isn't out yet
+const FIREFOX_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10.15' : process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : 'X11; Linux x86_64';
+const FIREFOX_UA = `Mozilla/5.0 (${FIREFOX_OS}; rv:${FIREFOX_V}.0) Gecko/20100101 Firefox/${FIREFOX_V}.0`;
+// Google's own domains only: google.com, google.se, google.co.uk, google.com.au… (not google.anything-else.com).
+const GOOGLE_HOST = '(?:[a-z0-9-]+\\.)*google\\.(?:com|[a-z]{2}|co\\.[a-z]{2}|com\\.[a-z]{2})';
+const isGoogleSignIn = (u) => /^https:\/\/accounts\.google\.(?:com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})(?:[:/]|$)/i.test(String(u || ''));
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'stupid', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false } }
@@ -176,37 +182,49 @@ let shownFirstWindow = false;
 // One sign-in for the whole profile. Tabs, the sidebar apps and the AI panel each have their own session (so a
 // sidebar app can't read your tabs' data), but signing in to Google or Microsoft in any of them signs you in to all of
 // them: Gmail in a tab means YouTube in the sidebar and Gemini in the AI panel are signed in too, and signing out
-// anywhere signs out everywhere. Only those accounts' sign-in cookies are shared, nothing else.
-const SHARED_SIGNIN = /(^|\.)(google\.[a-z.]+|youtube\.com|googleusercontent\.com|live\.com|microsoftonline\.com|microsoft\.com|outlook\.com|office\.com|office365\.com|bing\.com)$/i;
+// anywhere signs out everywhere. Only the sign-in cookies themselves are shared, on those companies' own domains.
+const SIGNIN_DOMAIN = new RegExp(`^\\.?(?:${GOOGLE_HOST}|(?:[a-z0-9-]+\\.)*(?:youtube\\.com|live\\.com|microsoftonline\\.com|microsoft\\.com|outlook\\.com|office\\.com))$`, 'i');
+const SIGNIN_NAME = /^(?:SID|HSID|SSID|APISID|SAPISID|LSID|SIDCC|__Secure-[13]P(?:SID|SIDTS|SIDCC|SIDRTS|APISID)|__Host-(?:GAPS|1PLSID|3PLSID)|ESTSAUTH(?:PERSISTENT|LIGHT)?|ESTSSC|buid|MSPAuth|MSPProf|MSPOK|WLSSC|RPSSecAuth|__Host-MSAAUTH(?:P)?|OIDCAuth(?:Cookie)?|LOGIN_INFO)$/;
+const isSignInCookie = (c) => SIGNIN_NAME.test(c.name) && SIGNIN_DOMAIN.test(c.domain);
 const linkedGroups = new Set();
 function linkSignIns(partitions) {
   const key = partitions.join('|'); if (linkedGroups.has(key)) return; linkedGroups.add(key);
   const sessions = partitions.map((p) => session.fromPartition(p));
-  const urlOf = (c) => `http${c.secure ? 's' : ''}://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
-  const same = (a, b) => a && b && a.value === b.value && a.expirationDate === b.expirationDate;
-  const copy = async (to, c) => {
-    try {
-      const have = (await to.cookies.get({ name: c.name, domain: c.domain, path: c.path })).find((x) => x.domain === c.domain);
-      if (same(have, c)) return;   // already there: this is what stops two sessions bouncing a cookie back and forth
-      const d = { url: urlOf(c), name: c.name, value: c.value, path: c.path, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite };
-      if (!c.hostOnly) d.domain = c.domain;
-      if (c.expirationDate) d.expirationDate = c.expirationDate;
-      await to.cookies.set(d);
-    } catch {}
+  const urlOf = (c) => `https://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
+  const find = async (ses, c) => { try { return (await ses.cookies.get({ name: c.name, path: c.path })).find((x) => x.domain === c.domain) || null; } catch { return null; } };
+  const put = async (to, c) => {
+    const d = { url: urlOf(c), name: c.name, value: c.value, path: c.path, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite };
+    if (!c.hostOnly) d.domain = c.domain;
+    if (c.expirationDate) d.expirationDate = c.expirationDate;
+    try { await to.cookies.set(d); } catch {}
   };
-  const drop = async (to, c) => { try { if ((await to.cookies.get({ name: c.name, domain: c.domain, path: c.path })).length) await to.cookies.remove(urlOf(c), c.name); } catch {} };
-  sessions.forEach((from, i) => {
-    from.cookies.on('changed', (_e, c, cause, removed) => {
-      if (!SHARED_SIGNIN.test(c.domain.replace(/^\./, ''))) return;
-      if (removed && cause === 'overwrite') return;   // replaced by a newer value: the 'set' that follows carries it
-      for (const to of sessions) if (to !== from) (removed ? drop : copy)(to, c);
-    });
-  });
-  // Bring them together once: a sign-in made before this version, in any of them, reaches the others.
+  // A change waits a moment, then the session it happened in is read again: what's there NOW goes to the others (a
+  // value that changed again meanwhile isn't sent stale), and an identical value isn't written, which ends the echo.
+  const pending = new Map();
+  const settle = (from, c) => {
+    const k = sessions.indexOf(from) + '|' + c.name + '|' + c.domain + '|' + c.path;
+    clearTimeout(pending.get(k));
+    pending.set(k, setTimeout(async () => {
+      pending.delete(k);
+      const now = await find(from, c);
+      for (const to of sessions) {
+        if (to === from) continue;
+        const there = await find(to, c);
+        if (now && (!there || there.value !== now.value)) await put(to, now);
+        else if (!now && there) { try { await to.cookies.remove(urlOf(there), there.name); } catch {} }
+      }
+    }, 250));
+  };
+  sessions.forEach((from) => from.cookies.on('changed', (_e, c, cause) => {
+    if (cause === 'expired' || cause === 'evicted') return;   // each session ages its own copies
+    if (isSignInCookie(c)) settle(from, c);
+  }));
+  // Once at start: a sign-in that exists in one of them and is missing in another is filled in. Nothing that's already
+  // there is overwritten, so no session's newer value loses to another's older one.
   (async () => {
     for (const from of sessions) {
       let all = []; try { all = await from.cookies.get({}); } catch {}
-      for (const c of all) if (SHARED_SIGNIN.test(c.domain.replace(/^\./, ''))) for (const to of sessions) if (to !== from) await copy(to, c);
+      for (const c of all) if (isSignInCookie(c)) for (const to of sessions) if (to !== from && !(await find(to, c))) await put(to, c);
     }
   })();
 }
@@ -218,23 +236,29 @@ function windowPlace() {
   const s = store.read('window-state.json', null);
   const onScreen = (b) => b && screen.getAllDisplays().some((d) => { const a = d.workArea; return b.x < a.x + a.width - 80 && b.x + b.width > a.x + 80 && b.y >= a.y - 20 && b.y < a.y + a.height - 80; });
   if (s && s.bounds && onScreen(s.bounds)) {
-    // a second window steps down and right a little, so it doesn't sit exactly on top of the first
-    const open = [...windows.values()].some((w) => !w.win.isDestroyed() && !w.win.isMinimized());
-    const b = { ...s.bounds }; if (open && !s.maximized) { b.x += 26; b.y += 26; }
+    const a = screen.getDisplayMatching(s.bounds).workArea;
+    const b = { ...s.bounds, width: Math.min(s.bounds.width, a.width), height: Math.min(s.bounds.height, a.height) };   // a screen that got smaller
+    // more windows step down and right a little each, so none sits exactly on top of another
+    const open = [...windows.values()].filter((w) => !w.win.isDestroyed() && !w.win.isMinimized()).length;
+    if (open && !s.maximized) { const step = 26 * (open % 8); b.x = Math.min(b.x + step, a.x + a.width - b.width); b.y = Math.min(b.y + step, a.y + a.height - b.height); }
     return { bounds: b, maximized: !!s.maximized };
   }
+  // First run: maximized on Windows/Linux like Chrome, with a restore size a little inside the screen; on a Mac it fills
+  // the screen without full-screen mode, like Chrome there.
   const a = screen.getPrimaryDisplay().workArea;
-  return { bounds: { x: a.x, y: a.y, width: a.width, height: a.height }, maximized: !IS_MAC };   // Chrome on Windows starts maximized
+  if (IS_MAC) return { bounds: { x: a.x, y: a.y, width: a.width, height: a.height }, maximized: false };
+  const w = Math.round(a.width * 0.86), h = Math.round(a.height * 0.88);
+  return { bounds: { x: a.x + Math.round((a.width - w) / 2), y: a.y + Math.round((a.height - h) / 2), width: w, height: h }, maximized: true };
 }
 function rememberPlace(win) {
   let t = null;
-  const save = () => { clearTimeout(t); t = setTimeout(() => {
+  const now = () => {
     if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
-    const maximized = win.isMaximized();
-    const prev = store.read('window-state.json', null);
-    store.write('window-state.json', { bounds: maximized && prev && prev.bounds ? prev.bounds : win.getNormalBounds(), maximized });
-  }, 400); };
+    store.write('window-state.json', { bounds: win.getNormalBounds(), maximized: win.isMaximized() });   // this window's own restore size
+  };
+  const save = () => { clearTimeout(t); t = setTimeout(now, 400); };
   for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) win.on(ev, save);
+  win.on('close', () => { clearTimeout(t); now(); });   // a change just before closing isn't lost
 }
 
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
@@ -266,13 +290,13 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
     }
   });
   if (!IS_MAC) win.removeMenu();   // macOS uses the app menu bar (see buildMacMenu)
-  if (place.maximized) win.maximize();
+  if (place.maximized && instant) win.maximize();   // later windows maximize as they fade in (maximize() would show them early)
   rememberPlace(win);
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
   if (instant) { win.once('show', () => perfMark('window-shown')); win.webContents.once('dom-ready', () => perfMark('shell-dom-ready')); win.webContents.once('did-finish-load', () => perfMark('shell-loaded')); }
-  win.once('ready-to-show', () => { if (instant) perfMark('ready-to-show'); if (!instant) showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
+  win.once('ready-to-show', () => { if (instant) perfMark('ready-to-show'); if (!instant) { showSmooth(win); if (place.maximized) win.maximize(); } if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   win.webContents.on('context-menu', (_e, p) => { if (p.isEditable) shellEditMenu(win.webContents, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
   win.on('swipe', (_e, dir) => { if (dir === 'left' || dir === 'right') win.webContents.send('shortcut', dir === 'left' ? 'back' : 'forward'); });   // macOS trackpad swipe
   // The browser's own UI never opens windows or leaves index.html: a stray link in it (reader view, a widget) opens as a tab.
@@ -352,7 +376,7 @@ function prepareSession(ses, { tabs, incognito }) {
     if (isGoogleSignIn(details.url)) {
       details.requestHeaders['User-Agent'] = FIREFOX_UA;
       for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-/i.test(h)) delete details.requestHeaders[h];   // Firefox sends none
-    }
+    } else if (details.requestHeaders['User-Agent'] === FIREFOX_UA) details.requestHeaders['User-Agent'] = UA;   // Firefox stays on Google's sign-in pages
     if (getSettings().dnt && /^https?:/.test(details.url)) {
       details.requestHeaders.DNT = '1';
       details.requestHeaders['Sec-GPC'] = '1';
@@ -883,20 +907,24 @@ handle('adblock:get', ANY, () => ({ on: getSettings().adblock, count: blockedCou
    own: it notices Proton's network adapter and opens or offers the app. */
 const PROTON_APP = IS_MAC ? ['/Applications/Proton VPN.app', '/Applications/ProtonVPN.app']
   : process.platform === 'win32' ? [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Proton', 'VPN', 'ProtonVPN.Launcher.exe'), path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Proton Technologies', 'ProtonVPN', 'ProtonVPN.exe'), path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Proton', 'VPN', 'ProtonVPN.Launcher.exe')]
-  : ['/usr/bin/protonvpn-app', '/usr/bin/protonvpn'];
+  : ['/usr/bin/protonvpn-app', '/usr/bin/protonvpn', '/var/lib/flatpak/exports/bin/com.protonvpn.www', path.join(os.homedir(), '.local/share/flatpak/exports/bin/com.protonvpn.www')];
 function vpnStatus() {
   const app = PROTON_APP.find((p) => p && fs.existsSync(p)) || '';
-  // Proton's adapter: "ProtonVPN"/"ProtonVPN TUN" on Windows, proton0 / pvpn-* on Linux. macOS doesn't name it, so
-  // there the button can only open the app.
+  // Proton's tunnel: the "ProtonVPN" adapter on Windows, proton0 on Linux (not its kill-switch interfaces pvpnks*/
+  // pvpnrout*, which stay up while disconnected). macOS doesn't name it, so there the button can only open the app.
   let connected = null;
-  if (!IS_MAC) { try { connected = Object.entries(os.networkInterfaces()).some(([n, a]) => /proton|^pvpn/i.test(n) && (a || []).some((x) => !x.internal)); } catch { connected = false; } }
+  if (!IS_MAC) { try { connected = Object.entries(os.networkInterfaces()).some(([n, a]) => /^(?:protonvpn(?: tun| wireguard)?|proton\d+)$/i.test(n.trim()) && (a || []).some((x) => !x.internal)); } catch { connected = false; } }
   return { installed: !!app, connected };
 }
 handle('vpn:status', ['shell'], () => vpnStatus());
 handle('vpn:open', ['shell'], async () => {
   const app = PROTON_APP.find((p) => p && fs.existsSync(p));
   if (!app) return false;
-  if (process.platform === 'linux') { require('child_process').spawn(app, [], { detached: true, stdio: 'ignore' }).unref(); return true; }
+  if (process.platform === 'linux') {
+    return new Promise((resolve) => {
+      try { const p = require('child_process').spawn(app, [], { detached: true, stdio: 'ignore' }); p.on('error', () => resolve(false)); p.on('spawn', () => { p.unref(); resolve(true); }); } catch { resolve(false); }
+    });
+  }
   return !(await shell.openPath(app));
 });
 
@@ -1427,7 +1455,11 @@ app.on('web-contents-created', (_e, contents) => {
   if (contents.getType() !== 'webview') return;
   hookShortcuts(contents);
   // On Google's sign-in pages the tab is Firefox (see FIREFOX_UA); elsewhere it's left alone.
-  contents.on('did-start-navigation', (d) => { if (d.isMainFrame && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); });
+  // Decided again at every step of a navigation, redirects included: Gmail → sign-in → back to Gmail.
+  // A redirect (sign-in → back to Gmail) is caught before it's followed. (Changing it in did-redirect-navigation crashes
+  // Electron.)
+  contents.on('will-redirect', (d) => { if (d && d.isMainFrame && !contents.isDestroyed()) setImmediate(() => { if (!contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); }); });
+  for (const ev of ['did-start-navigation', 'did-navigate']) contents.on(ev, (d, url) => { const u = d && d.url !== undefined ? d.url : url; if ((!d || d.isMainFrame !== false) && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(u)); });
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
   const hideSearchAds = () => {

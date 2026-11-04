@@ -43,7 +43,7 @@ function render() {
   const DEF = { uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft' };
   for (const k of Object.keys(DEF)) document.querySelectorAll('#' + k + ' button').forEach((b) => { b.classList.toggle('on', (s[k] || DEF[k]) === b.dataset.v); b.onclick = () => set({ [k]: b.dataset.v }).then(render); });
   const tb = $('toolbarBtns'); tb.innerHTML = '';
-  for (const [k, label] of [['shield', 'Ad blocker'], ['pip', 'Picture-in-picture'], ['ai', 'AI'], ['grid', 'Apps'], ['profile', 'Profile']]) {
+  for (const [k, label] of [['shield', 'Ad blocker'], ['vpn', 'VPN (Proton)'], ['pip', 'Picture-in-picture'], ['ai', 'AI'], ['grid', 'Apps'], ['profile', 'Profile']]) {
     const hidden = (s.hideButtons || []).includes(k);
     const c = el('button', 'chip' + (hidden ? '' : ' on'), label);
     c.onclick = () => { const h = new Set(s.hideButtons || []); hidden ? h.delete(k) : h.add(k); set({ hideButtons: [...h] }).then(render); };

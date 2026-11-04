@@ -40,8 +40,9 @@ function pictureFrom(file) {
     rd.onload = () => { im.src = rd.result; }; rd.onerror = () => reject(new Error('That picture can’t be read'));
     im.onload = () => {
       const n = 192, c = document.createElement('canvas'); c.width = c.height = n;
-      const s = Math.min(im.naturalWidth, im.naturalHeight);
-      c.getContext('2d').drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, n, n);
+      const s = Math.min(im.naturalWidth, im.naturalHeight), g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);   // a see-through picture gets white behind it, not black
+      g.drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, n, n);
       resolve(c.toDataURL('image/jpeg', 0.86));
     };
     im.onerror = () => reject(new Error('That picture can’t be read'));
