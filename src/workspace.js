@@ -23,7 +23,33 @@ const appUrl = (it) => (it.url === 'mail' ? mailUrl() : it.url);
 const profileColor = () => GROUP_COLORS[settings.profileColor] || GROUP_COLORS.clay;
 const initial = () => ((settings.name || '').trim()[0] || '').toUpperCase();
 
+// A profile's round picture: its photo if it has one, else its initial (or a person) on its colour.
+function avatarOf(p, size) {
+  const a = el('span', 'avatar');
+  a.style.background = GROUP_COLORS[p.color] || GROUP_COLORS.clay;
+  if (size) { a.style.width = a.style.height = size + 'px'; a.style.fontSize = Math.round(size * 0.44) + 'px'; }
+  if (p.image && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image)) { a.classList.add('photo'); a.style.backgroundImage = `url("${p.image}")`; return a; }
+  a.textContent = ((p.name || '?').trim()[0] || '?').toUpperCase();
+  return a;
+}
+// A square crop from the middle of a picture you pick, small enough to keep in settings.
+function pictureFrom(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type)) return reject(new Error('Pick a picture'));
+    const im = new Image(); const rd = new FileReader();   // read as data: (the browser UI doesn't load blob: pictures)
+    rd.onload = () => { im.src = rd.result; }; rd.onerror = () => reject(new Error('That picture can’t be read'));
+    im.onload = () => {
+      const n = 192, c = document.createElement('canvas'); c.width = c.height = n;
+      const s = Math.min(im.naturalWidth, im.naturalHeight);
+      c.getContext('2d').drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, n, n);
+      resolve(c.toDataURL('image/jpeg', 0.86));
+    };
+    im.onerror = () => reject(new Error('That picture can’t be read'));
+    rd.readAsDataURL(file);
+  });
+}
 function avatarEl(size) {
+  if (settings.profileImage) return avatarOf({ image: settings.profileImage, color: settings.profileColor }, size);
   const a = el('span', 'avatar');
   a.style.background = profileColor();
   if (size) { a.style.width = a.style.height = size + 'px'; a.style.fontSize = Math.round(size * 0.44) + 'px'; }
@@ -53,20 +79,34 @@ function profileCard(editing = false) {
     const f = el('form', 'stack pf-form');
     const name = el('input', 'text-in'); name.placeholder = 'Your name'; name.maxLength = 40; name.value = settings.name || '';
     const email = el('input', 'text-in'); email.placeholder = 'Email (optional)'; email.type = 'email'; email.maxLength = 120; email.value = settings.email || '';
+    // Picture: one of your own photos, or none (then the initial on your colour).
+    let image = settings.profileImage || '';
+    const picRow = el('div', 'pf-picrow');
+    const preview = () => { picRow.replaceChildren(); picRow.append(image ? avatarOf({ image }, 40) : avatarOf({ name: name.value || settings.name || '?', color }, 40), pick); if (image) picRow.appendChild(clear); };
+    const file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.hidden = true;
+    const pick = el('button', 'pill', image ? 'Change picture…' : 'Choose picture…'); pick.type = 'button';
+    pick.addEventListener('click', () => file.click());
+    const clear = el('button', 'pill', 'Remove'); clear.type = 'button';
+    clear.addEventListener('click', () => { image = ''; pick.textContent = 'Choose picture…'; preview(); });
+    file.addEventListener('change', async () => {
+      try { image = await pictureFrom(file.files[0]); pick.textContent = 'Change picture…'; preview(); } catch (err) { toast(err.message); }
+      file.value = '';
+    });
     const sw = el('div', 'pf-swatches');
     let color = settings.profileColor || 'clay';
     for (const c of PROFILE_COLORS) {
       const s = el('button', 'pf-swatch' + (c === color ? ' on' : '')); s.type = 'button'; s.title = c; s.style.background = GROUP_COLORS[c];
-      s.addEventListener('click', () => { color = c; sw.querySelectorAll('.pf-swatch').forEach((x) => x.classList.toggle('on', x === s)); });
+      s.addEventListener('click', () => { color = c; sw.querySelectorAll('.pf-swatch').forEach((x) => x.classList.toggle('on', x === s)); preview(); });
       sw.appendChild(s);
     }
     const row = el('div', 'pop-actions'); const cancel = el('button', 'pill', 'Cancel'); cancel.type = 'button'; const ok = el('button', 'pill solid', 'Save'); ok.type = 'submit';
     cancel.addEventListener('click', () => profileCard(false));
     row.append(el('div', 'grow'), cancel, ok);
-    f.append(name, email, el('div', 'pop-sub', 'Color'), sw, row);
+    preview();
+    f.append(name, email, el('div', 'pop-sub', 'Picture'), picRow, file, el('div', 'pop-sub', 'Color'), sw, row);
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
-      settings = await call('settings:set', { name: name.value.trim(), email: email.value.trim(), profileColor: color });
+      settings = await call('settings:set', { name: name.value.trim(), email: email.value.trim(), profileColor: color, profileImage: image });
       renderProfileBtn(); profileCard(false);
     });
     pop.appendChild(f);
@@ -108,7 +148,7 @@ function profileCard(editing = false) {
       if (p.id === current) continue;
       const row = el('div', 'pf-prow');
       const b = el('button', 'menu-item pf-link');
-      const a = el('span', 'avatar'); a.style.background = GROUP_COLORS[p.color] || GROUP_COLORS.clay; a.textContent = (p.name || '?')[0].toUpperCase();
+      const a = avatarOf(p);
       b.append(a, el('span', 'ml', p.name)); b.title = `Open ${p.name}’s browser`;
       b.addEventListener('click', () => { hidePop(); switchOverlay(p); call('profiles:open', p.id); });
       row.appendChild(b);
@@ -146,7 +186,7 @@ function profileCard(editing = false) {
 // A soft full-window transition while the other profile's browser opens.
 function switchOverlay(p) {
   const o = el('div', 'switch-overlay');
-  const a = el('span', 'avatar'); a.style.background = GROUP_COLORS[p.color] || GROUP_COLORS.clay; a.textContent = (p.name || '?').trim()[0].toUpperCase();
+  const a = avatarOf(p);
   o.append(a, el('div', 'so-text', `Switching to ${p.name}…`));
   document.body.appendChild(o);
   requestAnimationFrame(() => o.classList.add('in'));

@@ -11,6 +11,7 @@ async function render() {
   list.forEach((p, i) => {
     const b = el('button', 'card'); b.style.animationDelay = (i * 0.05) + 's';
     const av = el('span', 'avatar', (p.name || '?').trim()[0].toUpperCase()); av.style.background = COLORS[p.color] || COLORS.clay;
+    if (p.image && /^data:image\/(png|jpeg|webp);base64,/.test(p.image)) { av.textContent = ''; av.style.backgroundImage = `url("${p.image}")`; av.style.backgroundSize = 'cover'; av.style.backgroundPosition = 'center'; }
     b.append(av, el('b', null, p.name || 'Profile'), el('small', null, p.email || (p.id === 'default' ? 'Main profile' : '')));
     b.addEventListener('click', () => { b.classList.add('chosen'); window.picker.choose(p.id); });
     grid.appendChild(b);

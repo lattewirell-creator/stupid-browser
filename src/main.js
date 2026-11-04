@@ -1,7 +1,7 @@
 'use strict';
 const {
   app, BrowserWindow, ipcMain, session, shell, webContents, nativeTheme, protocol, net,
-  Menu, clipboard, dialog, safeStorage, nativeImage
+  Menu, clipboard, dialog, safeStorage, nativeImage, screen
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -25,15 +25,11 @@ const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; W
 const UA = `Mozilla/5.0 (${UA_OS}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
 app.userAgentFallback = UA;
 // Google refuses to sign you in from browsers it thinks are "embedded apps" ("This browser or app may not be secure").
-// Chromium tells pages it is "Chromium", not "Google Chrome": in its client hints (Sec-CH-UA headers) and in
-// navigator.userAgentData, which Google's sign-in page checks. On Google's sign-in pages only, the browser says what
-// Chrome itself says, the same in every place (see googleIdentity below).
-const CHROME_MAJOR = process.versions.chrome.split('.')[0];
-const CHROME_BRANDS = [{ brand: 'Google Chrome', version: CHROME_MAJOR }, { brand: 'Chromium', version: CHROME_MAJOR }, { brand: 'Not_A Brand', version: '24' }];
-const CHROME_FULL = [{ brand: 'Google Chrome', version: process.versions.chrome }, { brand: 'Chromium', version: process.versions.chrome }, { brand: 'Not_A Brand', version: '24.0.0.0' }];
-const SEC_CH_UA = CHROME_BRANDS.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
-const CHROME_HINTS = { brands: CHROME_BRANDS, fullVersionList: CHROME_FULL, fullVersion: process.versions.chrome, platform: IS_MAC ? 'macOS' : 'Windows', platformVersion: IS_MAC ? '14.6.0' : '15.0.0',
-  architecture: process.arch === 'arm64' ? 'arm' : 'x86', bitness: '64', model: '', mobile: false, wow64: false };
+// Pretending to be Chrome wasn't enough (1.6.6): Google's page also looks at things Chromium can't fake from outside.
+// Instead, on Google's sign-in pages the tab is Firefox through and through: the user agent, no client hints, and in
+// the page itself none of Chromium's tells (see google-preload.js). Independent browsers get Google sign-in to work
+// this way; everywhere else the browser stays Chrome.
+const FIREFOX_UA = `Mozilla/5.0 (${IS_MAC ? 'Macintosh; Intel Mac OS X 10.15' : 'Windows NT 10.0; Win64; x64'}; rv:146.0) Gecko/20100101 Firefox/146.0`;
 const isGoogleSignIn = (u) => /^https:\/\/accounts\.google\.[a-z.]+\//i.test(String(u || ''));
 
 protocol.registerSchemesAsPrivileged([
@@ -67,7 +63,7 @@ const SEARCH_ENGINES = {
   youtube: { name: 'YouTube', url: 'https://www.youtube.com/results?search_query=%s' }
 };
 const DEFAULT_SETTINGS = () => ({
-  name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
+  name: '', email: '', profileColor: 'clay', profileImage: '', mail: 'gmail', mailUrl: '',
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
@@ -115,7 +111,7 @@ function setSettings(patch) {
   store.write('settings.json', next);
   applySettingsSideEffects(patch);
   broadcast('settings:changed', publicSettings());
-  if ('name' in patch || 'profileColor' in patch || 'email' in patch) profiles.sync(next);
+  if ('name' in patch || 'profileColor' in patch || 'email' in patch || 'profileImage' in patch) profiles.sync(next);
   return next;
 }
 function publicSettings() {
@@ -177,6 +173,70 @@ const windowTitle = (incognito) => { const n = (getSettings().wordmark || '').tr
 // The first window appears the moment it exists (its background colour, then the UI as it paints), the way Firefox
 // shows its window before the browser has finished starting. Later windows fade in once painted.
 let shownFirstWindow = false;
+// One sign-in for the whole profile. Tabs, the sidebar apps and the AI panel each have their own session (so a
+// sidebar app can't read your tabs' data), but signing in to Google or Microsoft in any of them signs you in to all of
+// them: Gmail in a tab means YouTube in the sidebar and Gemini in the AI panel are signed in too, and signing out
+// anywhere signs out everywhere. Only those accounts' sign-in cookies are shared, nothing else.
+const SHARED_SIGNIN = /(^|\.)(google\.[a-z.]+|youtube\.com|googleusercontent\.com|live\.com|microsoftonline\.com|microsoft\.com|outlook\.com|office\.com|office365\.com|bing\.com)$/i;
+const linkedGroups = new Set();
+function linkSignIns(partitions) {
+  const key = partitions.join('|'); if (linkedGroups.has(key)) return; linkedGroups.add(key);
+  const sessions = partitions.map((p) => session.fromPartition(p));
+  const urlOf = (c) => `http${c.secure ? 's' : ''}://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
+  const same = (a, b) => a && b && a.value === b.value && a.expirationDate === b.expirationDate;
+  const copy = async (to, c) => {
+    try {
+      const have = (await to.cookies.get({ name: c.name, domain: c.domain, path: c.path })).find((x) => x.domain === c.domain);
+      if (same(have, c)) return;   // already there: this is what stops two sessions bouncing a cookie back and forth
+      const d = { url: urlOf(c), name: c.name, value: c.value, path: c.path, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite };
+      if (!c.hostOnly) d.domain = c.domain;
+      if (c.expirationDate) d.expirationDate = c.expirationDate;
+      await to.cookies.set(d);
+    } catch {}
+  };
+  const drop = async (to, c) => { try { if ((await to.cookies.get({ name: c.name, domain: c.domain, path: c.path })).length) await to.cookies.remove(urlOf(c), c.name); } catch {} };
+  sessions.forEach((from, i) => {
+    from.cookies.on('changed', (_e, c, cause, removed) => {
+      if (!SHARED_SIGNIN.test(c.domain.replace(/^\./, ''))) return;
+      if (removed && cause === 'overwrite') return;   // replaced by a newer value: the 'set' that follows carries it
+      for (const to of sessions) if (to !== from) (removed ? drop : copy)(to, c);
+    });
+  });
+  // Bring them together once: a sign-in made before this version, in any of them, reaches the others.
+  (async () => {
+    for (const from of sessions) {
+      let all = []; try { all = await from.cookies.get({}); } catch {}
+      for (const c of all) if (SHARED_SIGNIN.test(c.domain.replace(/^\./, ''))) for (const to of sessions) if (to !== from) await copy(to, c);
+    }
+  })();
+}
+
+// Window size, like Chrome: the first time it fills the screen (its work area, above the taskbar or below the menu bar);
+// after that every new window opens where and as big as the last one you used, maximized if it was. A window
+// remembered on a screen that's no longer there opens on the main screen instead.
+function windowPlace() {
+  const s = store.read('window-state.json', null);
+  const onScreen = (b) => b && screen.getAllDisplays().some((d) => { const a = d.workArea; return b.x < a.x + a.width - 80 && b.x + b.width > a.x + 80 && b.y >= a.y - 20 && b.y < a.y + a.height - 80; });
+  if (s && s.bounds && onScreen(s.bounds)) {
+    // a second window steps down and right a little, so it doesn't sit exactly on top of the first
+    const open = [...windows.values()].some((w) => !w.win.isDestroyed() && !w.win.isMinimized());
+    const b = { ...s.bounds }; if (open && !s.maximized) { b.x += 26; b.y += 26; }
+    return { bounds: b, maximized: !!s.maximized };
+  }
+  const a = screen.getPrimaryDisplay().workArea;
+  return { bounds: { x: a.x, y: a.y, width: a.width, height: a.height }, maximized: !IS_MAC };   // Chrome on Windows starts maximized
+}
+function rememberPlace(win) {
+  let t = null;
+  const save = () => { clearTimeout(t); t = setTimeout(() => {
+    if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+    const maximized = win.isMaximized();
+    const prev = store.read('window-state.json', null);
+    store.write('window-state.json', { bounds: maximized && prev && prev.bounds ? prev.bounds : win.getNormalBounds(), maximized });
+  }, 400); };
+  for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) win.on(ev, save);
+}
+
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const instant = !shownFirstWindow; shownFirstWindow = true;
   if (instant) perfMark('window-create');
@@ -186,9 +246,11 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   prepareSession(session.fromPartition(partition), { tabs: true, incognito });
   prepareSession(session.fromPartition(aiPartition), { tabs: false, incognito });
   prepareSession(session.fromPartition(appsPartition), { tabs: false, incognito });
+  linkSignIns([partition, aiPartition, appsPartition]);
   const c = themeColors(incognito);
+  const place = windowPlace();
   const win = new BrowserWindow({
-    width: 1360, height: 860, minWidth: 720, minHeight: 480,
+    ...place.bounds, minWidth: 720, minHeight: 480,
     title: windowTitle(incognito),
     backgroundColor: c.bg,
     icon: path.join(__dirname, 'assets', 'icon.png'),
@@ -204,6 +266,8 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
     }
   });
   if (!IS_MAC) win.removeMenu();   // macOS uses the app menu bar (see buildMacMenu)
+  if (place.maximized) win.maximize();
+  rememberPlace(win);
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
@@ -286,11 +350,8 @@ function prepareSession(ses, { tabs, incognito }) {
   // Do Not Track / Global Privacy Control headers
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
     if (isGoogleSignIn(details.url)) {
-      details.requestHeaders['User-Agent'] = UA;
-      for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-ua$/i.test(h)) delete details.requestHeaders[h];
-      details.requestHeaders['Sec-CH-UA'] = SEC_CH_UA;
-      details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
-      details.requestHeaders['Sec-CH-UA-Platform'] = IS_MAC ? '"macOS"' : '"Windows"';
+      details.requestHeaders['User-Agent'] = FIREFOX_UA;
+      for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-/i.test(h)) delete details.requestHeaders[h];   // Firefox sends none
     }
     if (getSettings().dnt && /^https?:/.test(details.url)) {
       details.requestHeaders.DNT = '1';
@@ -310,6 +371,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'select-preload.js') });
   // Music island: lets the browser UI read "now playing" and press play/pause/next (all web sessions).
   ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'media-preload.js') });
+  // Google's sign-in page sees Firefox, not Chromium (see FIREFOX_UA). Every web session: tabs, sidebar apps, AI panel.
+  ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'google-preload.js') });
   if (tabs) {
     ses.__stupidTabs = true;
     ses.__incognito = incognito;
@@ -575,6 +638,7 @@ function cleanPatch(patch) {
   if ('quoteMode' in p && !['browser', 'mine', 'mix'].includes(p.quoteMode)) delete p.quoteMode;
   if ('myQuotes' in p) p.myQuotes = (Array.isArray(p.myQuotes) ? p.myQuotes : []).map((q) => String(q).trim().slice(0, 200)).filter(Boolean).slice(0, 100);
   if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
+  if ('profileImage' in p && !(p.profileImage === '' || (typeof p.profileImage === 'string' && p.profileImage.length < 200000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.profileImage)))) delete p.profileImage;
   if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
   if ('eq' in p) p.eq = cleanEq(p.eq);
   if ('aiButton' in p && !['buddy', 'sidebar', 'off'].includes(p.aiButton)) delete p.aiButton;
@@ -814,6 +878,27 @@ handle('privacy:clear', ['internal'], async (_e, { range, history, cookies, cach
 
 handle('adblock:set', ANY, (_e, on) => { setSettings({ adblock: !!on }); return { on: !!on, count: blockedCount }; });
 handle('adblock:get', ANY, () => ({ on: getSettings().adblock, count: blockedCount }));
+/* ---------- Proton VPN: the toolbar's VPN button shows whether it's on and opens the app ----------
+   Proton VPN protects the whole computer through its own app (and account), so the browser doesn't carry a VPN of its
+   own: it notices Proton's network adapter and opens or offers the app. */
+const PROTON_APP = IS_MAC ? ['/Applications/Proton VPN.app', '/Applications/ProtonVPN.app']
+  : process.platform === 'win32' ? [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Proton', 'VPN', 'ProtonVPN.Launcher.exe'), path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Proton Technologies', 'ProtonVPN', 'ProtonVPN.exe'), path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Proton', 'VPN', 'ProtonVPN.Launcher.exe')]
+  : ['/usr/bin/protonvpn-app', '/usr/bin/protonvpn'];
+function vpnStatus() {
+  const app = PROTON_APP.find((p) => p && fs.existsSync(p)) || '';
+  // Proton's adapter: "ProtonVPN"/"ProtonVPN TUN" on Windows, proton0 / pvpn-* on Linux. macOS doesn't name it, so
+  // there the button can only open the app.
+  let connected = null;
+  if (!IS_MAC) { try { connected = Object.entries(os.networkInterfaces()).some(([n, a]) => /proton|^pvpn/i.test(n) && (a || []).some((x) => !x.internal)); } catch { connected = false; } }
+  return { installed: !!app, connected };
+}
+handle('vpn:status', ['shell'], () => vpnStatus());
+handle('vpn:open', ['shell'], async () => {
+  const app = PROTON_APP.find((p) => p && fs.existsSync(p));
+  if (!app) return false;
+  if (process.platform === 'linux') { require('child_process').spawn(app, [], { detached: true, stdio: 'ignore' }).unref(); return true; }
+  return !(await shell.openPath(app));
+});
 
 handle('session:save', ['shell'], (e, data) => {
   const w = entryFor(e.sender);
@@ -1322,14 +1407,9 @@ const SCROLLBAR_CSS = `::-webkit-scrollbar { width: 11px; height: 11px; backgrou
 // Chromium's own way to set what a tab says about itself (the DevTools protocol, the same tool its "device
 // emulation" uses): user agent and client hints together, so the headers and navigator.userAgentData agree.
 function googleIdentity(contents, on) {
-  const dbg = contents.debugger;
-  try {
-    if (on) {
-      if (!dbg.isAttached()) dbg.attach('1.3');
-      dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: UA, platform: IS_MAC ? 'MacIntel' : 'Win32', userAgentMetadata: CHROME_HINTS }).catch(() => {});
-    } else if (dbg.isAttached() && contents.__googleIdentity) dbg.detach();
-    contents.__googleIdentity = on;
-  } catch (e) { console.log('[google sign-in]', e.message); }
+  if (!!contents.__googleIdentity === on) return;
+  try { contents.setUserAgent(on ? FIREFOX_UA : UA); } catch {}   // navigator.userAgent on the page, as the headers say
+  contents.__googleIdentity = on;
 }
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
@@ -1346,7 +1426,7 @@ app.on('web-contents-created', (_e, contents) => {
 
   if (contents.getType() !== 'webview') return;
   hookShortcuts(contents);
-  // On Google's sign-in pages the tab tells the page it is Google Chrome (see CHROME_HINTS); elsewhere it's left alone.
+  // On Google's sign-in pages the tab is Firefox (see FIREFOX_UA); elsewhere it's left alone.
   contents.on('did-start-navigation', (d) => { if (d.isMainFrame && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); });
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
