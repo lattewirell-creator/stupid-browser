@@ -189,7 +189,9 @@ const SIGNIN_DOMAIN = new RegExp(`^\\.?(?:${GOOGLE_HOST}|(?:[a-z0-9-]+\\.)*(?:yo
 // Not the ones Google rotates on almost every request (SIDCC, *PSIDCC, *PSIDTS): each session keeps those fresh itself, and
 // copying one could put back an older value than a session already has.
 const SIGNIN_NAME = /^(?:SID|HSID|SSID|APISID|SAPISID|LSID|__Secure-[13]P(?:SID|APISID)|__Host-(?:GAPS|1PLSID|3PLSID)|ESTSAUTH(?:PERSISTENT|LIGHT)?|ESTSSC|buid|MSPAuth|MSPProf|MSPOK|WLSSC|RPSSecAuth|__Host-MSAAUTH(?:P)?|OIDCAuth(?:Cookie)?|LOGIN_INFO)$/;
-const isSignInCookie = (c) => SIGNIN_NAME.test(c.name) && SIGNIN_DOMAIN.test(c.domain);
+// The rotating ones are only ever filled in where they're missing (a fresh panel), never written over a session's own.
+const ROTATING_NAME = /^(?:SIDCC|__Secure-[13]PSID(?:CC|TS|RTS))$/;
+const isSignInCookie = (c) => (SIGNIN_NAME.test(c.name) || ROTATING_NAME.test(c.name)) && SIGNIN_DOMAIN.test(c.domain);
 const linkedGroups = new Set();
 const signInFlushers = [];   // run what's pending at quit, so a sign-out right before quitting isn't undone next time
 function linkSignIns(partitions) {
@@ -215,8 +217,8 @@ function linkSignIns(partitions) {
       for (const to of sessions) {
         if (to === from) continue;
         const there = await find(to, c);
-        if (now && (!there || there.value !== now.value)) await put(to, now);
-        else if (!now && there) await put(to, { ...there, value: '', expirationDate: 1 });   // expire exactly this one (not a same-named one elsewhere)
+        if (now && (!there || (there.value !== now.value && !ROTATING_NAME.test(now.name)))) await put(to, now);
+        else if (!now && there && !ROTATING_NAME.test(there.name)) await put(to, { ...there, value: '', expirationDate: 1 });   // expire exactly this one (not a same-named one elsewhere)
       }
     };
     pending.set(k, { timer: setTimeout(run, 250), run });
@@ -1480,7 +1482,8 @@ app.on('web-contents-created', (_e, contents) => {
     const now = Date.now(), fixes = (contents.__identityFixes || []).filter((x) => now - x < 10000);
     if (fixes.length >= 2) return;
     contents.__identityFixes = [...fixes, now];
-    setImmediate(() => { if (!contents.isDestroyed() && contents.getURL() === url) contents.loadURL(url); });
+    // replaces the page (no extra Back step), as a plain GET
+    setImmediate(() => { if (!contents.isDestroyed() && contents.getURL() === url) contents.executeJavaScript(`location.replace(${JSON.stringify(url)})`).catch(() => contents.loadURL(url)); });
   });
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
