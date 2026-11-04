@@ -382,7 +382,7 @@ function prepareSession(ses, { tabs, incognito }) {
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
     // Firefox for the sign-in page itself and what it loads; Google sign-in bits inside other pages (YouTube, GSI
     // buttons on other sites) stay Chrome like the page around them.
-    let signInPage = false; try { signInPage = details.resourceType === 'mainFrame' || isGoogleSignIn(details.webContents && !details.webContents.isDestroyed() ? details.webContents.getURL() : ''); } catch {}
+    let signInPage = false; if (isGoogleSignIn(details.url)) try { signInPage = details.resourceType === 'mainFrame' || isGoogleSignIn(details.webContents && !details.webContents.isDestroyed() ? details.webContents.getURL() : ''); } catch {}
     if (isGoogleSignIn(details.url) && signInPage) {
       details.requestHeaders['User-Agent'] = FIREFOX_UA;
       for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-/i.test(h)) delete details.requestHeaders[h];   // Firefox sends none
@@ -902,7 +902,7 @@ handle('privacy:clear', ['internal'], async (_e, { range, history, cookies, cach
   const since = range > 0 ? Date.now() - range : 0;
   if (history) store.write('history.json', getHistory().filter((x) => x.ts < since));
   if (downloads) store.write('downloads.json', getDownloads().filter((x) => x.state === 'progressing' || x.ts < since));
-  for (const p of [PERSIST, PERSIST_AI, PERSIST_APPS]) {
+  for (const p of [PERSIST, PERSIST_AI]) {   // the sidebar apps keep theirs; a Google/Microsoft sign-out still reaches them (linkSignIns)
     const s = session.fromPartition(p);
     if (cookies) await s.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage', 'filesystem', 'shadercache'] });
     if (cache) { await s.clearCache(); await s.clearCodeCaches({}); }
@@ -1475,7 +1475,12 @@ app.on('web-contents-created', (_e, contents) => {
     const want = isGoogleSignIn(url);
     if (!!contents.__googleIdentity === want) return;
     googleIdentity(contents, want);
-    if (contents.__identityFixed !== url) { contents.__identityFixed = url; contents.reload(); }   // once per page, never a loop
+    // At most twice in ten seconds per tab, whatever Google does (it can bounce between pages), and as a plain GET: a page
+    // that arrived by a form post is never sent again.
+    const now = Date.now(), fixes = (contents.__identityFixes || []).filter((x) => now - x < 10000);
+    if (fixes.length >= 2) return;
+    contents.__identityFixes = [...fixes, now];
+    setImmediate(() => { if (!contents.isDestroyed() && contents.getURL() === url) contents.loadURL(url); });
   });
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
