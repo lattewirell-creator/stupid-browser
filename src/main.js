@@ -1516,7 +1516,7 @@ function signInPopup(contents) {
 // The popup itself: it always says which site it shows (the title can't be set by the page, so a look-alike page can't
 // pass for the real one), Google sees Firefox there too, and it can't open more windows: whatever it opens (help,
 // privacy, terms) becomes a tab in the browser window, http(s) only.
-function hookSignInPopup(child, opener) {
+function hookSignInPopup(child, opener, openedEmpty) {
   if (!IS_MAC) child.removeMenu();
   const wc = child.webContents;
   const titleFor = (u) => { if (!u || /^about:/i.test(u)) return 'Sign in'; try { const x = new URL(u); return `${x.host} — Sign in${x.protocol === 'https:' ? '' : ' (not secure)'}`; } catch { return 'Sign in'; } };
@@ -1531,23 +1531,27 @@ function hookSignInPopup(child, opener) {
   });
   wc.on('will-navigate', (e, url) => { if (!/^(https?:|about:blank)/i.test(url)) e.preventDefault(); });
   // Opened empty (Auth0, Okta…): its first real page must be a sign-in service, or it becomes a tab instead.
-  if (wc.getURL() === '' || /^about:/i.test(wc.getURL())) {
-    const first = (d) => {
-      if (!d.isMainFrame || /^about:/i.test(d.url)) return;   // the empty page itself
-      wc.removeListener('did-start-navigation', first); clearTimeout(idle);
-      if (SIGNIN_NEXT(d.url)) return;
+  if (openedEmpty) {
+    // Its first real page must be a sign-in service. Checked whenever it gets there: as the page starts, as it lands,
+    // and right now (the opener may have sent it on before this ran).
+    let settled = false;
+    const check = (url) => {
+      if (settled || child.isDestroyed() || !url || /^about:/i.test(url)) return;
+      settled = true; clearTimeout(idle);
+      if (SIGNIN_NEXT(url)) return;
       const shellWc = !opener.isDestroyed() && shellFor(opener);
-      if (shellWc && /^https?:/i.test(d.url)) shellWc.send('open-url', { url: d.url, where: 'foreground' });
+      if (shellWc && /^https?:/i.test(url)) shellWc.send('open-url', { url, where: 'foreground' });
       setImmediate(() => { if (!child.isDestroyed()) child.destroy(); });
     };
-    wc.on('did-start-navigation', first);
+    wc.on('did-start-navigation', (d) => { if (d.isMainFrame) check(d.url); });
+    wc.on('did-navigate', (_e, url) => check(url));
     // still empty after 15 s: nothing is signing in there
-    const idle = setTimeout(() => { if (!child.isDestroyed() && /^(about:|$)/i.test(wc.getURL())) child.destroy(); }, 15000);
+    const idle = setTimeout(() => { if (!settled && !child.isDestroyed()) child.destroy(); }, 15000);
+    check(wc.getURL());
   }
-  // Ctrl/Cmd+W or Esc closes it (the browser's own shortcuts belong to the browser window).
+  // Ctrl/Cmd+W closes it, on any keyboard layout. (Not Esc: that closes autofill lists and dropdowns mid sign-in.)
   wc.on('before-input-event', (e, i) => {
-    if (i.type !== 'keyDown') return;
-    if (i.key === 'Escape' || ((IS_MAC ? i.meta : i.control) && i.key.toLowerCase() === 'w')) { e.preventDefault(); child.close(); }
+    if (i.type === 'keyDown' && (IS_MAC ? i.meta : i.control) && !i.alt && i.code === 'KeyW') { e.preventDefault(); child.close(); }
   });
 }
 
@@ -1582,13 +1586,13 @@ app.on('web-contents-created', (_e, contents) => {
   // (each ask is a blocking call, and they added up with many tabs open).
   contents.on('audio-state-changed', (ev) => { console.log('[dbg] audio', contents.id, ev && ev.audible, !!shellFor(contents)); const s = shellFor(contents); if (s) s.send('tab:audio', contents.id, !!ev.audible); });
   contents.setWindowOpenHandler(({ url, disposition, frameName }) => {
-    if (wantsSignInPopup({ url, disposition, frameName })) { const p = signInPopup(contents); if (p) return p; return { action: 'deny' }; }
+    if (wantsSignInPopup({ url, disposition, frameName })) { const p = signInPopup(contents); if (p) { contents.__signInOpenedEmpty = url === 'about:blank'; return p; } return { action: 'deny' }; }
     const shellWc = shellFor(contents);
     if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
     else if (/^mailto:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  contents.on('did-create-window', (child) => { signInPopups.set(contents, child); hookSignInPopup(child, contents); });
+  contents.on('did-create-window', (child) => { signInPopups.set(contents, child); hookSignInPopup(child, contents, !!contents.__signInOpenedEmpty); contents.__signInOpenedEmpty = false; });
   contents.on('context-menu', (_ev, params) => pageContextMenu(contents, params));
   // Internal-page preload only exposes its bridge on stupid:// (and main re-checks every call), so
   // following a link from an internal page to the web is safe.
