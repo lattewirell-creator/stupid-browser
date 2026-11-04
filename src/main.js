@@ -3,6 +3,7 @@ const {
   app, BrowserWindow, ipcMain, session, shell, webContents, nativeTheme, protocol, net,
   Menu, clipboard, dialog, safeStorage, nativeImage
 } = require('electron');
+const screen = new Proxy({}, { get: (_t, k) => require('electron').screen[k] });   // only usable once the app is ready
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -14,7 +15,7 @@ perfMark('main-start');
 
 const IS_MAC = process.platform === 'darwin';
 // The toolbar buttons you can move, hide and add to (src/customize.js has their element ids).
-const TOOLBAR_IDS = ['dl', 'shield', 'sound', 'pip', 'ai', 'grid', 'profile'];
+const TOOLBAR_IDS = ['dl', 'shield', 'vpn', 'sound', 'pip', 'ai', 'grid', 'profile'];
 app.setName('The Stupid Browser');
 
 const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
@@ -25,16 +26,19 @@ const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; W
 const UA = `Mozilla/5.0 (${UA_OS}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
 app.userAgentFallback = UA;
 // Google refuses to sign you in from browsers it thinks are "embedded apps" ("This browser or app may not be secure").
-// Chromium tells pages it is "Chromium", not "Google Chrome": in its client hints (Sec-CH-UA headers) and in
-// navigator.userAgentData, which Google's sign-in page checks. On Google's sign-in pages only, the browser says what
-// Chrome itself says, the same in every place (see googleIdentity below).
-const CHROME_MAJOR = process.versions.chrome.split('.')[0];
-const CHROME_BRANDS = [{ brand: 'Google Chrome', version: CHROME_MAJOR }, { brand: 'Chromium', version: CHROME_MAJOR }, { brand: 'Not_A Brand', version: '24' }];
-const CHROME_FULL = [{ brand: 'Google Chrome', version: process.versions.chrome }, { brand: 'Chromium', version: process.versions.chrome }, { brand: 'Not_A Brand', version: '24.0.0.0' }];
-const SEC_CH_UA = CHROME_BRANDS.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
-const CHROME_HINTS = { brands: CHROME_BRANDS, fullVersionList: CHROME_FULL, fullVersion: process.versions.chrome, platform: IS_MAC ? 'macOS' : 'Windows', platformVersion: IS_MAC ? '14.6.0' : '15.0.0',
-  architecture: process.arch === 'arm64' ? 'arm' : 'x86', bitness: '64', model: '', mobile: false, wow64: false };
-const isGoogleSignIn = (u) => /^https:\/\/accounts\.google\.[a-z.]+\//i.test(String(u || ''));
+// Pretending to be Chrome wasn't enough (1.6.6): Google's page also looks at things Chromium can't fake from outside.
+// Instead, on Google's sign-in pages the tab is Firefox through and through: the user agent, no client hints, and in
+// the page itself none of Chromium's tells (see google-preload.js). Independent browsers get Google sign-in to work
+// this way; everywhere else the browser stays Chrome.
+// Firefox ships a new version every four weeks (133 came out on 26 Nov 2024): say a current one, for this OS.
+// Kept a little behind (one more for each year, as releases slip around the holidays): never a version that isn't out yet.
+const FIREFOX_AGE = Math.max(0, Date.now() - Date.UTC(2024, 10, 26));
+const FIREFOX_V = 133 + Math.max(0, Math.floor(FIREFOX_AGE / (28 * 864e5)) - 1 - Math.floor(FIREFOX_AGE / (365 * 864e5)));
+const FIREFOX_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10.15' : process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : 'X11; Linux x86_64';
+const FIREFOX_UA = `Mozilla/5.0 (${FIREFOX_OS}; rv:${FIREFOX_V}.0) Gecko/20100101 Firefox/${FIREFOX_V}.0`;
+// Google's own domains only: google.com, google.se, google.co.uk, google.com.au… (not google.anything-else.com).
+const GOOGLE_HOST = '(?:[a-z0-9-]+\\.)*google\\.(?:com|[a-z]{2}|co\\.[a-z]{2}|com\\.[a-z]{2})';
+const isGoogleSignIn = (u) => /^https:\/\/accounts\.google\.(?:com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})(?:[:/]|$)/i.test(String(u || ''));
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'stupid', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false } }
@@ -67,7 +71,7 @@ const SEARCH_ENGINES = {
   youtube: { name: 'YouTube', url: 'https://www.youtube.com/results?search_query=%s' }
 };
 const DEFAULT_SETTINGS = () => ({
-  name: '', email: '', profileColor: 'clay', mail: 'gmail', mailUrl: '',
+  name: '', email: '', profileColor: 'clay', profileImage: '', mail: 'gmail', mailUrl: '',
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
@@ -115,7 +119,7 @@ function setSettings(patch) {
   store.write('settings.json', next);
   applySettingsSideEffects(patch);
   broadcast('settings:changed', publicSettings());
-  if ('name' in patch || 'profileColor' in patch || 'email' in patch) profiles.sync(next);
+  if ('name' in patch || 'profileColor' in patch || 'email' in patch || 'profileImage' in patch) profiles.sync(next);
   return next;
 }
 function publicSettings() {
@@ -172,11 +176,105 @@ function fadeWin(win, to, ms = 180, done) {
   };
   step();
 }
-function showSmooth(win) { if (win.isDestroyed()) return; win.setOpacity(0); win.show(); fadeWin(win, 1); }
+function showSmooth(win, maximize = false) { if (win.isDestroyed()) return; win.setOpacity(0); if (maximize) win.maximize(); win.show(); fadeWin(win, 1); }
 const windowTitle = (incognito) => { const n = (getSettings().wordmark || '').trim() || 'The Stupid Browser'; return incognito ? `Private — ${n}` : n; };
 // The first window appears the moment it exists (its background colour, then the UI as it paints), the way Firefox
 // shows its window before the browser has finished starting. Later windows fade in once painted.
 let shownFirstWindow = false;
+// One sign-in for the whole profile. Tabs, the sidebar apps and the AI panel each have their own session (so a
+// sidebar app can't read your tabs' data), but signing in to Google or Microsoft in any of them signs you in to all of
+// them: Gmail in a tab means YouTube in the sidebar and Gemini in the AI panel are signed in too, and signing out
+// anywhere signs out everywhere. Only the sign-in cookies themselves are shared, on those companies' own domains.
+const SIGNIN_DOMAIN = new RegExp(`^\\.?(?:${GOOGLE_HOST}|(?:[a-z0-9-]+\\.)*(?:youtube\\.com|live\\.com|microsoftonline\\.com|microsoft\\.com|outlook\\.com|office\\.com))$`, 'i');
+// Not the ones Google rotates on almost every request (SIDCC, *PSIDCC, *PSIDTS): each session keeps those fresh itself, and
+// copying one could put back an older value than a session already has.
+const SIGNIN_NAME = /^(?:SID|HSID|SSID|APISID|SAPISID|LSID|__Secure-[13]P(?:SID|APISID)|__Host-(?:GAPS|1PLSID|3PLSID)|ESTSAUTH(?:PERSISTENT|LIGHT)?|ESTSSC|buid|MSPAuth|MSPProf|MSPOK|WLSSC|RPSSecAuth|__Host-MSAAUTH(?:P)?|OIDCAuth(?:Cookie)?|LOGIN_INFO)$/;
+// The rotating ones are only ever filled in where they're missing (a fresh panel), never written over a session's own.
+const ROTATING_NAME = /^(?:SIDCC|__Secure-[13]PSID(?:CC|TS|RTS))$/;
+const isSignInCookie = (c) => (SIGNIN_NAME.test(c.name) || ROTATING_NAME.test(c.name)) && SIGNIN_DOMAIN.test(c.domain);
+const linkedGroups = new Set();
+const signInFlushers = [];   // run what's pending at quit, so a sign-out right before quitting isn't undone next time
+function linkSignIns(partitions) {
+  const key = partitions.join('|'); if (linkedGroups.has(key)) return; linkedGroups.add(key);
+  const sessions = partitions.map((p) => session.fromPartition(p));
+  const urlOf = (c) => `https://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
+  const find = async (ses, c) => { try { return (await ses.cookies.get({ name: c.name, path: c.path })).find((x) => x.domain === c.domain) || null; } catch { return null; } };
+  const put = async (to, c) => {
+    const d = { url: urlOf(c), name: c.name, value: c.value, path: c.path, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite };
+    if (!c.hostOnly) d.domain = c.domain;
+    if (c.expirationDate) d.expirationDate = c.expirationDate;
+    try { await to.cookies.set(d); } catch {}
+  };
+  // A change waits a moment, then the session it happened in is read again: what's there NOW goes to the others (a
+  // value that changed again meanwhile isn't sent stale), and an identical value isn't written, which ends the echo.
+  const pending = new Map();
+  const settle = (from, c) => {
+    const k = sessions.indexOf(from) + '|' + c.name + '|' + c.domain + '|' + c.path;
+    if (pending.has(k)) clearTimeout(pending.get(k).timer);
+    const run = async () => {
+      pending.delete(k);
+      const now = await find(from, c);
+      for (const to of sessions) {
+        if (to === from) continue;
+        const there = await find(to, c);
+        if (now && (!there || (there.value !== now.value && !ROTATING_NAME.test(now.name)))) await put(to, now);
+        else if (!now && there && !ROTATING_NAME.test(there.name)) {
+          await put(to, { ...there, value: '', expirationDate: 1 });
+          // signed out: that session's rotating cookies for the same domain go too, so the next sign-in fills them fresh
+          let rot = []; try { rot = (await to.cookies.get({ domain: there.domain })).filter((x) => x.domain === there.domain && ROTATING_NAME.test(x.name)); } catch {}
+          for (const r of rot) await put(to, { ...r, value: '', expirationDate: 1 });
+        }   // expire exactly this one (not a same-named one elsewhere)
+      }
+    };
+    pending.set(k, { timer: setTimeout(run, 250), run });
+  };
+  signInFlushers.push({ busy: () => pending.size > 0, flush: () => Promise.all([...pending.values()].map((p) => { clearTimeout(p.timer); return p.run(); })) });
+  sessions.forEach((from) => from.cookies.on('changed', (_e, c, cause) => {
+    if (cause === 'expired' || cause === 'evicted') return;   // each session ages its own copies
+    if (isSignInCookie(c)) settle(from, c);
+  }));
+  // Once at start: a sign-in that exists in one of them and is missing in another is filled in. Nothing that's already
+  // there is overwritten, so no session's newer value loses to another's older one.
+  (async () => {
+    for (const from of sessions) {
+      let all = []; try { all = await from.cookies.get({}); } catch {}
+      for (const c of all) if (isSignInCookie(c)) for (const to of sessions) if (to !== from && !(await find(to, c))) await put(to, c);
+    }
+  })();
+}
+
+// Window size, like Chrome: the first time it fills the screen (its work area, above the taskbar or below the menu bar);
+// after that every new window opens where and as big as the last one you used, maximized if it was. A window
+// remembered on a screen that's no longer there opens on the main screen instead.
+function windowPlace() {
+  const s = store.read('window-state.json', null);
+  const onScreen = (b) => b && screen.getAllDisplays().some((d) => { const a = d.workArea; return b.x < a.x + a.width - 80 && b.x + b.width > a.x + 80 && b.y >= a.y - 20 && b.y < a.y + a.height - 80; });
+  if (s && s.bounds && onScreen(s.bounds)) {
+    const a = screen.getDisplayMatching(s.bounds).workArea;
+    const b = { ...s.bounds, width: Math.min(s.bounds.width, a.width), height: Math.min(s.bounds.height, a.height) };   // a screen that got smaller
+    // more windows step down and right a little each, so none sits exactly on top of another
+    const open = [...windows.values()].filter((w) => !w.win.isDestroyed() && !w.win.isMinimized()).length;
+    if (open && !s.maximized) { const step = 26 * (open % 8); b.x = Math.min(b.x + step, a.x + a.width - b.width); b.y = Math.min(b.y + step, a.y + a.height - b.height); }
+    return { bounds: b, maximized: !!s.maximized };
+  }
+  // First run: maximized on Windows/Linux like Chrome, with a restore size a little inside the screen; on a Mac it fills
+  // the screen without full-screen mode, like Chrome there.
+  const a = screen.getPrimaryDisplay().workArea;
+  if (IS_MAC) return { bounds: { x: a.x, y: a.y, width: a.width, height: a.height }, maximized: false };
+  const w = Math.round(a.width * 0.86), h = Math.round(a.height * 0.88);
+  return { bounds: { x: a.x + Math.round((a.width - w) / 2), y: a.y + Math.round((a.height - h) / 2), width: w, height: h }, maximized: true };
+}
+function rememberPlace(win) {
+  let t = null;
+  const now = () => {
+    if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+    store.write('window-state.json', { bounds: win.getNormalBounds(), maximized: win.isMaximized() });   // this window's own restore size
+  };
+  const save = () => { clearTimeout(t); t = setTimeout(now, 400); };
+  for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) win.on(ev, save);
+  win.on('close', () => { clearTimeout(t); now(); store.writeNow('window-state.json'); });   // a change just before closing isn't lost
+}
+
 function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   const instant = !shownFirstWindow; shownFirstWindow = true;
   if (instant) perfMark('window-create');
@@ -186,9 +284,11 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   prepareSession(session.fromPartition(partition), { tabs: true, incognito });
   prepareSession(session.fromPartition(aiPartition), { tabs: false, incognito });
   prepareSession(session.fromPartition(appsPartition), { tabs: false, incognito });
+  linkSignIns([partition, aiPartition, appsPartition]);
   const c = themeColors(incognito);
+  const place = windowPlace();
   const win = new BrowserWindow({
-    width: 1360, height: 860, minWidth: 720, minHeight: 480,
+    ...place.bounds, minWidth: 720, minHeight: 480,
     title: windowTitle(incognito),
     backgroundColor: c.bg,
     icon: path.join(__dirname, 'assets', 'icon.png'),
@@ -204,11 +304,13 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
     }
   });
   if (!IS_MAC) win.removeMenu();   // macOS uses the app menu bar (see buildMacMenu)
+  if (place.maximized && instant) win.maximize();   // later windows maximize as they fade in (maximize() would show them early)
+  rememberPlace(win);
   const entry = { win, incognito, partition, aiPartition, appsPartition, pendingUrls: urls, restore };
   windows.set(win.id, entry);
   win.loadFile(path.join(__dirname, 'index.html'), { query: { incognito: incognito ? '1' : '0' } });
   if (instant) { win.once('show', () => perfMark('window-shown')); win.webContents.once('dom-ready', () => perfMark('shell-dom-ready')); win.webContents.once('did-finish-load', () => perfMark('shell-loaded')); }
-  win.once('ready-to-show', () => { if (instant) perfMark('ready-to-show'); if (!instant) showSmooth(win); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
+  win.once('ready-to-show', () => { if (instant) perfMark('ready-to-show'); if (!instant) showSmooth(win, place.maximized); if (!IS_MAC && getSettings().appIcon) applyAppIcon(); });
   win.webContents.on('context-menu', (_e, p) => { if (p.isEditable) shellEditMenu(win.webContents, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
   win.on('swipe', (_e, dir) => { if (dir === 'left' || dir === 'right') win.webContents.send('shortcut', dir === 'left' ? 'back' : 'forward'); });   // macOS trackpad swipe
   // The browser's own UI never opens windows or leaves index.html: a stray link in it (reader view, a widget) opens as a tab.
@@ -285,13 +387,13 @@ function prepareSession(ses, { tabs, incognito }) {
 
   // Do Not Track / Global Privacy Control headers
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
-    if (isGoogleSignIn(details.url)) {
-      details.requestHeaders['User-Agent'] = UA;
-      for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-ua$/i.test(h)) delete details.requestHeaders[h];
-      details.requestHeaders['Sec-CH-UA'] = SEC_CH_UA;
-      details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
-      details.requestHeaders['Sec-CH-UA-Platform'] = IS_MAC ? '"macOS"' : '"Windows"';
-    }
+    // Firefox for the sign-in page itself and what it loads; Google sign-in bits inside other pages (YouTube, GSI
+    // buttons on other sites) stay Chrome like the page around them.
+    let signInPage = false; if (isGoogleSignIn(details.url)) try { signInPage = details.resourceType === 'mainFrame' || isGoogleSignIn(details.webContents && !details.webContents.isDestroyed() ? details.webContents.getURL() : ''); } catch {}
+    if (isGoogleSignIn(details.url) && signInPage) {
+      details.requestHeaders['User-Agent'] = FIREFOX_UA;
+      for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-/i.test(h)) delete details.requestHeaders[h];   // Firefox sends none
+    } else if (details.requestHeaders['User-Agent'] === FIREFOX_UA) details.requestHeaders['User-Agent'] = UA;   // Firefox stays on Google's sign-in pages
     if (getSettings().dnt && /^https?:/.test(details.url)) {
       details.requestHeaders.DNT = '1';
       details.requestHeaders['Sec-GPC'] = '1';
@@ -310,6 +412,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'select-preload.js') });
   // Music island: lets the browser UI read "now playing" and press play/pause/next (all web sessions).
   ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'media-preload.js') });
+  // Google's sign-in page sees Firefox, not Chromium (see FIREFOX_UA). Every web session: tabs, sidebar apps, AI panel.
+  ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'google-preload.js') });
   if (tabs) {
     ses.__stupidTabs = true;
     ses.__incognito = incognito;
@@ -575,6 +679,7 @@ function cleanPatch(patch) {
   if ('quoteMode' in p && !['browser', 'mine', 'mix'].includes(p.quoteMode)) delete p.quoteMode;
   if ('myQuotes' in p) p.myQuotes = (Array.isArray(p.myQuotes) ? p.myQuotes : []).map((q) => String(q).trim().slice(0, 200)).filter(Boolean).slice(0, 100);
   if ('wordmark' in p) p.wordmark = String(p.wordmark || '').slice(0, 40);
+  if ('profileImage' in p && !(p.profileImage === '' || (typeof p.profileImage === 'string' && p.profileImage.length < 200000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.profileImage)))) delete p.profileImage;
   if ('logoImage' in p && !(p.logoImage === '' || (typeof p.logoImage === 'string' && p.logoImage.length < 400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.logoImage)))) delete p.logoImage;
   if ('eq' in p) p.eq = cleanEq(p.eq);
   if ('aiButton' in p && !['buddy', 'sidebar', 'off'].includes(p.aiButton)) delete p.aiButton;
@@ -804,7 +909,7 @@ handle('privacy:clear', ['internal'], async (_e, { range, history, cookies, cach
   const since = range > 0 ? Date.now() - range : 0;
   if (history) store.write('history.json', getHistory().filter((x) => x.ts < since));
   if (downloads) store.write('downloads.json', getDownloads().filter((x) => x.state === 'progressing' || x.ts < since));
-  for (const p of [PERSIST, PERSIST_AI]) {
+  for (const p of [PERSIST, PERSIST_AI]) {   // the sidebar apps keep theirs; a Google/Microsoft sign-out still reaches them (linkSignIns)
     const s = session.fromPartition(p);
     if (cookies) await s.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage', 'filesystem', 'shadercache'] });
     if (cache) { await s.clearCache(); await s.clearCodeCaches({}); }
@@ -814,6 +919,31 @@ handle('privacy:clear', ['internal'], async (_e, { range, history, cookies, cach
 
 handle('adblock:set', ANY, (_e, on) => { setSettings({ adblock: !!on }); return { on: !!on, count: blockedCount }; });
 handle('adblock:get', ANY, () => ({ on: getSettings().adblock, count: blockedCount }));
+/* ---------- Proton VPN: the toolbar's VPN button shows whether it's on and opens the app ----------
+   Proton VPN protects the whole computer through its own app (and account), so the browser doesn't carry a VPN of its
+   own: it notices Proton's network adapter and opens or offers the app. */
+const PROTON_APP = IS_MAC ? ['/Applications/Proton VPN.app', '/Applications/ProtonVPN.app']
+  : process.platform === 'win32' ? [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Proton', 'VPN', 'ProtonVPN.Launcher.exe'), path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Proton Technologies', 'ProtonVPN', 'ProtonVPN.exe'), path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Proton', 'VPN', 'ProtonVPN.Launcher.exe')]
+  : ['/usr/bin/protonvpn-app', '/usr/bin/protonvpn', '/var/lib/flatpak/exports/bin/com.protonvpn.www', path.join(os.homedir(), '.local/share/flatpak/exports/bin/com.protonvpn.www')];
+function vpnStatus() {
+  const app = PROTON_APP.find((p) => p && fs.existsSync(p)) || '';
+  // Proton's tunnel: the "ProtonVPN" adapter on Windows, proton0 on Linux (not its kill-switch interfaces pvpnks*/
+  // pvpnrout*, which stay up while disconnected). macOS doesn't name it, so there the button can only open the app.
+  let connected = null;
+  if (!IS_MAC) { try { connected = Object.entries(os.networkInterfaces()).some(([n, a]) => /^(?:protonvpn(?: tun| wireguard)?|proton\d+)$/i.test(n.trim()) && (a || []).some((x) => !x.internal)); } catch { connected = false; } }
+  return { installed: !!app, connected };
+}
+handle('vpn:status', ['shell'], () => vpnStatus());
+handle('vpn:open', ['shell'], async () => {
+  const app = PROTON_APP.find((p) => p && fs.existsSync(p));
+  if (!app) return false;
+  if (process.platform === 'linux') {
+    return new Promise((resolve) => {
+      try { const p = require('child_process').spawn(app, [], { detached: true, stdio: 'ignore' }); p.on('error', () => resolve(false)); p.on('spawn', () => { p.unref(); resolve(true); }); } catch { resolve(false); }
+    });
+  }
+  return !(await shell.openPath(app));
+});
 
 handle('session:save', ['shell'], (e, data) => {
   const w = entryFor(e.sender);
@@ -1322,14 +1452,9 @@ const SCROLLBAR_CSS = `::-webkit-scrollbar { width: 11px; height: 11px; backgrou
 // Chromium's own way to set what a tab says about itself (the DevTools protocol, the same tool its "device
 // emulation" uses): user agent and client hints together, so the headers and navigator.userAgentData agree.
 function googleIdentity(contents, on) {
-  const dbg = contents.debugger;
-  try {
-    if (on) {
-      if (!dbg.isAttached()) dbg.attach('1.3');
-      dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: UA, platform: IS_MAC ? 'MacIntel' : 'Win32', userAgentMetadata: CHROME_HINTS }).catch(() => {});
-    } else if (dbg.isAttached() && contents.__googleIdentity) dbg.detach();
-    contents.__googleIdentity = on;
-  } catch (e) { console.log('[google sign-in]', e.message); }
+  if (!!contents.__googleIdentity === on) return;
+  try { contents.setUserAgent(on ? FIREFOX_UA : UA); } catch {}   // navigator.userAgent on the page, as the headers say
+  contents.__googleIdentity = on;
 }
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
@@ -1346,8 +1471,25 @@ app.on('web-contents-created', (_e, contents) => {
 
   if (contents.getType() !== 'webview') return;
   hookShortcuts(contents);
-  // On Google's sign-in pages the tab tells the page it is Google Chrome (see CHROME_HINTS); elsewhere it's left alone.
-  contents.on('did-start-navigation', (d) => { if (d.isMainFrame && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); });
+  // On Google's sign-in pages the tab is Firefox (see FIREFOX_UA); elsewhere it's left alone.
+  // Decided again at every step of a navigation, redirects included: Gmail → sign-in → back to Gmail.
+  // Set as a navigation starts. A redirect can't be changed midway (setUserAgent then restarts the navigation, in a
+  // loop), so a page reached by redirect (Gmail → sign-in, sign-in → back to Gmail) whose identity came out wrong is
+  // loaded once more with the right one. The header guard in onBeforeSendHeaders keeps the requests right regardless.
+  contents.on('did-start-navigation', (d) => { if (d.isMainFrame && !d.isSameDocument && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); });
+  contents.on('did-navigate', (_e, url) => {
+    if (contents.isDestroyed()) return;
+    const want = isGoogleSignIn(url);
+    if (!!contents.__googleIdentity === want) return;
+    googleIdentity(contents, want);
+    // At most twice in ten seconds per tab, whatever Google does (it can bounce between pages), and as a plain GET: a page
+    // that arrived by a form post is never sent again.
+    const now = Date.now(), fixes = (contents.__identityFixes || []).filter((x) => now - x < 10000);
+    if (fixes.length >= 2) return;
+    contents.__identityFixes = [...fixes, now];
+    // replaces the page (no extra Back step), as a plain GET
+    setImmediate(() => { if (!contents.isDestroyed() && contents.getURL() === url) contents.executeJavaScript(`location.replace(${JSON.stringify(url)})`).catch(() => contents.loadURL(url)); });
+  });
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
   const hideSearchAds = () => {
@@ -1614,7 +1756,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-app.on('before-quit', () => { quitting = true; saveSessions(); store.flushAll(); if (macUpdater && updateState.status === 'ready') macUpdater.installOnQuit(); });
+let signInsFlushed = false;
+app.on('before-quit', (e) => {
+  if (!signInsFlushed && signInFlushers.some((f) => f.busy())) { e.preventDefault(); signInsFlushed = true; Promise.race([Promise.all(signInFlushers.map((f) => f.flush())), new Promise((r) => setTimeout(r, 1500))]).finally(() => app.quit()); return; }
+  quitting = true; saveSessions(); store.flushAll(); if (macUpdater && updateState.status === 'ready') macUpdater.installOnQuit(); });
 app.on('window-all-closed', () => {
   // macOS keeps the app alive in the Dock; the last window's tabs are already in session.json.
   if (IS_MAC) { saveSessions(); store.flushAll(); return; }

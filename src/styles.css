@@ -833,3 +833,12 @@ body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
 #aiBtn .buddy-pic.round img { left: -9px; top: -15px; width: 42px; }
 #aiBtn:hover .buddy-pic { transform: translateY(-1px) scale(1.06); }
 #aiBtn.on .buddy-pic { box-shadow: 0 0 0 2px var(--accent); }
+
+/* A profile photo fills the round avatar */
+.avatar.photo { background-size: cover !important; background-position: center !important; color: transparent; }
+.pf-picrow { display: flex; align-items: center; gap: 8px; }
+
+/* VPN button: green dot while Proton VPN is on */
+#vpnBtn { margin-left: 6px; }
+#vpnBtn.on .pill-dot { background: #3FB98A; box-shadow: 0 0 0 3px rgba(63,185,138,.18); }
+.vpn-pop { width: 300px; }

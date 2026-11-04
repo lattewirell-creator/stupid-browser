@@ -26,8 +26,8 @@ function save(l) {
 // Keep this profile's name/color/email in the shared list current.
 function sync(s) {
   const l = list(); const me = l.find((p) => p.id === CURRENT);
-  const next = { id: CURRENT, name: (s.name || '').trim() || (me && me.name) || 'Profile', color: s.profileColor || 'clay', email: s.email || '' };
-  if (me && me.name === next.name && me.color === next.color && (me.email || '') === next.email) return;
+  const next = { id: CURRENT, name: (s.name || '').trim() || (me && me.name) || 'Profile', color: s.profileColor || 'clay', email: s.email || '', image: s.profileImage || '' };
+  if (me && me.name === next.name && me.color === next.color && (me.email || '') === next.email && (me.image || '') === next.image) return;
   if (me) Object.assign(me, next); else l.push(next);
   save(l);
 }

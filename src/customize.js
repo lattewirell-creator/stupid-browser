@@ -9,10 +9,10 @@
     rounded: "'Nunito', 'Inter', sans-serif",
     mono: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
   };
-  const BUTTONS = { shield: 'adblockBtn', pip: 'pipBtn', ai: 'aiBtn', grid: 'gridBtn', profile: 'profileBtn', home: 'homeBtn', sidebarBtn: 'railBtn', dl: 'dlBtn', sound: 'soundBtn' };
+  const BUTTONS = { shield: 'adblockBtn', pip: 'pipBtn', ai: 'aiBtn', grid: 'gridBtn', profile: 'profileBtn', vpn: 'vpnBtn', home: 'homeBtn', sidebarBtn: 'railBtn', dl: 'dlBtn', sound: 'soundBtn' };
   // The buttons right of the address bar, in their standard order: you can move them, hide them and add your own.
-  const MOVABLE = ['dl', 'shield', 'sound', 'pip', 'ai', 'grid', 'profile'];
-  const NAMES = { dl: 'Downloads', shield: 'Shield', sound: 'Sound & EQ', pip: 'Picture-in-picture', ai: 'AI buddy', grid: 'Apps', profile: 'Profile', home: 'Home', sidebarBtn: 'Sidebar' };
+  const MOVABLE = ['dl', 'shield', 'vpn', 'sound', 'pip', 'ai', 'grid', 'profile'];
+  const NAMES = { dl: 'Downloads', shield: 'Shield', vpn: 'VPN', sound: 'Sound & EQ', pip: 'Picture-in-picture', ai: 'AI buddy', grid: 'Apps', profile: 'Profile', home: 'Home', sidebarBtn: 'Sidebar' };
   window.applyCustomize = () => {
     const s = settings || {}, b = document.body, root = document.documentElement.style;
     root.setProperty('--sans', FONTS[s.uiFont] || FONTS.inter);
@@ -46,7 +46,12 @@
     }
     // Order: the saved order first, then anything new in its standard place. The menu button stays last.
     const all = [...MOVABLE, ...custom.map((c) => c.id)];
-    const order = [...((s.toolbar && s.toolbar.order) || []).filter((k) => all.includes(k)), ...all.filter((k) => !((s.toolbar && s.toolbar.order) || []).includes(k))];
+    const saved = ((s.toolbar && s.toolbar.order) || []).filter((k) => all.includes(k));
+    const order = [...saved];
+    for (const k of all) if (!order.includes(k)) {   // new since you arranged it: right after the button it follows by default
+      const i = all.indexOf(k), prev = i > 0 ? order.indexOf(all[i - 1]) : -1;
+      if (prev >= 0) order.splice(prev + 1, 0, k); else order.push(k);
+    }
     const menu = document.getElementById('menuBtn');
     for (const k of order) {
       const b = BUTTONS[k] ? document.getElementById(BUTTONS[k]) : mine[k];

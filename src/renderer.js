@@ -727,7 +727,7 @@ function showMenu(target, items, x, y) {
 }
 document.addEventListener('mousedown', (e) => {
   if (!$('ctxMenu').contains(e.target) && !$('menu').contains(e.target) && e.target.id !== 'menuBtn' && !$('menuBtn').contains(e.target) && !e.target.closest('#titlebar .brand')) hideMenus();
-  if (!$('popover').contains(e.target) && !e.target.closest('#siteBtn,#starBtn,#dlBtn,.group-chip,.rail-add,#gridBtn,#profileBtn,#soundBtn') && !$('popover').classList.contains('sticky')) hidePop();
+  if (!$('popover').contains(e.target) && !e.target.closest('#siteBtn,#starBtn,#dlBtn,.group-chip,.rail-add,#gridBtn,#profileBtn,#soundBtn,#vpnBtn') && !$('popover').classList.contains('sticky')) hidePop();
   if (!$('omnibox').contains(e.target)) closeSuggest();
 });
 addEventListener('blur', () => { hideMenus(); hideHoverCard(); });
@@ -1382,6 +1382,20 @@ $('homeBtn').addEventListener('click', () => navigate(NEWTAB));
 $('zoomBtn').addEventListener('click', () => zoom(0));
 
 function renderShield(s) { $('adblockBtn').classList.toggle('on', !!s.on); $('blockedCount').textContent = s.count; $('adblockBtn').title = s.on ? `Blocking ads & trackers (${s.count} blocked) — click to turn off` : 'Ad & tracker blocker is off — click to turn on'; }
+// VPN: Proton VPN runs as its own app; the button shows if it's on and opens it (or where to get it).
+async function renderVpn() { let s; try { s = await call('vpn:status'); } catch { return; } const b = $('vpnBtn'); b.classList.toggle('on', s.connected === true); b.title = s.connected ? 'Proton VPN is on: your connection is private' : s.installed ? 'Proton VPN is off: click to open it' : 'Get Proton VPN: a free VPN that keeps your browsing private'; return s; }
+$('vpnBtn').addEventListener('click', async () => {
+  const s = await renderVpn(); if (!s) return;
+  const pop = $('popover'); pop.innerHTML = ''; pop.className = 'pop vpn-pop';
+  pop.appendChild(el('div', 'pop-title serif', 'Proton VPN'));
+  pop.appendChild(el('div', 'pop-note', s.connected ? 'On. Everything this computer sends goes through Proton’s encrypted tunnel, so sites and your network can’t see where you browse from.' : s.installed ? (s.connected === false ? 'Off right now. Open Proton VPN and press Connect to make your connection private.' : 'Open Proton VPN to turn it on or off.') : 'A VPN hides where you browse from and encrypts your connection on public Wi-Fi. Proton VPN is free, has no ads and keeps no logs. Install it once and switch it on from here.'));
+  const row = el('div', 'pop-actions'); row.appendChild(el('div', 'grow'));
+  const go = el('button', 'pill solid', s.installed ? 'Open Proton VPN' : 'Get Proton VPN');
+  go.addEventListener('click', async () => { hidePop(); if (s.installed) { if (!(await call('vpn:open'))) toast('Couldn’t open Proton VPN'); } else newTab('https://protonvpn.com/download'); });
+  row.appendChild(go); pop.appendChild(row);
+  const r = $('vpnBtn').getBoundingClientRect(); showPopAt(pop, r.right - 300, r.bottom + 8);
+});
+setInterval(() => { if (!document.hidden && !$('vpnBtn').classList.contains('user-hidden')) renderVpn(); }, 20000); setTimeout(renderVpn, 3000);
 $('adblockBtn').addEventListener('click', async () => { const s = await call('adblock:set', !settings.adblock); renderShield(s); toast(s.error ? 'Blocker could not start' : s.on ? 'Shield on — reload to apply' : 'Shield off'); });
 api.on('adblock:count', (n) => { $('blockedCount').textContent = n; });
 
