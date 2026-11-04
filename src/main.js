@@ -1482,18 +1482,51 @@ function hookIdentity(contents) {
 
 // "Sign in with Google" (and Microsoft, Apple, GitHub…) opens a small window that talks back to the page that opened it,
 // then closes. As a tab that link is lost and the sign-in hangs (a blank accounts.google.com/gsi/transform), so those
-// open as real popup windows, the way Chrome does. Every other popup still opens as a tab.
-const SIGNIN_POPUP = /^https:\/\/(?:accounts\.google\.(?:com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})|login\.microsoftonline\.com|login\.live\.com|appleid\.apple\.com|github\.com\/login|discord\.com\/(?:api\/)?oauth2|(?:www\.|m\.)?facebook\.com\/(?:v[\d.]+\/)?dialog\/oauth|(?:www\.)?paypal\.com|x\.com\/i\/oauth|api\.twitter\.com\/oauth|[a-z0-9.-]+(?::\d+)?\/(?:[^?#]*\/)?(?:oauth2?|authorize|sso|signin|login)(?:[/?#.]|$))/i;
-function signInPopup(contents, url) {
+// open as real popup windows, the way Chrome does. Only these known sign-in services get one; every other popup is a tab.
+const SIGNIN_POPUP = /^https:\/\/(?:accounts\.google\.(?:com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})|login\.microsoftonline\.com|login\.live\.com|login\.microsoft\.com|appleid\.apple\.com|github\.com\/login|discord\.com\/(?:api\/)?oauth2|(?:www\.|m\.)?facebook\.com\/(?:v[\d.]+\/)?dialog\/oauth|(?:www\.)?paypal\.com\/(?:signin|connect|checkoutnow|webapps)|x\.com\/i\/oauth|api\.twitter\.com\/oauth|[a-z0-9-]+\.firebaseapp\.com\/__\/auth\/handler)(?:[/?#]|$)/i;
+// window.open(url, name, 'width=…') opens a popup in Chrome; a link or window.open(url) without size opens a tab. A sign-in
+// library may also open an empty popup first and send it to the sign-in page after (Auth0, Okta): its name tells.
+const wantsSignInPopup = ({ url, disposition, frameName }) =>
+  (disposition === 'new-window' && SIGNIN_POPUP.test(url)) ||
+  (disposition === 'new-window' && url === 'about:blank' && /auth|login|sign.?in|oauth|popup/i.test(frameName || ''));
+const signInPopups = new WeakMap();   // opener → its one sign-in popup (a second one reuses it, like a named window)
+function signInPopup(contents) {
+  const host = contents.hostWebContents && BrowserWindow.fromWebContents(contents.hostWebContents);
+  const live = signInPopups.get(contents);
+  if (live && !live.isDestroyed()) { live.focus(); return null; }   // one at a time per page: no floods, no hidden extras
+  const w = 520, h = 680, b = host ? host.getBounds() : screen.getPrimaryDisplay().workArea;
   return {
     action: 'allow',
     overrideBrowserWindowOptions: {
-      width: 520, height: 680, minWidth: 360, minHeight: 420, autoHideMenuBar: true, backgroundColor: '#ffffff', title: 'Sign in',
+      // centred on the browser window and attached to it, so it can't hide off-screen or outlive the browser
+      width: w, height: h, x: Math.round(b.x + (b.width - w) / 2), y: Math.round(b.y + Math.max(40, (b.height - h) / 3)),
+      minWidth: 360, minHeight: 420, parent: host || undefined, autoHideMenuBar: true, show: true,
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#202124' : '#ffffff', title: 'Sign in',
       icon: path.join(__dirname, 'assets', 'icon.png'),
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, preload: undefined },
     },
   };
 }
+// The popup itself: it always says which site it shows (the title can't be set by the page, so a look-alike page can't
+// pass for the real one), Google sees Firefox there too, and it can't open more windows: whatever it opens (help,
+// privacy, terms) becomes a tab in the browser window, http(s) only.
+function hookSignInPopup(child, opener) {
+  if (!IS_MAC) child.removeMenu();
+  const wc = child.webContents;
+  const titleFor = (u) => { try { const x = new URL(u); return `${x.host} — Sign in${x.protocol === 'https:' ? '' : ' (not secure)'}`; } catch { return 'Sign in'; } };
+  wc.on('page-title-updated', (e) => { e.preventDefault(); child.setTitle(titleFor(wc.getURL())); });
+  for (const ev of ['did-navigate', 'did-navigate-in-page']) wc.on(ev, () => child.setTitle(titleFor(wc.getURL())));
+  hookIdentity(wc);
+  hookShortcuts(wc);
+  wc.on('context-menu', (_e, p) => { if (p.isEditable || p.selectionText) shellEditMenu(wc, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
+  wc.setWindowOpenHandler(({ url }) => {
+    const shellWc = !opener.isDestroyed() && shellFor(opener);
+    if (/^https?:/i.test(url) && shellWc) shellWc.send('open-url', { url, where: 'foreground' });
+    return { action: 'deny' };
+  });
+  wc.on('will-navigate', (e, url) => { if (!/^(https?:|about:blank)/i.test(url)) e.preventDefault(); });
+}
+
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
@@ -1524,18 +1557,14 @@ app.on('web-contents-created', (_e, contents) => {
   // Tell the window when a tab starts or stops making sound, instead of the window asking every tab every second
   // (each ask is a blocking call, and they added up with many tabs open).
   contents.on('audio-state-changed', (ev) => { console.log('[dbg] audio', contents.id, ev && ev.audible, !!shellFor(contents)); const s = shellFor(contents); if (s) s.send('tab:audio', contents.id, !!ev.audible); });
-  contents.setWindowOpenHandler(({ url, disposition }) => {
-    if (disposition === 'new-window' && SIGNIN_POPUP.test(url)) return signInPopup(contents, url);
+  contents.setWindowOpenHandler(({ url, disposition, frameName }) => {
+    if (wantsSignInPopup({ url, disposition, frameName })) { const p = signInPopup(contents); if (p) return p; return { action: 'deny' }; }
     const shellWc = shellFor(contents);
     if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
     else if (/^mailto:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  contents.on('did-create-window', (child) => {   // a sign-in popup: Google sees Firefox there too; its own popups stay inside it
-    if (!IS_MAC) child.removeMenu();
-    hookIdentity(child.webContents);
-    child.webContents.setWindowOpenHandler(({ url, disposition }) => (disposition === 'new-window' && SIGNIN_POPUP.test(url) ? signInPopup(child.webContents, url) : (child.webContents.loadURL(url), { action: 'deny' })));
-  });
+  contents.on('did-create-window', (child) => { signInPopups.set(contents, child); hookSignInPopup(child, contents); });
   contents.on('context-menu', (_ev, params) => pageContextMenu(contents, params));
   // Internal-page preload only exposes its bridge on stupid:// (and main re-checks every call), so
   // following a link from an internal page to the web is safe.
@@ -1551,6 +1580,12 @@ app.on('web-contents-created', (_e, contents) => {
 // How long the main process was busy (and so slow to answer the window) during the benchmark: timer drift.
 const lag = { samples: [], max: 0, reset() { this.samples = []; this.max = 0; }, p95() { const s = [...this.samples].sort((a, b) => a - b); return s.length ? Math.round(s[Math.floor(s.length * 0.95)]) : 0; } };
 if (process.env.STUPID_PERF_LOG) { let last = performance.now(); setInterval(() => { const now = performance.now(), d = Math.max(0, now - last - 50); last = now; lag.samples.push(d); if (lag.samples.length > 4000) lag.samples.shift(); lag.max = Math.max(lag.max, Math.round(d)); }, 50); }
+if (process.env.STUPID_SELFTEST) {   // dev-only hooks for the sign-in popup test
+  const popups = () => BrowserWindow.getAllWindows().filter((w) => !windows.has(w.id) && w.getTitle() !== '' && w !== pickerWin);
+  ipcMain.handle('test:popups', () => popups().map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^https:\/\/127\.0\.0\.1:8843/, '') })));
+  ipcMain.handle('test:popupClickHelp', () => popups()[0] && popups()[0].webContents.executeJavaScript(`document.getElementById('help').click()`, true));
+  ipcMain.handle('test:popupPost', () => popups()[0] && popups()[0].webContents.executeJavaScript(`window.opener.postMessage({ credential: 'token-456' }, '*'); window.close(); 1`, true));
+}
 function selfTest(win) {
   // Benchmarks need the window on screen (pages in hidden windows are slowed down).
   if (process.env.STUPID_TEST_FRONT) { win.setAlwaysOnTop(true, 'screen-saver'); win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); app.focus({ steal: true }); }
