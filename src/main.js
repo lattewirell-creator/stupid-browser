@@ -387,6 +387,7 @@ function prepareSession(ses, { tabs, incognito }) {
 
   // Do Not Track / Global Privacy Control headers
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    if (details.resourceType === 'mainFrame' && details.webContents) details.webContents.__lastMethod = details.method;   // see the identity fix in hookIdentity
     // Firefox for the sign-in page itself and what it loads; Google sign-in bits inside other pages (YouTube, GSI
     // buttons on other sites) stay Chrome like the page around them.
     let signInPage = false; if (isGoogleSignIn(details.url)) try { signInPage = details.resourceType === 'mainFrame' || isGoogleSignIn(details.webContents && !details.webContents.isDestroyed() ? details.webContents.getURL() : ''); } catch {}
@@ -1456,6 +1457,104 @@ function googleIdentity(contents, on) {
   try { contents.setUserAgent(on ? FIREFOX_UA : UA); } catch {}   // navigator.userAgent on the page, as the headers say
   contents.__googleIdentity = on;
 }
+function hookIdentity(contents) {
+  // On Google's sign-in pages the tab is Firefox (see FIREFOX_UA); elsewhere it's left alone.
+  // Decided again at every step of a navigation, redirects included: Gmail → sign-in → back to Gmail.
+  // Set as a navigation starts. A redirect can't be changed midway (setUserAgent then restarts the navigation, in a
+  // loop), so a page reached by redirect (Gmail → sign-in, sign-in → back to Gmail) whose identity came out wrong is
+  // loaded once more with the right one. The header guard in onBeforeSendHeaders keeps the requests right regardless.
+  contents.on('did-start-navigation', (d) => { if (d.isMainFrame && !d.isSameDocument && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); });
+  contents.on('did-navigate', (_e, url) => {
+    if (contents.isDestroyed()) return;
+    const want = isGoogleSignIn(url);
+    if (!!contents.__googleIdentity === want) return;
+    googleIdentity(contents, want);
+    // At most twice in ten seconds per tab, whatever Google does (it can bounce between pages), and as a plain GET: a page
+    // that arrived by a form post is never sent again.
+    if (contents.__lastMethod && contents.__lastMethod !== 'GET') return;   // a page that received a form (Sign in with Google hands the result over that way) is never reloaded: its data would be lost
+    const now = Date.now(), fixes = (contents.__identityFixes || []).filter((x) => now - x < 10000);
+    if (fixes.length >= 2) return;
+    contents.__identityFixes = [...fixes, now];
+    // replaces the page (no extra Back step), as a plain GET
+    setImmediate(() => { if (!contents.isDestroyed() && contents.getURL() === url) contents.executeJavaScript(`location.replace(${JSON.stringify(url)})`).catch(() => contents.loadURL(url)); });
+  });
+}
+
+// "Sign in with Google" (and Microsoft, Apple, GitHub…) opens a small window that talks back to the page that opened it,
+// then closes. As a tab that link is lost and the sign-in hangs (a blank accounts.google.com/gsi/transform), so those
+// open as real popup windows, the way Chrome does. Only these known sign-in services get one; every other popup is a tab.
+const SIGNIN_POPUP = /^https:\/\/(?:accounts\.google\.(?:com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})|login\.microsoftonline\.com|login\.live\.com|login\.microsoft\.com|appleid\.apple\.com|github\.com\/login|discord\.com\/(?:api\/)?oauth2|(?:www\.|m\.)?facebook\.com\/(?:v[\d.]+\/)?dialog\/oauth|(?:www\.)?paypal\.com\/(?:signin|connect|checkoutnow|webapps)|x\.com\/i\/oauth|api\.twitter\.com\/oauth|[a-z0-9-]+\.firebaseapp\.com\/__\/auth\/handler)(?:[/?#]|$)/i;
+// window.open(url, name, 'width=…') opens a popup in Chrome; a link or window.open(url) without size opens a tab. A sign-in
+// library may also open an empty popup first and send it to the sign-in page after (Auth0, Okta): its name tells.
+const wantsSignInPopup = ({ url, disposition, frameName }) =>
+  (disposition === 'new-window' && SIGNIN_POPUP.test(url)) ||
+  (disposition === 'new-window' && url === 'about:blank' && /auth|login|sign.?in|oauth/i.test(frameName || ''));
+// Where an empty sign-in popup may go next (else it's closed and that page opens as a tab instead).
+const SIGNIN_NEXT = (u) => SIGNIN_POPUP.test(u) || (!!process.env.STUPID_SELFTEST && u.startsWith('https://127.0.0.1:8843/login/')) || /^https:\/\/[a-z0-9-]+\.(?:auth0\.com|okta\.com|oktapreview\.com|okta-emea\.com)(?:[:/?#]|$)/i.test(u);
+const signInPopups = new WeakMap();   // opener → its one sign-in popup (a second one reuses it, like a named window)
+function signInPopup(contents) {
+  const host = contents.hostWebContents && BrowserWindow.fromWebContents(contents.hostWebContents);
+  // One at a time per page: no floods, no hidden extras. Marked the moment it's allowed (the window itself only arrives
+  // a moment later), so a script opening many in a row still gets one.
+  const live = signInPopups.get(contents);
+  if (live && live.pending && Date.now() - live.pending < 5000) return null;
+  if (live && !live.pending && !live.isDestroyed()) { live.focus(); return null; }
+  signInPopups.set(contents, { pending: Date.now() });
+  const w = 520, h = 680, b = host ? host.getBounds() : screen.getPrimaryDisplay().workArea;
+  return {
+    action: 'allow',
+    overrideBrowserWindowOptions: {
+      // centred on the browser window and attached to it, so it can't hide off-screen or outlive the browser
+      width: w, height: h, x: Math.round(b.x + (b.width - w) / 2), y: Math.round(b.y + Math.max(40, (b.height - h) / 3)),
+      minWidth: 360, minHeight: 420, parent: host || undefined, autoHideMenuBar: true, show: true,
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#202124' : '#ffffff', title: 'Sign in',
+      icon: path.join(__dirname, 'assets', 'icon.png'),
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, preload: undefined },
+    },
+  };
+}
+// The popup itself: it always says which site it shows (the title can't be set by the page, so a look-alike page can't
+// pass for the real one), Google sees Firefox there too, and it can't open more windows: whatever it opens (help,
+// privacy, terms) becomes a tab in the browser window, http(s) only.
+function hookSignInPopup(child, opener, openedEmpty) {
+  if (!IS_MAC) child.removeMenu();
+  const wc = child.webContents;
+  const titleFor = (u) => { if (!u || /^about:/i.test(u)) return 'Sign in'; try { const x = new URL(u); return `${x.host} — Sign in${x.protocol === 'https:' ? '' : ' (not secure)'}`; } catch { return 'Sign in'; } };
+  wc.on('page-title-updated', (e) => { e.preventDefault(); child.setTitle(titleFor(wc.getURL())); });
+  for (const ev of ['did-navigate', 'did-navigate-in-page']) wc.on(ev, () => child.setTitle(titleFor(wc.getURL())));
+  hookIdentity(wc);
+  wc.on('context-menu', (_e, p) => { if (p.isEditable || p.selectionText) shellEditMenu(wc, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
+  wc.setWindowOpenHandler(({ url }) => {
+    const shellWc = !opener.isDestroyed() && shellFor(opener);
+    if (/^https?:/i.test(url) && shellWc) shellWc.send('open-url', { url, where: 'foreground' });
+    return { action: 'deny' };
+  });
+  wc.on('will-navigate', (e, url) => { if (!/^(https?:|about:blank)/i.test(url)) e.preventDefault(); });
+  // Opened empty (Auth0, Okta…): its first real page must be a sign-in service, or it becomes a tab instead.
+  if (openedEmpty) {
+    // Its first real page must be a sign-in service. Checked whenever it gets there: as the page starts, as it lands,
+    // and right now (the opener may have sent it on before this ran).
+    let settled = false;
+    const check = (url) => {
+      if (settled || child.isDestroyed() || !url || /^about:/i.test(url)) return;
+      settled = true; clearTimeout(idle);
+      if (SIGNIN_NEXT(url)) return;
+      const shellWc = !opener.isDestroyed() && shellFor(opener);
+      if (shellWc && /^https?:/i.test(url)) shellWc.send('open-url', { url, where: 'foreground' });
+      setImmediate(() => { if (!child.isDestroyed()) child.destroy(); });
+    };
+    wc.on('did-start-navigation', (d) => { if (d.isMainFrame) check(d.url); });
+    wc.on('did-navigate', (_e, url) => check(url));
+    // still empty after 15 s: nothing is signing in there
+    const idle = setTimeout(() => { if (!settled && !child.isDestroyed()) child.destroy(); }, 15000);
+    check(wc.getURL());
+  }
+  // Ctrl/Cmd+W closes it, on any keyboard layout. (Not Esc: that closes autofill lists and dropdowns mid sign-in.)
+  wc.on('before-input-event', (e, i) => {
+    if (i.type === 'keyDown' && (IS_MAC ? i.meta : i.control) && !i.alt && i.code === 'KeyW') { e.preventDefault(); child.close(); }
+  });
+}
+
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
@@ -1471,25 +1570,7 @@ app.on('web-contents-created', (_e, contents) => {
 
   if (contents.getType() !== 'webview') return;
   hookShortcuts(contents);
-  // On Google's sign-in pages the tab is Firefox (see FIREFOX_UA); elsewhere it's left alone.
-  // Decided again at every step of a navigation, redirects included: Gmail → sign-in → back to Gmail.
-  // Set as a navigation starts. A redirect can't be changed midway (setUserAgent then restarts the navigation, in a
-  // loop), so a page reached by redirect (Gmail → sign-in, sign-in → back to Gmail) whose identity came out wrong is
-  // loaded once more with the right one. The header guard in onBeforeSendHeaders keeps the requests right regardless.
-  contents.on('did-start-navigation', (d) => { if (d.isMainFrame && !d.isSameDocument && !contents.isDestroyed()) googleIdentity(contents, isGoogleSignIn(d.url)); });
-  contents.on('did-navigate', (_e, url) => {
-    if (contents.isDestroyed()) return;
-    const want = isGoogleSignIn(url);
-    if (!!contents.__googleIdentity === want) return;
-    googleIdentity(contents, want);
-    // At most twice in ten seconds per tab, whatever Google does (it can bounce between pages), and as a plain GET: a page
-    // that arrived by a form post is never sent again.
-    const now = Date.now(), fixes = (contents.__identityFixes || []).filter((x) => now - x < 10000);
-    if (fixes.length >= 2) return;
-    contents.__identityFixes = [...fixes, now];
-    // replaces the page (no extra Back step), as a plain GET
-    setImmediate(() => { if (!contents.isDestroyed() && contents.getURL() === url) contents.executeJavaScript(`location.replace(${JSON.stringify(url)})`).catch(() => contents.loadURL(url)); });
-  });
+  hookIdentity(contents);
   // Shield also hides the ads search engines put in their own results (they're part of the page, so the
   // network blocker can't catch them).
   const hideSearchAds = () => {
@@ -1504,12 +1585,14 @@ app.on('web-contents-created', (_e, contents) => {
   // Tell the window when a tab starts or stops making sound, instead of the window asking every tab every second
   // (each ask is a blocking call, and they added up with many tabs open).
   contents.on('audio-state-changed', (ev) => { console.log('[dbg] audio', contents.id, ev && ev.audible, !!shellFor(contents)); const s = shellFor(contents); if (s) s.send('tab:audio', contents.id, !!ev.audible); });
-  contents.setWindowOpenHandler(({ url, disposition }) => {
+  contents.setWindowOpenHandler(({ url, disposition, frameName }) => {
+    if (wantsSignInPopup({ url, disposition, frameName })) { const p = signInPopup(contents); if (p) { contents.__signInOpenedEmpty = url === 'about:blank'; return p; } return { action: 'deny' }; }
     const shellWc = shellFor(contents);
     if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
     else if (/^mailto:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+  contents.on('did-create-window', (child) => { signInPopups.set(contents, child); hookSignInPopup(child, contents, !!contents.__signInOpenedEmpty); contents.__signInOpenedEmpty = false; });
   contents.on('context-menu', (_ev, params) => pageContextMenu(contents, params));
   // Internal-page preload only exposes its bridge on stupid:// (and main re-checks every call), so
   // following a link from an internal page to the web is safe.
@@ -1525,6 +1608,12 @@ app.on('web-contents-created', (_e, contents) => {
 // How long the main process was busy (and so slow to answer the window) during the benchmark: timer drift.
 const lag = { samples: [], max: 0, reset() { this.samples = []; this.max = 0; }, p95() { const s = [...this.samples].sort((a, b) => a - b); return s.length ? Math.round(s[Math.floor(s.length * 0.95)]) : 0; } };
 if (process.env.STUPID_PERF_LOG) { let last = performance.now(); setInterval(() => { const now = performance.now(), d = Math.max(0, now - last - 50); last = now; lag.samples.push(d); if (lag.samples.length > 4000) lag.samples.shift(); lag.max = Math.max(lag.max, Math.round(d)); }, 50); }
+if (process.env.STUPID_SELFTEST) {   // dev-only hooks for the sign-in popup test
+  const popups = () => BrowserWindow.getAllWindows().filter((w) => !windows.has(w.id) && w.getTitle() !== '' && w !== pickerWin);
+  handle('test:popups', ['shell'], () => popups().map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^https:\/\/127\.0\.0\.1:8843/, '') })));
+  handle('test:popupClickHelp', ['shell'], () => popups()[0] && popups()[0].webContents.executeJavaScript(`document.getElementById('help').click()`, true));
+  handle('test:popupPost', ['shell'], () => popups()[0] && popups()[0].webContents.executeJavaScript(`window.opener.postMessage({ credential: 'token-456' }, '*'); window.close(); 1`, true));
+}
 function selfTest(win) {
   // Benchmarks need the window on screen (pages in hidden windows are slowed down).
   if (process.env.STUPID_TEST_FRONT) { win.setAlwaysOnTop(true, 'screen-saver'); win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); app.focus({ steal: true }); }
