@@ -1488,12 +1488,18 @@ const SIGNIN_POPUP = /^https:\/\/(?:accounts\.google\.(?:com|[a-z]{2}|co\.[a-z]{
 // library may also open an empty popup first and send it to the sign-in page after (Auth0, Okta): its name tells.
 const wantsSignInPopup = ({ url, disposition, frameName }) =>
   (disposition === 'new-window' && SIGNIN_POPUP.test(url)) ||
-  (disposition === 'new-window' && url === 'about:blank' && /auth|login|sign.?in|oauth|popup/i.test(frameName || ''));
+  (disposition === 'new-window' && url === 'about:blank' && /auth|login|sign.?in|oauth/i.test(frameName || ''));
+// Where an empty sign-in popup may go next (else it's closed and that page opens as a tab instead).
+const SIGNIN_NEXT = (u) => SIGNIN_POPUP.test(u) || (!!process.env.STUPID_SELFTEST && u.startsWith('https://127.0.0.1:8843/login/')) || /^https:\/\/[a-z0-9-]+\.(?:auth0\.com|okta\.com|oktapreview\.com|okta-emea\.com)(?:[:/?#]|$)/i.test(u);
 const signInPopups = new WeakMap();   // opener → its one sign-in popup (a second one reuses it, like a named window)
 function signInPopup(contents) {
   const host = contents.hostWebContents && BrowserWindow.fromWebContents(contents.hostWebContents);
+  // One at a time per page: no floods, no hidden extras. Marked the moment it's allowed (the window itself only arrives
+  // a moment later), so a script opening many in a row still gets one.
   const live = signInPopups.get(contents);
-  if (live && !live.isDestroyed()) { live.focus(); return null; }   // one at a time per page: no floods, no hidden extras
+  if (live && live.pending && Date.now() - live.pending < 5000) return null;
+  if (live && !live.pending && !live.isDestroyed()) { live.focus(); return null; }
+  signInPopups.set(contents, { pending: Date.now() });
   const w = 520, h = 680, b = host ? host.getBounds() : screen.getPrimaryDisplay().workArea;
   return {
     action: 'allow',
@@ -1513,11 +1519,10 @@ function signInPopup(contents) {
 function hookSignInPopup(child, opener) {
   if (!IS_MAC) child.removeMenu();
   const wc = child.webContents;
-  const titleFor = (u) => { try { const x = new URL(u); return `${x.host} — Sign in${x.protocol === 'https:' ? '' : ' (not secure)'}`; } catch { return 'Sign in'; } };
+  const titleFor = (u) => { if (!u || /^about:/i.test(u)) return 'Sign in'; try { const x = new URL(u); return `${x.host} — Sign in${x.protocol === 'https:' ? '' : ' (not secure)'}`; } catch { return 'Sign in'; } };
   wc.on('page-title-updated', (e) => { e.preventDefault(); child.setTitle(titleFor(wc.getURL())); });
   for (const ev of ['did-navigate', 'did-navigate-in-page']) wc.on(ev, () => child.setTitle(titleFor(wc.getURL())));
   hookIdentity(wc);
-  hookShortcuts(wc);
   wc.on('context-menu', (_e, p) => { if (p.isEditable || p.selectionText) shellEditMenu(wc, { hasSelection: !!p.selectionText, canUndo: p.editFlags.canUndo, canRedo: p.editFlags.canRedo }, false); });
   wc.setWindowOpenHandler(({ url }) => {
     const shellWc = !opener.isDestroyed() && shellFor(opener);
@@ -1525,6 +1530,25 @@ function hookSignInPopup(child, opener) {
     return { action: 'deny' };
   });
   wc.on('will-navigate', (e, url) => { if (!/^(https?:|about:blank)/i.test(url)) e.preventDefault(); });
+  // Opened empty (Auth0, Okta…): its first real page must be a sign-in service, or it becomes a tab instead.
+  if (wc.getURL() === '' || /^about:/i.test(wc.getURL())) {
+    const first = (d) => {
+      if (!d.isMainFrame || /^about:/i.test(d.url)) return;   // the empty page itself
+      wc.removeListener('did-start-navigation', first); clearTimeout(idle);
+      if (SIGNIN_NEXT(d.url)) return;
+      const shellWc = !opener.isDestroyed() && shellFor(opener);
+      if (shellWc && /^https?:/i.test(d.url)) shellWc.send('open-url', { url: d.url, where: 'foreground' });
+      setImmediate(() => { if (!child.isDestroyed()) child.destroy(); });
+    };
+    wc.on('did-start-navigation', first);
+    // still empty after 15 s: nothing is signing in there
+    const idle = setTimeout(() => { if (!child.isDestroyed() && /^(about:|$)/i.test(wc.getURL())) child.destroy(); }, 15000);
+  }
+  // Ctrl/Cmd+W or Esc closes it (the browser's own shortcuts belong to the browser window).
+  wc.on('before-input-event', (e, i) => {
+    if (i.type !== 'keyDown') return;
+    if (i.key === 'Escape' || ((IS_MAC ? i.meta : i.control) && i.key.toLowerCase() === 'w')) { e.preventDefault(); child.close(); }
+  });
 }
 
 app.on('web-contents-created', (_e, contents) => {
@@ -1582,9 +1606,9 @@ const lag = { samples: [], max: 0, reset() { this.samples = []; this.max = 0; },
 if (process.env.STUPID_PERF_LOG) { let last = performance.now(); setInterval(() => { const now = performance.now(), d = Math.max(0, now - last - 50); last = now; lag.samples.push(d); if (lag.samples.length > 4000) lag.samples.shift(); lag.max = Math.max(lag.max, Math.round(d)); }, 50); }
 if (process.env.STUPID_SELFTEST) {   // dev-only hooks for the sign-in popup test
   const popups = () => BrowserWindow.getAllWindows().filter((w) => !windows.has(w.id) && w.getTitle() !== '' && w !== pickerWin);
-  ipcMain.handle('test:popups', () => popups().map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^https:\/\/127\.0\.0\.1:8843/, '') })));
-  ipcMain.handle('test:popupClickHelp', () => popups()[0] && popups()[0].webContents.executeJavaScript(`document.getElementById('help').click()`, true));
-  ipcMain.handle('test:popupPost', () => popups()[0] && popups()[0].webContents.executeJavaScript(`window.opener.postMessage({ credential: 'token-456' }, '*'); window.close(); 1`, true));
+  handle('test:popups', ['shell'], () => popups().map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^https:\/\/127\.0\.0\.1:8843/, '') })));
+  handle('test:popupClickHelp', ['shell'], () => popups()[0] && popups()[0].webContents.executeJavaScript(`document.getElementById('help').click()`, true));
+  handle('test:popupPost', ['shell'], () => popups()[0] && popups()[0].webContents.executeJavaScript(`window.opener.postMessage({ credential: 'token-456' }, '*'); window.close(); 1`, true));
 }
 function selfTest(win) {
   // Benchmarks need the window on screen (pages in hidden windows are slowed down).
