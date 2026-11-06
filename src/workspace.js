@@ -34,7 +34,7 @@ function avatarOf(p, size) {
 }
 // A square crop from the middle of a picture you pick, small enough to keep in settings.
 // A square from the middle of the picture, 192 px, white behind see-through parts. Decoded here, the right way up
-// (phone photos carry their rotation separately), and shrunk while decoding so a big photo stays light.
+// (phone photos carry their rotation separately). Main refuses anything over 24 megapixels, so this stays light.
 async function pictureFrom(bytes, type) {
   const blob = new Blob([bytes], { type });
   let bmp;

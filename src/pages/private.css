@@ -12,7 +12,7 @@ html, body { background: #08070D; color: var(--text); min-height: 100%; overflow
     radial-gradient(1px 1px at 8% 86%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 54% 90%, #cfc6ff 50%, transparent 51%),
     radial-gradient(1px 1px at 36% 8%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 93% 80%, #fff 50%, transparent 51%);
   animation: twinkle 9s ease-in-out infinite alternate; }
-.fog { position: absolute; width: 90vmax; height: 60vmax; border-radius: 50%; filter: blur(60px); opacity: .5; will-change: transform; }
+.fog { position: absolute; width: 90vmax; height: 60vmax; border-radius: 50%; opacity: .55; will-change: transform; }   /* the gradients' own soft edges, no blur filter: moving a blur costs the GPU every frame */
 .f1 { left: -30vmax; top: 30vh; background: radial-gradient(closest-side, rgba(110,80,220,.35), transparent); animation: drift1 38s ease-in-out infinite alternate; }
 .f2 { right: -35vmax; top: -10vh; background: radial-gradient(closest-side, rgba(70,60,160,.30), transparent); animation: drift2 46s ease-in-out infinite alternate; }
 .f3 { left: 10vw; bottom: -40vmax; background: radial-gradient(closest-side, rgba(150,110,255,.18), transparent); animation: drift1 54s ease-in-out infinite alternate-reverse; }
@@ -26,11 +26,12 @@ main { position: relative; max-width: 640px; margin: 0 auto; padding: 16vh 24px 
 .title { font-family: var(--serif, 'Newsreader', Georgia, serif); font-weight: 400; font-size: 46px; letter-spacing: -.01em; margin: 22px 0 10px; background: linear-gradient(180deg, #F3F0FF, #A99CEB); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .lead { font-size: 15.5px; line-height: 1.6; color: #C9C1E2; max-width: 520px; margin: 0; }
 .cols { display: flex; gap: 12px; margin: 28px 0 18px; flex-wrap: wrap; justify-content: center; }
-.col { display: flex; flex-direction: column; gap: 4px; min-width: 210px; padding: 14px 18px; border-radius: 14px; background: rgba(20,17,31,.66); border: 1px solid rgba(157,140,255,.16); backdrop-filter: blur(8px); text-align: left; }
+.col { display: flex; flex-direction: column; gap: 4px; min-width: 210px; padding: 14px 18px; border-radius: 14px; background: rgba(20,17,31,.82); border: 1px solid rgba(157,140,255,.16); text-align: left; }
 .col b { font-size: 11.5px; text-transform: uppercase; letter-spacing: .14em; color: #B9AEF2; font-weight: 600; }
 .col span { font-size: 13.5px; color: #DCD6EE; }
 .note { font-size: 13px; color: var(--muted); max-width: 470px; line-height: 1.55; margin: 6px 0 0; }
 .note b { color: #CFC6FF; font-weight: 600; }
 .hint { position: fixed; left: 0; right: 0; bottom: 22px; font-size: 12px; color: #5F5878; margin: 0; }
+.paused .fog, .paused .stars, .paused .eye { animation-play-state: paused; }   /* while the tab isn't on screen */
 @media (prefers-reduced-motion: reduce) { .fog, .stars, .eye, main { animation: none !important; } }
 @media (max-height: 560px) { main { padding-top: 6vh; } .cols { margin: 18px 0 10px; } .hint { display: none; } }

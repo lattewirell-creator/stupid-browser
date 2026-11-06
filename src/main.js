@@ -365,6 +365,7 @@ function prepareSession(ses, { tabs, incognito }) {
     const u = new URL(req.url);
     const host = u.hostname;
     if (!INTERNAL_PAGES.includes(host)) return new Response('Not found', { status: 404 });
+    if (host === 'private' && !incognito) return Response.redirect('stupid://newtab/');   // "nothing is remembered" is only true in a private window
     let rel = decodeURIComponent(u.pathname);
     if (host === 'rewind' && rewindThumb) { const r = rewindThumb(rel); if (r) return r; }
     if (rel === '/' || rel === '') rel = `/${host}.html`;
@@ -1043,7 +1044,7 @@ handle('profile:pickImage', ['shell'], async (e) => {
     const bytes = await fs.promises.readFile(file);
     const dim = imageSize(bytes);
     if (!dim) return { error: 'Pick a JPEG, PNG, WebP, GIF or BMP picture' };
-    if (dim.w * dim.h > 50e6) return { error: 'That picture has too many pixels (50 megapixels at most)' };
+    if (dim.w * dim.h > 24e6) return { error: 'That picture has too many pixels (24 megapixels at most)' };
     return { bytes, type: dim.type };
   } catch { return { error: 'That picture can’t be read' }; }
 });
