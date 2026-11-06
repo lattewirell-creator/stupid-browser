@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="dark">
+<style id="early-bg">html{background:#08070D}</style>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Private tab</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="private.css">
+</head>
+<body>
+  <div class="sky" aria-hidden="true"><div class="stars"></div><div class="fog f1"></div><div class="fog f2"></div><div class="fog f3"></div></div>
+  <main>
+    <svg class="eye" viewBox="0 0 64 64" aria-hidden="true">
+      <path class="lid" d="M8 30c7 9 15.5 13.5 24 13.5S49 39 56 30"/>
+      <path class="lash" d="M14 37l-4 5M23 41.5l-2 6M32 43.5v6.5M41 41.5l2 6M50 37l4 5"/>
+    </svg>
+    <h1 class="title">You’re in the dark.</h1>
+    <p class="lead">Nothing here is remembered. When you close this window, its history, cookies, sign-ins and site data go with it.</p>
+    <div class="cols">
+      <div class="col"><b>Forgotten</b><span>History · cookies · sign-ins · forms · cache</span></div>
+      <div class="col"><b>Kept</b><span>Downloads · bookmarks you add</span></div>
+    </div>
+    <p class="note">Sites, your network and your internet provider can still see you. To hide where you browse from, turn on the <b>VPN</b>.</p>
+    <p class="hint" id="hint">Type in the address bar to search · Ctrl+Shift+N opens another private window</p>
+  </main>
+  <script src="keys.js"></script>
+  <script src="common.js"></script>
+  <script src="private.js"></script>
+</body>
+</html>

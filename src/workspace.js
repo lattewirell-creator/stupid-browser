@@ -33,20 +33,19 @@ function avatarOf(p, size) {
   return a;
 }
 // A square crop from the middle of a picture you pick, small enough to keep in settings.
-function pictureFrom(url) {
-  return new Promise((resolve, reject) => {
-    if (!/^data:image\//.test(url || '')) return reject(new Error('Pick a picture'));
-    const im = new Image();
-    im.onload = () => {
-      const n = 192, c = document.createElement('canvas'); c.width = c.height = n;
-      const s = Math.min(im.naturalWidth, im.naturalHeight), g = c.getContext('2d');
-      g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);   // a see-through picture gets white behind it, not black
-      g.drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, n, n);
-      resolve(c.toDataURL('image/jpeg', 0.86));
-    };
-    im.onerror = () => reject(new Error('That picture can’t be read'));
-    im.src = url;
-  });
+// A square from the middle of the picture, 192 px, white behind see-through parts. Decoded here, the right way up
+// (phone photos carry their rotation separately), and shrunk while decoding so a big photo stays light.
+async function pictureFrom(bytes, type) {
+  const blob = new Blob([bytes], { type });
+  let bmp;
+  try { bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' }); } catch { throw new Error('That picture can’t be read'); }
+  const n = 192, c = document.createElement('canvas'); c.width = c.height = n;
+  const s = Math.min(bmp.width, bmp.height), g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);   // a see-through picture gets white behind it, not black
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, n, n);
+  bmp.close();
+  return c.toDataURL('image/jpeg', 0.86);
 }
 function avatarEl(size) {
   if (settings.profileImage) return avatarOf({ image: settings.profileImage, color: settings.profileColor }, size);
@@ -89,7 +88,7 @@ function profileCard(editing = false) {
       try {
         const r = await call('profile:pickImage');
         if (r && r.error) toast(r.error);
-        else if (r && r.url) { image = await pictureFrom(r.url); pick.textContent = 'Change picture…'; preview(); }
+        else if (r && r.bytes) { image = await pictureFrom(r.bytes, r.type); pick.textContent = 'Change picture…'; preview(); }
       } catch (err) { toast(err.message || 'That picture can’t be read'); }
       pick.disabled = false;
     });

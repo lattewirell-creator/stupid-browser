@@ -108,7 +108,7 @@ const DEFAULT_LAUNCHER = [
   { id: 'news', name: 'News', url: 'https://news.google.com' },
   { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
-const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind', 'ask'];
+const INTERNAL_PAGES = ['newtab', 'private', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind', 'ask'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -158,7 +158,7 @@ let incognitoCounter = 0;
 const preparedSessions = new WeakSet();
 
 function themeColors(incognito) {
-  if (incognito) return { bg: '#1B1A19', bar: '#232120', fg: '#ECE9E1' };
+  if (incognito) return { bg: '#08070D', bar: '#0E0C16', fg: '#DCD6EE' };   // private: near-black with a violet hush
   return nativeTheme.shouldUseDarkColors
     ? { bg: '#1F1E1D', bar: '#262624', fg: '#ECE9E1' }
     : { bg: '#FAF9F5', bar: '#F0EEE6', fg: '#3D3929' };
@@ -1035,19 +1035,43 @@ handle('profile:pickImage', ['shell'], async (e) => {
     if (r.canceled || !r.filePaths[0]) return null;
     file = r.filePaths[0];
   }
+  // Nothing is decoded here (a huge picture would freeze every window): the size is read from the file's header, and
+  // the window decodes it (which also turns phone photos the right way up).
   try {
-    if (fs.statSync(file).size > 40 * 1048576) return { error: 'That picture is too big' };
-    let img = nativeImage.createFromPath(file);
-    if (img.isEmpty()) {   // a format nativeImage can't open (webp, gif…): the window decodes it instead
-      const ext = path.extname(file).slice(1).toLowerCase(), type = { jpg: 'jpeg', jpeg: 'jpeg', png: 'png', webp: 'webp', gif: 'gif', bmp: 'bmp' }[ext];
-      if (!type) return { error: 'Pick a picture' };
-      return { url: `data:image/${type};base64,${fs.readFileSync(file).toString('base64')}` };
-    }
-    const { width, height } = img.getSize(), s = Math.min(width, height);
-    img = img.crop({ x: Math.floor((width - s) / 2), y: Math.floor((height - s) / 2), width: s, height: s }).resize({ width: 384, height: 384, quality: 'best' });
-    return { url: img.toDataURL() };
+    const st = await fs.promises.stat(file);
+    if (st.size > 15 * 1048576) return { error: 'That picture is too big (15 MB at most)' };
+    const bytes = await fs.promises.readFile(file);
+    const dim = imageSize(bytes);
+    if (!dim) return { error: 'Pick a JPEG, PNG, WebP, GIF or BMP picture' };
+    if (dim.w * dim.h > 50e6) return { error: 'That picture has too many pixels (50 megapixels at most)' };
+    return { bytes, type: dim.type };
   } catch { return { error: 'That picture can’t be read' }; }
 });
+// Width and height from a picture's header, without decoding it.
+function imageSize(b) {
+  try {
+    if (b.length > 24 && b.readUInt32BE(0) === 0x89504e47) return { type: 'image/png', w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+    if (b.length > 10 && b.toString('latin1', 0, 3) === 'GIF') return { type: 'image/gif', w: b.readUInt16LE(6), h: b.readUInt16LE(8) };
+    if (b.length > 26 && b.toString('latin1', 0, 2) === 'BM') return { type: 'image/bmp', w: Math.abs(b.readInt32LE(18)), h: Math.abs(b.readInt32LE(22)) };
+    if (b.length > 30 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
+      const k = b.toString('latin1', 12, 16);
+      if (k === 'VP8X') return { type: 'image/webp', w: 1 + b.readUIntLE(24, 3), h: 1 + b.readUIntLE(27, 3) };
+      if (k === 'VP8L') { const v = b.readUInt32LE(21); return { type: 'image/webp', w: 1 + (v & 0x3fff), h: 1 + ((v >> 14) & 0x3fff) }; }
+      if (k === 'VP8 ') return { type: 'image/webp', w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+    }
+    if (b[0] === 0xff && b[1] === 0xd8) {   // JPEG: walk to the frame header
+      let i = 2;
+      while (i + 9 < b.length) {
+        if (b[i] !== 0xff) { i++; continue; }
+        const m = b[i + 1];
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { type: 'image/jpeg', h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) };
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+        i += 2 + b.readUInt16BE(i + 2);
+      }
+    }
+  } catch {}
+  return null;
+}
 handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
 handle('profiles:picker', ['internal'], (_e, on) => (on === undefined ? { on: profiles.pickerEnabled(), count: profiles.list().length } : profiles.setPicker(on)));
 handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));

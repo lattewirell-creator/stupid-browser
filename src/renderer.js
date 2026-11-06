@@ -4,7 +4,7 @@ const api = window.stupid;
 const $ = (id) => document.getElementById(id);
 const call = (ch, ...a) => api.invoke(ch, ...a);
 
-const NEWTAB = 'stupid://newtab/';
+let NEWTAB = 'stupid://newtab/';   // a private window's new tab is stupid://private/ (set at boot)
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
 const GROUP_COLORS = { clay: '#D97757', sand: '#C9A15A', sage: '#7C9A6E', sky: '#6A8FB5', plum: '#9B6A8E', rose: '#C96A7A', teal: '#5E9A94', slate: '#8A857A', ink: '#3D3929' };
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
@@ -47,7 +47,7 @@ function toast(msg, onClick) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), onClick ? 6000 : 2400);
 }
 const isInternal = (u) => /^stupid:\/\//.test(u || '');
-const isNewtab = (u) => !u || /^stupid:\/\/newtab\/?(\?.*)?$/.test(u);
+const isNewtab = (u) => !u || /^stupid:\/\/(?:newtab|private)\/?(\?.*)?$/.test(u);
 const displayUrl = (u) => (isNewtab(u) ? '' : u);
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 const internalName = (u) => { try { return new URL(u).hostname; } catch { return ''; } };
@@ -1612,7 +1612,7 @@ api.on('update:status', renderUpdate);
 /* ---------------- boot ---------------- */
 (async function boot() {
   [info, settings, bookmarks, bots, sideItems] = await Promise.all([call('win:info'), call('settings:get'), call('bookmarks:get'), call('bots:get'), call('sidebar:get')]);
-  if (info.incognito) { document.body.classList.add('incognito'); $('privateBadge').classList.remove('hidden'); }
+  if (info.incognito) { document.body.classList.add('incognito'); $('privateBadge').classList.remove('hidden'); NEWTAB = 'stupid://private/'; }
   applySettings();
   renderBookmarks();
   renderBots();
