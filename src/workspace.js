@@ -33,21 +33,19 @@ function avatarOf(p, size) {
   return a;
 }
 // A square crop from the middle of a picture you pick, small enough to keep in settings.
-function pictureFrom(file) {
-  return new Promise((resolve, reject) => {
-    if (!file || !/^image\//.test(file.type)) return reject(new Error('Pick a picture'));
-    const im = new Image(); const rd = new FileReader();   // read as data: (the browser UI doesn't load blob: pictures)
-    rd.onload = () => { im.src = rd.result; }; rd.onerror = () => reject(new Error('That picture can’t be read'));
-    im.onload = () => {
-      const n = 192, c = document.createElement('canvas'); c.width = c.height = n;
-      const s = Math.min(im.naturalWidth, im.naturalHeight), g = c.getContext('2d');
-      g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);   // a see-through picture gets white behind it, not black
-      g.drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, n, n);
-      resolve(c.toDataURL('image/jpeg', 0.86));
-    };
-    im.onerror = () => reject(new Error('That picture can’t be read'));
-    rd.readAsDataURL(file);
-  });
+// A square from the middle of the picture, 192 px, white behind see-through parts. Decoded here, the right way up
+// (phone photos carry their rotation separately). Main refuses anything over 24 megapixels, so this stays light.
+async function pictureFrom(bytes, type) {
+  const blob = new Blob([bytes], { type });
+  let bmp;
+  try { bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' }); } catch { throw new Error('That picture can’t be read'); }
+  const n = 192, c = document.createElement('canvas'); c.width = c.height = n;
+  const s = Math.min(bmp.width, bmp.height), g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);   // a see-through picture gets white behind it, not black
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, n, n);
+  bmp.close();
+  return c.toDataURL('image/jpeg', 0.86);
 }
 function avatarEl(size) {
   if (settings.profileImage) return avatarOf({ image: settings.profileImage, color: settings.profileColor }, size);
@@ -84,15 +82,19 @@ function profileCard(editing = false) {
     let image = settings.profileImage || '';
     const picRow = el('div', 'pf-picrow');
     const preview = () => { picRow.replaceChildren(); picRow.append(image ? avatarOf({ image }, 40) : avatarOf({ name: name.value || settings.name || '?', color }, 40), pick); if (image) picRow.appendChild(clear); };
-    const file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.hidden = true;
     const pick = el('button', 'pill', image ? 'Change picture…' : 'Choose picture…'); pick.type = 'button';
-    pick.addEventListener('click', () => file.click());
+    pick.addEventListener('click', async () => {
+      pick.disabled = true;
+      try {
+        const r = await call('profile:pickImage');
+        if (r && r.error) toast(r.error);
+        else if (r && r.bytes) { image = await pictureFrom(r.bytes, r.type); pick.textContent = 'Change picture…'; preview(); }
+      } catch (err) { toast(err.message || 'That picture can’t be read'); }
+      pick.disabled = false;
+    });
     const clear = el('button', 'pill', 'Remove'); clear.type = 'button';
     clear.addEventListener('click', () => { image = ''; pick.textContent = 'Choose picture…'; preview(); });
-    file.addEventListener('change', async () => {
-      try { image = await pictureFrom(file.files[0]); pick.textContent = 'Change picture…'; preview(); } catch (err) { toast(err.message); }
-      file.value = '';
-    });
+
     const sw = el('div', 'pf-swatches');
     let color = settings.profileColor || 'clay';
     for (const c of PROFILE_COLORS) {
@@ -104,7 +106,7 @@ function profileCard(editing = false) {
     cancel.addEventListener('click', () => profileCard(false));
     row.append(el('div', 'grow'), cancel, ok);
     preview();
-    f.append(name, email, el('div', 'pop-sub', 'Picture'), picRow, file, el('div', 'pop-sub', 'Color'), sw, row);
+    f.append(name, email, el('div', 'pop-sub', 'Picture'), picRow, el('div', 'pop-sub', 'Color'), sw, row);
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       settings = await call('settings:set', { name: name.value.trim(), email: email.value.trim(), profileColor: color, profileImage: image });

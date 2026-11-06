@@ -17,7 +17,10 @@
 @media (prefers-color-scheme: dark) {
   :root { --bg: #1F1E1D; --bar: #262624; --surface: #2B2A27; --surface-2: #302F2C; --hover: #3A3935; --line: #3A3934; --line-strong: #4A4842; --text: #ECE9E1; --text-2: #D6D2C6; --muted: #9C978B; --shadow: 0 12px 40px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
 }
-body.incognito { --bg: #1B1A19; --bar: #232120; --surface: #2A2826; --surface-2: #2E2C2A; --hover: #3A3734; --line: #3A3733; --line-strong: #4C4843; --text: #ECE9E1; --text-2: #D6D2C6; --muted: #A09A8D; color-scheme: dark; }
+/* Private windows: dark and a little mysterious. Near-black with a violet hush, violet accents, a faint glow at the top. */
+body.incognito { --bg: #08070D; --bar: #0E0C16; --surface: #14111F; --surface-2: #191526; --hover: #241E36; --line: #241F33; --line-strong: #3A3150; --text: #E6E1F5; --text-2: #C9C1E2; --muted: #8E85AB; --accent: #9D8CFF; --accent-soft: rgba(157,140,255,.16); color-scheme: dark; }
+body.incognito #titlebar, body.incognito #toolbar { background: radial-gradient(120% 220% at 50% -60%, rgba(124,92,255,.16), transparent 60%), var(--bar); }
+body.incognito .private-badge { background: rgba(157,140,255,.14); color: #CFC6FF; box-shadow: 0 0 0 1px rgba(157,140,255,.28), 0 0 14px rgba(124,92,255,.35); letter-spacing: .04em; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; -webkit-font-smoothing: antialiased; }

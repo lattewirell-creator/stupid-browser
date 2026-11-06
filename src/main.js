@@ -108,7 +108,7 @@ const DEFAULT_LAUNCHER = [
   { id: 'news', name: 'News', url: 'https://news.google.com' },
   { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
-const INTERNAL_PAGES = ['newtab', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind', 'ask'];
+const INTERNAL_PAGES = ['newtab', 'private', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind', 'ask'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -158,7 +158,7 @@ let incognitoCounter = 0;
 const preparedSessions = new WeakSet();
 
 function themeColors(incognito) {
-  if (incognito) return { bg: '#1B1A19', bar: '#232120', fg: '#ECE9E1' };
+  if (incognito) return { bg: '#08070D', bar: '#0E0C16', fg: '#DCD6EE' };   // private: near-black with a violet hush
   return nativeTheme.shouldUseDarkColors
     ? { bg: '#1F1E1D', bar: '#262624', fg: '#ECE9E1' }
     : { bg: '#FAF9F5', bar: '#F0EEE6', fg: '#3D3929' };
@@ -365,6 +365,7 @@ function prepareSession(ses, { tabs, incognito }) {
     const u = new URL(req.url);
     const host = u.hostname;
     if (!INTERNAL_PAGES.includes(host)) return new Response('Not found', { status: 404 });
+    if (host === 'private' && !incognito) return Response.redirect('stupid://newtab/');   // "nothing is remembered" is only true in a private window
     let rel = decodeURIComponent(u.pathname);
     if (host === 'rewind' && rewindThumb) { const r = rewindThumb(rel); if (r) return r; }
     if (rel === '/' || rel === '') rel = `/${host}.html`;
@@ -1026,6 +1027,52 @@ handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', ge
 handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
 // Compact mode hides the macOS traffic lights while the top bar is tucked away.
 handle('win:trafficLights', ['shell'], (e, on) => { const w = BrowserWindow.fromWebContents(e.sender); if (IS_MAC && w && w.setWindowButtonVisibility) w.setWindowButtonVisibility(!!on); return true; });
+// Your profile picture: the file dialog belongs to the browser window (opened from here, like Save as), so it can't be
+// left hanging when the profile card closes. The picture comes back already cut to a small square.
+handle('profile:pickImage', ['shell'], async (e) => {
+  let file = process.env.STUPID_SELFTEST && process.env.STUPID_TEST_PICK;   // self-test: no dialog
+  if (!file) {
+    const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { title: 'Choose a profile picture', properties: ['openFile'], filters: [{ name: 'Pictures', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    file = r.filePaths[0];
+  }
+  // Nothing is decoded here (a huge picture would freeze every window): the size is read from the file's header, and
+  // the window decodes it (which also turns phone photos the right way up).
+  try {
+    const st = await fs.promises.stat(file);
+    if (st.size > 15 * 1048576) return { error: 'That picture is too big (15 MB at most)' };
+    const bytes = await fs.promises.readFile(file);
+    const dim = imageSize(bytes);
+    if (!dim) return { error: 'Pick a JPEG, PNG, WebP, GIF or BMP picture' };
+    if (dim.w * dim.h > 24e6) return { error: 'That picture has too many pixels (24 megapixels at most)' };
+    return { bytes, type: dim.type };
+  } catch { return { error: 'That picture can’t be read' }; }
+});
+// Width and height from a picture's header, without decoding it.
+function imageSize(b) {
+  try {
+    if (b.length > 24 && b.readUInt32BE(0) === 0x89504e47) return { type: 'image/png', w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+    if (b.length > 10 && b.toString('latin1', 0, 3) === 'GIF') return { type: 'image/gif', w: b.readUInt16LE(6), h: b.readUInt16LE(8) };
+    if (b.length > 26 && b.toString('latin1', 0, 2) === 'BM') return { type: 'image/bmp', w: Math.abs(b.readInt32LE(18)), h: Math.abs(b.readInt32LE(22)) };
+    if (b.length > 30 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
+      const k = b.toString('latin1', 12, 16);
+      if (k === 'VP8X') return { type: 'image/webp', w: 1 + b.readUIntLE(24, 3), h: 1 + b.readUIntLE(27, 3) };
+      if (k === 'VP8L') { const v = b.readUInt32LE(21); return { type: 'image/webp', w: 1 + (v & 0x3fff), h: 1 + ((v >> 14) & 0x3fff) }; }
+      if (k === 'VP8 ') return { type: 'image/webp', w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+    }
+    if (b[0] === 0xff && b[1] === 0xd8) {   // JPEG: walk to the frame header
+      let i = 2;
+      while (i + 9 < b.length) {
+        if (b[i] !== 0xff) { i++; continue; }
+        const m = b[i + 1];
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { type: 'image/jpeg', h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) };
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+        i += 2 + b.readUInt16BE(i + 2);
+      }
+    }
+  } catch {}
+  return null;
+}
 handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
 handle('profiles:picker', ['internal'], (_e, on) => (on === undefined ? { on: profiles.pickerEnabled(), count: profiles.list().length } : profiles.setPicker(on)));
 handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
