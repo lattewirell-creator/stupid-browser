@@ -1026,6 +1026,28 @@ handle('pw:delete', ['internal'], (_e, id) => { store.write('passwords.json', ge
 handle('pw:encryption', ['internal'], () => safeStorage.isEncryptionAvailable());
 // Compact mode hides the macOS traffic lights while the top bar is tucked away.
 handle('win:trafficLights', ['shell'], (e, on) => { const w = BrowserWindow.fromWebContents(e.sender); if (IS_MAC && w && w.setWindowButtonVisibility) w.setWindowButtonVisibility(!!on); return true; });
+// Your profile picture: the file dialog belongs to the browser window (opened from here, like Save as), so it can't be
+// left hanging when the profile card closes. The picture comes back already cut to a small square.
+handle('profile:pickImage', ['shell'], async (e) => {
+  let file = process.env.STUPID_SELFTEST && process.env.STUPID_TEST_PICK;   // self-test: no dialog
+  if (!file) {
+    const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { title: 'Choose a profile picture', properties: ['openFile'], filters: [{ name: 'Pictures', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    file = r.filePaths[0];
+  }
+  try {
+    if (fs.statSync(file).size > 40 * 1048576) return { error: 'That picture is too big' };
+    let img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) {   // a format nativeImage can't open (webp, gif…): the window decodes it instead
+      const ext = path.extname(file).slice(1).toLowerCase(), type = { jpg: 'jpeg', jpeg: 'jpeg', png: 'png', webp: 'webp', gif: 'gif', bmp: 'bmp' }[ext];
+      if (!type) return { error: 'Pick a picture' };
+      return { url: `data:image/${type};base64,${fs.readFileSync(file).toString('base64')}` };
+    }
+    const { width, height } = img.getSize(), s = Math.min(width, height);
+    img = img.crop({ x: Math.floor((width - s) / 2), y: Math.floor((height - s) / 2), width: s, height: s }).resize({ width: 384, height: 384, quality: 'best' });
+    return { url: img.toDataURL() };
+  } catch { return { error: 'That picture can’t be read' }; }
+});
 handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
 handle('profiles:picker', ['internal'], (_e, on) => (on === undefined ? { on: profiles.pickerEnabled(), count: profiles.list().length } : profiles.setPicker(on)));
 handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));

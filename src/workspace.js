@@ -33,11 +33,10 @@ function avatarOf(p, size) {
   return a;
 }
 // A square crop from the middle of a picture you pick, small enough to keep in settings.
-function pictureFrom(file) {
+function pictureFrom(url) {
   return new Promise((resolve, reject) => {
-    if (!file || !/^image\//.test(file.type)) return reject(new Error('Pick a picture'));
-    const im = new Image(); const rd = new FileReader();   // read as data: (the browser UI doesn't load blob: pictures)
-    rd.onload = () => { im.src = rd.result; }; rd.onerror = () => reject(new Error('That picture can’t be read'));
+    if (!/^data:image\//.test(url || '')) return reject(new Error('Pick a picture'));
+    const im = new Image();
     im.onload = () => {
       const n = 192, c = document.createElement('canvas'); c.width = c.height = n;
       const s = Math.min(im.naturalWidth, im.naturalHeight), g = c.getContext('2d');
@@ -46,7 +45,7 @@ function pictureFrom(file) {
       resolve(c.toDataURL('image/jpeg', 0.86));
     };
     im.onerror = () => reject(new Error('That picture can’t be read'));
-    rd.readAsDataURL(file);
+    im.src = url;
   });
 }
 function avatarEl(size) {
@@ -84,15 +83,19 @@ function profileCard(editing = false) {
     let image = settings.profileImage || '';
     const picRow = el('div', 'pf-picrow');
     const preview = () => { picRow.replaceChildren(); picRow.append(image ? avatarOf({ image }, 40) : avatarOf({ name: name.value || settings.name || '?', color }, 40), pick); if (image) picRow.appendChild(clear); };
-    const file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.hidden = true;
     const pick = el('button', 'pill', image ? 'Change picture…' : 'Choose picture…'); pick.type = 'button';
-    pick.addEventListener('click', () => file.click());
+    pick.addEventListener('click', async () => {
+      pick.disabled = true;
+      try {
+        const r = await call('profile:pickImage');
+        if (r && r.error) toast(r.error);
+        else if (r && r.url) { image = await pictureFrom(r.url); pick.textContent = 'Change picture…'; preview(); }
+      } catch (err) { toast(err.message || 'That picture can’t be read'); }
+      pick.disabled = false;
+    });
     const clear = el('button', 'pill', 'Remove'); clear.type = 'button';
     clear.addEventListener('click', () => { image = ''; pick.textContent = 'Choose picture…'; preview(); });
-    file.addEventListener('change', async () => {
-      try { image = await pictureFrom(file.files[0]); pick.textContent = 'Change picture…'; preview(); } catch (err) { toast(err.message); }
-      file.value = '';
-    });
+
     const sw = el('div', 'pf-swatches');
     let color = settings.profileColor || 'clay';
     for (const c of PROFILE_COLORS) {
@@ -104,7 +107,7 @@ function profileCard(editing = false) {
     cancel.addEventListener('click', () => profileCard(false));
     row.append(el('div', 'grow'), cancel, ok);
     preview();
-    f.append(name, email, el('div', 'pop-sub', 'Picture'), picRow, file, el('div', 'pop-sub', 'Color'), sw, row);
+    f.append(name, email, el('div', 'pop-sub', 'Picture'), picRow, el('div', 'pop-sub', 'Color'), sw, row);
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       settings = await call('settings:set', { name: name.value.trim(), email: email.value.trim(), profileColor: color, profileImage: image });
