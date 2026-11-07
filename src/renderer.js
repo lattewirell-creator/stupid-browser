@@ -1034,11 +1034,16 @@ api.on('downloads:cleared', () => { for (const [k, d] of dls) if (d.state !== 'p
 let sugItems = [], sugSel = 0, typed = '', sugTimer;
 function closeSuggest() { leave($('suggest'), 100); sugItems = []; }
 async function updateSuggest(inline) {
-  const q = $('address').value.slice(0, $('address').selectionStart === $('address').selectionEnd ? undefined : $('address').selectionStart).trim();
+  const raw = $('address').value.slice(0, $('address').selectionStart === $('address').selectionEnd ? undefined : $('address').selectionStart);
+  const q = raw.trim();
+  // An address never has a space in it: once you type one (or end with one) it's a search, so nothing is filled in after
+  // what you typed (it used to fill "stupid " back in to "stupidbuddy.vercel.app" and swallow the space).
+  if (/\s/.test(raw)) inline = false;
   typed = q;
   if (!q) { closeSuggest(); return; }
   const res = await call('history:suggest', q);
-  if ($('address').value.slice(0, q.length).trim() !== q) return;
+  // you've typed on since asking: these suggestions are for an older text, and must not overwrite what you typed
+  { const a = $('address'); if (a.value.slice(0, a.selectionStart === a.selectionEnd ? undefined : a.selectionStart) !== raw) return; }
   const go = toUrl(q);
   const isSearch = go.startsWith(searchUrl('').split('?')[0]) && !/^https?:\/\//i.test(q) && go === searchUrl(q);
   sugItems = [{ kind: isSearch ? 'search' : 'url', label: isSearch ? q : go, sub: isSearch ? `${engineName()} search` : 'Open', url: go }];
