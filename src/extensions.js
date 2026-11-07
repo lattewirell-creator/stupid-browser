@@ -172,7 +172,7 @@ async function remove(id) {
   if (d) {
     const root = d.local ? path.join(localDir(), id) : path.join(app.getPath('userData'), 'Extensions', id);
     // root is userData/Extensions(-local)/<id> with id checked against ID above: never anything outside those folders
-    if (path.dirname(root) === path.join(app.getPath('userData'), d.local ? 'Extensions-local' : 'Extensions')) try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
+    if (path.dirname(root) === path.join(app.getPath('userData'), d.local ? 'Extensions-local' : 'Extensions')) try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }); } catch {}   // Windows may hold its files a moment after it's unloaded
   }
   const off = new Set(hooks.settings().extensionsOff || []); off.delete(id); hooks.saveSettings({ extensionsOff: [...off] });
   return list();

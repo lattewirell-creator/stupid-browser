@@ -1,7 +1,7 @@
 {
   "name": "the-stupid-browser",
   "productName": "The Stupid Browser",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "description": "The Stupid Browser - a calm personal web browser",
   "author": "lattewirell-creator",
   "main": "src/main.js",
