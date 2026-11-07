@@ -9,6 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const store = require('./store');
+const extensions = require('./extensions');
 // Startup timing for the Windows benchmark (.github/workflows/perf.yml): ms since the process started.
 const perfMark = process.env.STUPID_PERF_LOG ? (label) => fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] ${label} ${Math.round(performance.now())}\n`) : () => {};
 perfMark('main-start');
@@ -395,7 +396,7 @@ function prepareSession(ses, { tabs, incognito }) {
     if (isGoogleSignIn(details.url) && signInPage) {
       details.requestHeaders['User-Agent'] = FIREFOX_UA;
       for (const h of Object.keys(details.requestHeaders)) if (/^sec-ch-/i.test(h)) delete details.requestHeaders[h];   // Firefox sends none
-    } else if (details.requestHeaders['User-Agent'] === FIREFOX_UA) details.requestHeaders['User-Agent'] = UA;   // Firefox stays on Google's sign-in pages
+    } else if (details.requestHeaders['User-Agent'] === FIREFOX_UA) details.requestHeaders['User-Agent'] = UA;
     if (getSettings().dnt && /^https?:/.test(details.url)) {
       details.requestHeaders.DNT = '1';
       details.requestHeaders['Sec-GPC'] = '1';
@@ -408,6 +409,8 @@ function prepareSession(ses, { tabs, incognito }) {
   }
   // Saved payment cards: offered and filled in private windows too (the cards themselves live in the normal profile).
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'card-preload.js') });
+  // Chrome Web Store pages get an "Add to The Stupid Browser" button (normal windows: extensions never run in private ones).
+  if (tabs && !incognito) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'store-preload.js') });
   // Drag a picture out of a page as a real file (tabs only, private windows too).
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'drag-preload.js') });
   // Highlighted text → "Ask Buddy" button in the browser UI (tabs only).
@@ -1073,6 +1076,18 @@ function imageSize(b) {
   } catch {}
   return null;
 }
+// Extensions: the window says which tab is in front (extensions' "active tab"); Settings → Extensions manages them.
+handle('ext:active', ['shell'], (_e, id) => { const wc = webContents.fromId(+id); if (wc) extensions.selectTab(wc); });
+// The store page's button: only the Chrome Web Store, in the session extensions live in, may ask.
+const fromStore = (e) => { try { return e.sender.session === extensions.session && new URL(e.senderFrame.url).origin === 'https://chromewebstore.google.com'; } catch { return false; } };
+ipcMain.handle('ext:storeStatus', (e, id) => (fromStore(e) ? extensions.storeStatus(String(id)) : { installed: false }));
+ipcMain.handle('ext:storeInstall', (e, id, name) => (fromStore(e) ? extensions.installFromStore(String(id), String(name || '').slice(0, 120), BrowserWindow.fromWebContents(e.sender.hostWebContents || e.sender)) : { error: 'Not allowed' }));
+handle('ext:tabCreated', ['shell'], (_e, id, wcId) => extensions.tabCreated(+id, +wcId));
+handle('ext:list', ['internal'], () => extensions.list());
+handle('ext:setOn', ['internal'], (_e, id, on) => extensions.setOn(String(id), !!on));
+handle('ext:remove', ['internal'], (_e, id) => extensions.remove(String(id)));
+handle('ext:importable', ['internal'], () => extensions.importable());
+handle('ext:import', ['internal'], (_e, keys) => extensions.importFrom(Array.isArray(keys) ? keys.map(String).slice(0, 200) : []));
 handle('profiles:list', ['shell'], () => ({ current: profiles.CURRENT, list: profiles.list() }));
 handle('profiles:picker', ['internal'], (_e, on) => (on === undefined ? { on: profiles.pickerEnabled(), count: profiles.list().length } : profiles.setPicker(on)));
 handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
@@ -1477,6 +1492,8 @@ function pageContextMenu(wc, p) {
     T.push({ label: 'View page source', click: () => shellWc.send('shortcut', 'view-source') });
     sep();
   }
+  const extItems = extensions.contextMenuItems(wc, p);   // what your extensions add here
+  if (extItems.length) { sep(); T.push(...extItems); }
   T.push({ label: 'Inspect', click: () => { wc.inspectElement(p.x, p.y); } });
   Menu.buildFromTemplate(T).popup({ window: win });
 }
@@ -1603,6 +1620,7 @@ function hookSignInPopup(child, opener, openedEmpty) {
 }
 
 app.on('web-contents-created', (_e, contents) => {
+  contents.on('did-attach-webview', (_ev, guest) => { const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
     webPreferences.nodeIntegration = false;
@@ -1611,7 +1629,7 @@ app.on('web-contents-created', (_e, contents) => {
     webPreferences.sandbox = true;
     webPreferences.defaultFontSize = FONT_SIZES[getSettings().fontSize] || 16;
     const src = params.src || 'about:blank';
-    if (!/^(https?:|stupid:|about:|file:)/.test(src)) params.src = 'about:blank';
+    if (!/^(https?:|stupid:|about:|file:|chrome-extension:)/.test(src)) params.src = 'about:blank';
     if (src.startsWith('stupid://')) webPreferences.preload = path.join(__dirname, 'internal-preload.js');
   });
 
@@ -1635,7 +1653,7 @@ app.on('web-contents-created', (_e, contents) => {
   contents.setWindowOpenHandler(({ url, disposition, frameName }) => {
     if (wantsSignInPopup({ url, disposition, frameName })) { const p = signInPopup(contents); if (p) { contents.__signInOpenedEmpty = url === 'about:blank'; return p; } return { action: 'deny' }; }
     const shellWc = shellFor(contents);
-    if (/^(https?|stupid):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
+    if (/^(https?|stupid|chrome-extension):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
     else if (/^mailto:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -1875,6 +1893,13 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.themeSource = ['light', 'dark'].includes(s.theme) ? s.theme : 'system';
     if (IS_MAC) buildMacMenu();
     profiles.sync(s);
+    // Chrome extensions (normal windows only): see extensions.js. The browser window gets their toolbar buttons.
+    session.defaultSession.registerPreloadScript({ type: 'frame', id: 'stupid-ext-actions', filePath: path.join(__dirname, 'action-preload.js') });
+    try {
+      extensions.setup({ partition: PERSIST, settings: getSettings, saveSettings: (p) => setSettings(p),
+        persistentWindow: () => { const w = [...windows.values()].reverse().find((x) => !x.incognito && !x.win.isDestroyed()); return w ? w.win : null; },
+        openWindow: (url) => createWindow({ urls: url ? [url] : null }) });
+    } catch (e) { console.error('[extensions] setup', e); }
     if (s.appIcon) setTimeout(applyAppIcon, 500);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
     if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
