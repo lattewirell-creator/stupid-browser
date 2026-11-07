@@ -1650,13 +1650,13 @@ app.on('web-contents-created', (_e, contents) => {
   // Tell the window when a tab starts or stops making sound, instead of the window asking every tab every second
   // (each ask is a blocking call, and they added up with many tabs open).
   contents.on('audio-state-changed', (ev) => { console.log('[dbg] audio', contents.id, ev && ev.audible, !!shellFor(contents)); const s = shellFor(contents); if (s) s.send('tab:audio', contents.id, !!ev.audible); });
-  contents.setWindowOpenHandler(({ url, disposition, frameName }) => {
+  contents.setWindowOpenHandler(({ url, disposition, frameName, referrer }) => {
     if (wantsSignInPopup({ url, disposition, frameName })) { const p = signInPopup(contents); if (p) { contents.__signInOpenedEmpty = url === 'about:blank'; return p; } return { action: 'deny' }; }
     const shellWc = shellFor(contents);
     // An extension's own pages open only from that extension, or from the browser's own pages (Settings → Options):
     // a website must not open an extension's inner pages with its own parameters (Chrome doesn't allow it either).
     const extPage = /^chrome-extension:\/\/([a-p]{32})\//.exec(url);
-    if (extPage) { const from = contents.getURL(); if (!(from.startsWith(`chrome-extension://${extPage[1]}/`) || from.startsWith('stupid://'))) return { action: 'deny' }; }
+    if (extPage) { const own = `chrome-extension://${extPage[1]}/`, from = contents.getURL(), frame = (referrer && referrer.url) || ''; if (!(from.startsWith(own) || frame.startsWith(own) || from.startsWith('stupid://'))) return { action: 'deny' }; }   // the page that opened it: the tab, or the extension's own frame inside it
     if (/^(https?|stupid|chrome-extension):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
     else if (/^mailto:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
