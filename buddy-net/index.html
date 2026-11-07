@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Buddy Net</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-era="nineties">
+  <header id="titlebar">
+    <div class="tb-icon" aria-hidden="true"></div>
+    <div id="title">Buddy Net</div>
+    <div id="tabstrip">
+      <div id="tabs"></div>
+      <button id="newtab" class="tab-new" title="New tab (Ctrl+T)">+</button>
+    </div>
+    <div class="tb-drag"></div>
+    <div class="tb-buttons">
+      <button id="btn-min" title="Minimize"><span>&#8211;</span></button>
+      <button id="btn-max" title="Maximize"><span>&#9633;</span></button>
+      <button id="btn-close" title="Close"><span>&#215;</span></button>
+    </div>
+  </header>
+
+  <nav id="menubar">
+    <span>File</span><span>Edit</span><span>View</span><span>Go</span><span>Bookmarks</span>
+    <span class="only-nineties">Options</span><span class="only-nineties">Directory</span>
+    <span class="only-explorer">Favorites</span><span class="only-explorer">Tools</span><span>Help</span>
+  </nav>
+
+  <div id="toolbar">
+    <button class="nav" id="btn-back" title="Back"><i></i><b>Back</b></button>
+    <button class="nav" id="btn-fwd" title="Forward"><i></i><b>Forward</b></button>
+    <button class="nav" id="btn-reload" title="Reload"><i></i><b>Reload</b></button>
+    <button class="nav" id="btn-home" title="Home"><i></i><b>Home</b></button>
+    <button class="nav only-nineties" id="btn-images" title="Turn images off"><i></i><b>Images</b></button>
+    <button class="nav" id="btn-stop" title="Stop"><i></i><b>Stop</b></button>
+    <div id="address-wrap">
+      <label for="address" id="address-label">Location:</label>
+      <div id="address-box">
+        <span id="site-badge" aria-hidden="true"></span>
+        <input id="address" spellcheck="false" autocomplete="off">
+        <span id="ai-pill" class="only-ai" title="Buddy found things to say about this page">&#10024; 3 AI insights</span>
+        <button id="btn-star" class="only-chrome only-labs only-ai" title="Bookmark this page">&#9734;</button>
+      </div>
+      <button id="btn-go" class="only-explorer" title="Go">Go</button>
+    </div>
+    <button id="btn-labs" class="only-labs tool" title="Buddy Net Labs experiments">&#9879; Labs</button>
+    <button id="btn-ai" class="only-ai tool" title="Buddy AI (Ctrl+J)">&#10024; Buddy</button>
+    <button id="btn-menu" class="only-chrome only-labs tool" title="Customize and control Buddy Net">&#9776;</button>
+    <div id="throbber" aria-hidden="true"><div class="star s1"></div><div class="star s2"></div><div class="star s3"></div></div>
+  </div>
+
+  <div id="linksbar">
+    <span class="only-nineties lb-group">
+      <button data-go="whatsnew">What's New?</button><button data-go="whatscool">What's Cool?</button>
+      <button data-go="search">Net Search</button><button data-go="directory">Net Directory</button><button data-go="webring">Web Ring</button>
+    </span>
+    <span class="only-explorer lb-group">
+      <em>Links</em><button data-go="whatsnew">Free Hotmail</button><button data-go="whatscool">Customize Links</button><button data-go="search">Windows Media</button>
+    </span>
+    <span class="only-explorer buddybar">
+      <b>BuddyBar&trade;</b><input placeholder="Search the Web" id="buddybar-q"><button id="buddybar-go">Search</button>
+      <span class="bb-junk">&#9733; Smileys</span><span class="bb-junk">&#9993; Free E-cards</span><span class="bb-junk">&#9728; Weather: 72&deg;F</span>
+    </span>
+    <span class="only-labs lb-group social">
+      <button class="share" data-share="Liked">&#128077; Like</button><button class="share" data-share="Tweeted">&#128038; Tweet</button>
+      <button class="share" data-share="+1'd">+1</button><button class="share" data-share="Pinned">&#128204; Pin it</button>
+      <span class="html5">HTML5 &#10003;</span>
+    </span>
+  </div>
+
+  <div id="infobar" hidden>
+    <span id="infobar-text"></span><button id="infobar-allow">Allow</button><button id="infobar-close" title="Close">&#215;</button>
+  </div>
+
+  <main id="main">
+    <div id="views"></div>
+    <aside id="labs-panel" class="panel" hidden>
+      <h2>&#9879; Buddy Net Labs</h2>
+      <p class="muted">Experimental features. They may change, break or disappear at any time.</p>
+      <label class="exp"><input type="checkbox" data-exp="filter"> <span><b>Instafilter</b> Every page gets a warm, faded vintage photo filter.</span></label>
+      <label class="exp"><input type="checkbox" data-exp="tilt"> <span><b>3D Web</b> Pages tilt in real perspective. Glasses not included.</span></label>
+      <label class="exp"><input type="checkbox" data-exp="night"> <span><b>Night Mode</b> Inverts the web for late-night reading.</span></label>
+      <label class="exp"><input type="checkbox" data-exp="social" checked> <span><b>Social Bar</b> Like, Tweet, +1 and Pin anything.</span></label>
+      <label class="exp"><input type="checkbox" data-exp="skeuo"> <span><b>Leather &amp; Stitches</b> Rich Corinthian leather toolbar.</span></label>
+    </aside>
+    <aside id="ai-panel" class="panel" hidden>
+      <div class="ai-head"><h2>&#10024; Buddy AI</h2><button id="ai-close" title="Close">&#215;</button></div>
+      <div id="ai-chat"></div>
+      <div class="ai-chips">
+        <button data-ask="Summarize this page">Summarize this page</button>
+        <button data-ask="Explain this page like I'm five">Explain like I'm 5</button>
+        <button data-ask="What are the key points?">Key points</button>
+      </div>
+      <form id="ai-form"><input id="ai-input" placeholder="Ask Buddy anything&hellip;" autocomplete="off"><button>&#8593;</button></form>
+      <p id="ai-mode" class="muted"></p>
+    </aside>
+  </main>
+
+  <footer id="statusbar">
+    <span id="status">Document: Done</span>
+    <span id="progress"><i></i></span>
+    <span id="snapshot"></span>
+  </footer>
+
+  <div id="timemachine">
+    <span class="tm-brand">Buddy Net <b>Time Machine</b></span>
+    <div id="eras" role="tablist"></div>
+    <div class="tm-year">
+      <button id="year-down" title="Earlier year">&#9664;</button>
+      <span id="year">1997</span>
+      <button id="year-up" title="Later year">&#9654;</button>
+    </div>
+    <button id="tm-settings" title="Time Machine settings">&#9881;</button>
+    <div id="settings-pop" hidden>
+      <label><input type="checkbox" id="set-tt"> Time-travel pages (load them from the Wayback Machine)</label>
+      <label><input type="checkbox" id="set-sounds"> Era sounds (dial-up modem and friends)</label>
+      <label class="key">Anthropic API key for Buddy AI <input type="password" id="set-key" placeholder="sk-ant-&hellip; (optional)"></label>
+      <p class="muted" id="key-state"></p>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+  <div id="warp" hidden><div id="warp-year"></div></div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
