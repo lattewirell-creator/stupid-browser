@@ -845,3 +845,11 @@ body.tb-edit #toolbar [data-tb].tb-dragging { opacity: .35; animation: none; }
 #vpnBtn { margin-left: 6px; }
 #vpnBtn.on .pill-dot { background: #3FB98A; box-shadow: 0 0 0 3px rgba(63,185,138,.18); }
 .vpn-pop { width: 300px; }
+
+/* Your extensions' toolbar buttons (and their popups), right after the address bar */
+#extActions { display: flex; align-items: center; height: 32px; margin: 0 2px; }
+#extActions::part(action) { width: 30px; height: 30px; border-radius: 8px; background-color: transparent; background-size: 18px; border: none; }
+#extActions::part(action):hover { background-color: var(--hover); }
+#extActions { --browser-action-badge-outline: var(--bar); }
+#extActions::part(badge) { min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background-color: #5F6368; color: #fff; font: 600 9.5px/14px var(--sans); text-align: center; box-shadow: 0 0 0 1.5px var(--bar); }   /* an extension's own colour wins (set on the element) */
+body.incognito #extActions { display: none; }

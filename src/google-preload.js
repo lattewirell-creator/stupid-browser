@@ -24,3 +24,4 @@ if (location.protocol === 'https:' && /^accounts\.google\.(?:com|[a-z]{2}|co\.[a
     });
   } catch (e) { /* older Electron without executeInMainWorld: headers and user agent still say Firefox */ }
 }
+

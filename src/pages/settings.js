@@ -483,3 +483,53 @@ $('importHtml').onclick = async () => {
   if (r.ok) toast(`Added ${r.added} bookmark${r.added === 1 ? '' : 's'} from the file`); else if (r.error !== 'canceled') toast(r.error);
 };
 renderImport();
+
+/* ---------- Extensions ---------- */
+async function renderExtensions(list) {
+  if (!list) list = await call('ext:list').catch(() => []);
+  const box = $('extList'); box.replaceChildren();
+  if (!list.length) { box.appendChild(el('div', 'row muted', 'No extensions yet.')); return; }
+  for (const x of list) {
+    const r = el('div', 'row list-row ext-row' + (x.on ? '' : ' off'));
+    const ic = el('span', 'ext-ic'); if (x.icon) { const im = el('img'); im.src = x.icon; im.alt = ''; ic.appendChild(im); } else ic.textContent = (x.name || '?')[0];
+    const lbl = el('div', 'lbl'); lbl.append(el('b', null, x.name)); lbl.appendChild(el('small', null, `${x.description || ''}${x.version ? ' · ' + x.version : ''}${x.local ? ' · copied from another browser (not updated)' : ''}`));
+    const tg = el('input', 'toggle'); tg.type = 'checkbox'; tg.checked = x.on; tg.title = x.on ? 'Turn off' : 'Turn on';
+    tg.onchange = async () => { tg.disabled = true; renderExtensions(await call('ext:setOn', x.id, tg.checked)); };
+    r.append(ic, lbl);
+    if (x.options && x.on) { const o = el('a', 'btn small', 'Options'); o.href = x.options; o.target = '_blank'; r.appendChild(o); }
+    r.appendChild(tg);
+    const del = el('button', 'icon-btn'); del.title = 'Remove'; del.appendChild(icon(X_ICON));
+    del.onclick = async () => { if (!confirm(`Remove ${x.name}?`)) return; renderExtensions(await call('ext:remove', x.id)); toast(`${x.name} removed`); };
+    r.appendChild(del);
+    box.appendChild(r);
+  }
+}
+$('extFind').onclick = async () => {
+  const box = $('extImport'); box.classList.remove('hidden'); box.replaceChildren(el('div', 'row muted', 'Looking in your other browsers…'));
+  const items = await call('ext:importable').catch(() => []);
+  box.replaceChildren();
+  if (!items.length) { box.appendChild(el('div', 'row muted', 'No extensions found in other browsers on this computer.')); return; }
+  const picks = new Set(items.filter((x) => !x.installed && x.chromeId && !x.copy).map((x) => x.key));   // copies: only if you tick them
+  for (const x of items) {
+    const r = el('label', 'row list-row ext-row');
+    const ic = el('span', 'ext-ic'); if (x.icon) { const im = el('img'); im.src = x.icon; im.alt = ''; ic.appendChild(im); } else ic.textContent = (x.name || '?')[0];
+    const lbl = el('div', 'lbl'); lbl.append(el('b', null, x.name));
+    lbl.appendChild(el('small', x.copy && !x.installed ? 'warn' : null, x.installed ? `From ${x.from} · already here` : x.copy ? `From ${x.from} · not from the Chrome Web Store: copied as it is, and won’t get updates` : x.chromeId ? `From ${x.from}` : `From ${x.from} · not made for Chrome browsers`));
+    r.append(ic, lbl);
+    if (!x.chromeId) { const a = el('a', 'btn small', 'Search the store'); a.href = x.search; a.target = '_blank'; r.appendChild(a); }
+    else if (!x.installed) { const c = el('input'); c.type = 'checkbox'; c.checked = picks.has(x.key); c.onchange = () => { c.checked ? picks.add(x.key) : picks.delete(x.key); go.disabled = !picks.size; }; r.appendChild(c); }
+    box.appendChild(r);
+  }
+  const row = el('div', 'row'); row.appendChild(el('div', 'lbl'));
+  const go = el('button', 'btn small primary', 'Bring them over'); go.disabled = !picks.size;
+  go.onclick = async () => {
+    go.disabled = true; go.textContent = 'Bringing them over…';
+    const r = await call('ext:import', [...picks]).catch(() => null);
+    if (!r) { toast('That didn’t work'); go.disabled = false; go.textContent = 'Bring them over'; return; }
+    const ok = r.results.filter((x) => x.ok && !x.skipped).length, bad = r.results.filter((x) => !x.ok && !x.skipped);
+    toast(bad.length ? `${ok} brought over · ${bad.length} couldn’t be: ${bad.map((x) => x.name).join(', ')}` : `${ok} extension${ok === 1 ? '' : 's'} brought over`);
+    box.classList.add('hidden'); renderExtensions(r.list);
+  };
+  row.appendChild(go); box.appendChild(row);
+};
+renderExtensions();

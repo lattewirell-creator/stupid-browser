@@ -109,6 +109,7 @@ function createWebview(tab) {
   tab.wv = wv; tab.ready = false;
   wv.addEventListener('did-start-loading', () => { tab.loading = true; tab.crashed = false; renderTab(tab); if (tab.id === activeId) updateNav(); });
   wv.addEventListener('did-stop-loading', () => { tab.loading = false; renderTab(tab); if (tab.id === activeId) { updateNav(); if (window.reader) window.reader.check(tab); } scheduleSave(); rewindSoon(tab); });
+  wv.addEventListener('did-attach', () => { try { tab.wcId = wv.getWebContentsId(); if (tab.id === activeId) call('ext:active', tab.wcId).catch(() => {}); } catch {} });   // extensions' "active tab"
   wv.addEventListener('dom-ready', () => { tab.ready = true; tab.wcId = wv.getWebContentsId(); if (tab.muted) wv.setAudioMuted(true); applySiteZoom(tab); readZoom(tab); if (tab.id === activeId) updateNav(); });
   wv.addEventListener('page-title-updated', (e) => { tab.title = e.title; renderTab(tab); if (tab.id === activeId) updateNav(); scheduleSave(); });
   wv.addEventListener('page-favicon-updated', (e) => { tab.favicon = (e.favicons || []).find((f) => /^(https?|data):/.test(f)) || null; renderTab(tab); scheduleSave(); });
@@ -294,6 +295,7 @@ function activate_(id) {
   tab.lastActive = Date.now();
   if (changed) rewindSoon(tab);
   if (!tab.wv) { tab.asleep = false; createWebview(tab); }
+  if (changed && tab.wcId) call('ext:active', tab.wcId).catch(() => {});
   if (changed) { holdUntilPainted(tab, prev); if (window.reader) { window.reader.close(); window.reader.check(tab); } }
   renderAll();
   if (changed) { closeFind(); hideAllPops(); showQueuedPrompt(); }
@@ -1544,7 +1546,7 @@ async function sleepTab(t, now = false) {
     if (typing || !sleepable(t)) return false;
   }
   try { const u = t.wv.getURL(); if (u) t.url = u; const ti = t.wv.getTitle(); if (ti) t.title = ti; } catch {}
-  t.wv.remove(); t.wv = null; t.ready = false; t.loading = false; t.asleep = true;
+  t.wv.remove(); t.wv = null; t.wcId = null; t.ready = false; t.loading = false; t.asleep = true;
   renderTab(t);
   return true;
 }
@@ -1643,3 +1645,16 @@ api.on('update:status', renderUpdate);
   renderDlBtn();
   renderUpdate(await call('update:status'));
 })();
+
+/* ---------- extensions asking for tabs (chrome.tabs.create / update / remove) ---------- */
+// Only a tab whose page is alive right now (a tab that's asleep has no page, and an old id must not close it).
+const tabByWc = (wcId) => tabs.find((t) => { try { return t.wv && t.wv.getWebContentsId() === wcId; } catch { return false; } });
+api.on('ext:createTab', ({ id, url, active }) => {
+  if (info.incognito) return;   // extensions never reach a private window
+  const t = newTab(url || NEWTAB, { activate: active !== false });
+  if (!t.wv) createWebview(t);   // it needs a page behind it to hand back
+  const done = () => { try { call('ext:tabCreated', id, t.wv.getWebContentsId()).catch(() => {}); } catch {} };
+  if (t.wcId) done(); else t.wv.addEventListener('did-attach', done, { once: true });
+});
+api.on('ext:selectTab', (wcId) => { if (info.incognito) return; const t = tabByWc(wcId); if (t) activate_(t.id); });
+api.on('ext:closeTab', (wcId) => { if (info.incognito) return; const t = tabByWc(wcId); if (t) closeTab(t.id); });

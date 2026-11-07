@@ -21,6 +21,7 @@
     <a href="#passwords">Passwords</a>
     <a href="#cards">Payment methods</a>
     <a href="#sync">Sync</a>
+    <a href="#extensions">Extensions</a>
     <a href="#import">Import from another browser</a>
     <a href="#downloads">Downloads</a>
     <a href="#performance">Performance</a>
@@ -128,6 +129,16 @@
         <div id="syncPaused"></div>
         <div class="row"><div class="lbl">Turn off on this computer<small>Your other computers keep syncing with each other. Turn it back on here with the same folder and passphrase, and what you changed in the meantime syncs too, deletes included.</small></div><button id="syncOffBtn" class="btn small">Turn off</button></div>
       </div>
+    </section>
+
+    <section id="extensions"><h2>Extensions</h2>
+      <p class="muted section-note">Chrome extensions work here: ad blockers, password managers, Dark Reader, Grammarly and the rest. Get them from the Chrome Web Store (press “Add to The Stupid Browser” on an extension’s page), or bring over the ones you already use in another browser. They stay up to date by themselves, and never run in private windows.</p>
+      <div class="card">
+        <div class="row"><div class="lbl">Chrome Web Store<small>Open an extension’s page and press “Add to The Stupid Browser”.</small></div><a class="btn small primary" href="https://chromewebstore.google.com/" target="_blank">Get extensions</a></div>
+        <div class="row"><div class="lbl">From your other browsers<small id="extImportNote">Chrome, Edge, Brave, Vivaldi, Opera and Firefox on this computer.</small></div><button id="extFind" class="btn small">Bring them over…</button></div>
+      </div>
+      <div class="card hidden" id="extImport"></div>
+      <div class="card" id="extList"></div>
     </section>
 
     <section id="import"><h2>Import from another browser</h2>
