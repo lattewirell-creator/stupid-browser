@@ -509,15 +509,15 @@ $('extFind').onclick = async () => {
   const items = await call('ext:importable').catch(() => []);
   box.replaceChildren();
   if (!items.length) { box.appendChild(el('div', 'row muted', 'No extensions found in other browsers on this computer.')); return; }
-  const picks = new Set(items.filter((x) => !x.installed && x.chromeId).map((x) => x.key));
+  const picks = new Set(items.filter((x) => !x.installed && x.chromeId && !x.copy).map((x) => x.key));   // copies: only if you tick them
   for (const x of items) {
     const r = el('label', 'row list-row ext-row');
     const ic = el('span', 'ext-ic'); if (x.icon) { const im = el('img'); im.src = x.icon; im.alt = ''; ic.appendChild(im); } else ic.textContent = (x.name || '?')[0];
     const lbl = el('div', 'lbl'); lbl.append(el('b', null, x.name));
-    lbl.appendChild(el('small', null, x.installed ? `From ${x.from} · already here` : x.chromeId ? `From ${x.from}` : `From ${x.from} · not made for Chrome browsers`));
+    lbl.appendChild(el('small', x.copy && !x.installed ? 'warn' : null, x.installed ? `From ${x.from} · already here` : x.copy ? `From ${x.from} · not from the Chrome Web Store: copied as it is, and won’t get updates` : x.chromeId ? `From ${x.from}` : `From ${x.from} · not made for Chrome browsers`));
     r.append(ic, lbl);
     if (!x.chromeId) { const a = el('a', 'btn small', 'Search the store'); a.href = x.search; a.target = '_blank'; r.appendChild(a); }
-    else if (!x.installed) { const c = el('input'); c.type = 'checkbox'; c.checked = true; c.onchange = () => { c.checked ? picks.add(x.key) : picks.delete(x.key); go.disabled = !picks.size; }; r.appendChild(c); }
+    else if (!x.installed) { const c = el('input'); c.type = 'checkbox'; c.checked = picks.has(x.key); c.onchange = () => { c.checked ? picks.add(x.key) : picks.delete(x.key); go.disabled = !picks.size; }; r.appendChild(c); }
     box.appendChild(r);
   }
   const row = el('div', 'row'); row.appendChild(el('div', 'lbl'));

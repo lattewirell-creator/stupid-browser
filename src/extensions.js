@@ -15,26 +15,30 @@ let ext = null, store = null, ses = null, hooks = null;
 const pending = new Map();   // createTab requests waiting for the window to make the tab
 let reqSeq = 0;
 
-function setup({ partition, settings, saveSettings, shellOf, openWindow, persistentWindow }) {
+function setup({ partition, settings, saveSettings, shellOf, openWindow, persistentWindow, normalWindow }) {
   hooks = { settings, saveSettings, shellOf, openWindow, persistentWindow };
   ses = session.fromPartition(partition);
   const { ElectronChromeExtensions } = require('electron-chrome-extensions');
   ext = new ElectronChromeExtensions({
     session: ses,
     // chrome.tabs.create: the window makes a real tab and says which webContents it got.
-    createTab(details) {
-      const win = (details.windowId && BrowserWindow.fromId(details.windowId)) || persistentWindow();
+    // Only ever in a normal window: an extension naming a private window's id (or the profile picker's) gets a normal one.
+    async createTab(details) {
+      let win = (details.windowId && normalWindow(details.windowId)) || persistentWindow();
+      if (!win) { win = openWindow(null); await new Promise((r) => win.webContents.once('did-finish-load', r)); }
       const shell = win && !win.isDestroyed() && win.webContents;
-      if (!shell) return Promise.reject(new Error('No window'));
+      if (!shell) throw new Error('No window');
       const id = ++reqSeq;
       return new Promise((resolve, reject) => {
         const t = setTimeout(() => { pending.delete(id); reject(new Error('Tab not created')); }, 10000);
-        pending.set(id, (wcId) => { clearTimeout(t); const wc = webContents.fromId(wcId); if (wc) resolve([wc, win]); else reject(new Error('Tab not created')); });
+        pending.set(id, (wcId) => { clearTimeout(t); const wc = webContents.fromId(wcId); if (wc && wc.session === ses) resolve([wc, win]); else reject(new Error('Tab not created')); });
         shell.send('ext:createTab', { id, url: /^(https?|chrome-extension|stupid):/.test(details.url || '') ? details.url : '', active: details.active !== false });
       });
     },
-    selectTab(wc, win) { if (win && !win.isDestroyed()) { win.webContents.send('ext:selectTab', wc.id); if (!win.isFocused()) win.focus(); } },
-    removeTab(wc, win) { if (win && !win.isDestroyed()) win.webContents.send('ext:closeTab', wc.id); },
+    selectTab(wc, win) { if (wc.session === ses && win && !win.isDestroyed()) { win.webContents.send('ext:selectTab', wc.id); if (!win.isFocused()) win.focus(); } },
+    // chrome.tabs.remove. (The library also calls this when a tab's page goes away by itself, as when a tab falls
+    // asleep to save memory: that must never close the tab.)
+    removeTab(wc, win) { if (!wc.isDestroyed() && wc.session === ses && win && !win.isDestroyed()) win.webContents.send('ext:closeTab', wc.id); },
     createWindow(details) {
       const url = Array.isArray(details.url) ? details.url[0] : details.url;
       return Promise.resolve(openWindow(url && /^(https?|chrome-extension):/.test(url) ? url : null));
@@ -49,17 +53,21 @@ function setup({ partition, settings, saveSettings, shellOf, openWindow, persist
     session: ses,
     extensionsPath: path.join(app.getPath('userData'), 'Extensions'),
     autoUpdate: true,
-    loadExtensions: true,
+    loadExtensions: false,   // loaded here instead (loadAll), so one you've turned off never starts, not even briefly
     allowUnpackedExtensions: false,
     // "Add to Chrome" on the store asks first, in the browser's own words.
     beforeInstall: async (details) => {
+      // Only the real store may ask (the library's own origin check also lets chromewebstore.google.com.evil.example
+      // through). The extension's id is shown, so a lookalike name can't hide which extension it really is.
+      let origin = ''; try { origin = new URL(details.frame && details.frame.url).origin; } catch {}
+      if (origin !== 'https://chromewebstore.google.com') return { action: 'deny' };
       const { dialog } = require('electron');
       const win = details.browserWindow || persistentWindow();
       const name = (details.localizedName || details.manifest && details.manifest.name || 'this extension');
-      const r = await dialog.showMessageBox(win, { type: 'question', buttons: ['Add extension', 'Cancel'], defaultId: 0, cancelId: 1, title: 'Add extension', message: `Add “${name}” to The Stupid Browser?`, detail: 'It can read and change the pages you visit, like in Chrome. You can remove it any time in Settings → Extensions.', icon: details.icon || undefined });
+      const r = await dialog.showMessageBox(win, { type: 'question', buttons: ['Add extension', 'Cancel'], defaultId: 0, cancelId: 1, title: 'Add extension', message: `Add “${name}” to The Stupid Browser?`, detail: `It can read and change the pages you visit, like in Chrome. You can remove it any time in Settings → Extensions.\n\nExtension ID: ${details.id}`, icon: details.icon || undefined });
       return { action: r.response === 0 ? 'allow' : 'deny' };
     },
-  }).then(() => loadLocal()).then(() => applyDisabled()).catch((e) => console.error('[extensions]', e));
+  }).then(() => loadAll()).catch((e) => console.error('[extensions]', e));
 }
 
 // The "Add to The Stupid Browser" button on a Chrome Web Store page (store-preload.js). Asks first.
@@ -68,7 +76,7 @@ async function installFromStore(id, name, win) {
   if (!ID.test(id)) return { error: 'Not an extension' };
   if (installedDirs().has(id)) return { installed: true };
   const { dialog } = require('electron');
-  const r = process.env.STUPID_SELFTEST && process.env.STUPID_TEST_AUTOCONFIRM ? { response: 0 } : await dialog.showMessageBox(win, { type: 'question', buttons: ['Add extension', 'Cancel'], defaultId: 0, cancelId: 1, title: 'Add extension', message: `Add “${name || 'this extension'}” to The Stupid Browser?`, detail: 'It can read and change the pages you visit, like in Chrome. You can turn it off or remove it any time in Settings → Extensions.' });
+  const r = process.env.STUPID_SELFTEST && process.env.STUPID_TEST_AUTOCONFIRM ? { response: 0 } : await dialog.showMessageBox(win, { type: 'question', buttons: ['Add extension', 'Cancel'], defaultId: 0, cancelId: 1, title: 'Add extension', message: `Add “${name || 'this extension'}” to The Stupid Browser?`, detail: `It can read and change the pages you visit, like in Chrome. You can turn it off or remove it any time in Settings → Extensions.\n\nExtension ID: ${id}` });
   if (r.response !== 0) return { installed: false };
   try {
     await store.installExtension(id, { session: ses, extensionsPath: path.join(app.getPath('userData'), 'Extensions') });
@@ -85,14 +93,13 @@ function contextMenuItems(wc, params) { try { return ext && wc.session === ses ?
 
 /* ---------- managing them (Settings → Extensions) ---------- */
 const localDir = () => path.join(app.getPath('userData'), 'Extensions-local');   // copied from another browser (not in the store)
-async function loadLocal() {
-  let ids = []; try { ids = fs.readdirSync(localDir()).filter((d) => ID.test(d)); } catch {}
-  for (const id of ids) { if (!ses.extensions.getExtension(id)) try { await ses.extensions.loadExtension(path.join(localDir(), id), { allowFileAccess: false }); } catch (e) { console.error('[extensions] local', id, e.message); } }
-}
-// "Off" keeps an extension installed but not running (it's loaded again when turned on).
-function applyDisabled() {
+// Everything installed (from the store, or copied from another browser) that you haven't turned off.
+async function loadAll() {
   const off = new Set(hooks.settings().extensionsOff || []);
-  for (const e of ses.extensions.getAllExtensions()) if (off.has(e.id)) try { ses.extensions.removeExtension(e.id); } catch {}
+  for (const { id, dir } of installedDirs().values()) {
+    if (off.has(id) || ses.extensions.getExtension(id)) continue;
+    try { await ses.extensions.loadExtension(dir, { allowFileAccess: false }); } catch (e) { console.error('[extensions] load', id, e.message); }
+  }
 }
 function installedDirs() {
   const out = new Map();
@@ -234,10 +241,17 @@ function importable() {
       let ids = []; try { ids = fs.readdirSync(path.join(prof, 'Extensions')).filter((d) => ID.test(d)); } catch {}
       for (const id of ids) {
         if (BUILT_IN.has(id) || found.has(id)) continue;
-        const s = st.get(id); if (s && !s.enabled) continue;   // only ones you have switched on there
+        // Only ones you installed yourself and have switched on there: from a store (location 1) or loaded by you as a
+        // developer (4). Not ones another program or a policy put there (a common way for adware to get in).
+        const s = st.get(id); if (!s || !s.enabled || ![1, 4].includes(s.location)) continue;
         const dir = newestVersionDir(path.join(prof, 'Extensions', id)); if (!dir) continue;
         const m = readManifest(dir); if (!m || !m.name) continue;
-        found.set(id, { key: id, chromeId: id, name: m.name, from: browser, icon: iconData(m.icon), installed: have.has(id), store: s ? s.store : true, dir });
+        // From the Chrome Web Store: installed from there again (and kept up to date). Anything else can only be copied as
+        // it is: offered unticked, marked as such, and only if it has a fixed id (a "key").
+        const copyOnly = !s.store;
+        const hasKey = (() => { try { return !!JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '')).key; } catch { return false; } })();
+        if (copyOnly && !hasKey) continue;
+        found.set(id, { key: id, chromeId: id, name: m.name, from: browser, icon: iconData(m.icon), installed: have.has(id), store: !copyOnly, copy: copyOnly, dir });
       }
     }
   }
@@ -263,12 +277,12 @@ async function importFrom(keys) {
   for (const key of keys || []) {
     const it = items.find((x) => x.key === key); if (!it || !it.chromeId || it.installed) { results.push({ key, ok: !!(it && it.installed), skipped: true }); continue; }
     let ok = false, how = 'store';
-    try { await store.installExtension(it.chromeId, { session: ses, extensionsPath: path.join(app.getPath('userData'), 'Extensions') }); ok = !!ses.extensions.getExtension(it.chromeId); } catch (e) { console.error('[extensions] store install', it.chromeId, e.message); }
-    if (!ok && all.has(it.chromeId)) {   // not in the store: copy it
+    if (!it.copy) try { await store.installExtension(it.chromeId, { session: ses, extensionsPath: path.join(app.getPath('userData'), 'Extensions') }); ok = !!ses.extensions.getExtension(it.chromeId); } catch (e) { console.error('[extensions] store install', it.chromeId, e.message); }
+    if (!ok && it.copy && all.has(it.chromeId)) {   // not from the store, and you ticked it: copy it as it is
       try {
         const to = path.join(localDir(), it.chromeId);
         fs.mkdirSync(localDir(), { recursive: true }); fs.rmSync(to, { recursive: true, force: true });
-        fs.cpSync(all.get(it.chromeId), to, { recursive: true, filter: (src) => !/[\\/]_metadata[\\/]computed_hashes\.json$/.test(src) });
+        fs.cpSync(all.get(it.chromeId), to, { recursive: true, filter: (src) => { try { return !fs.lstatSync(src).isSymbolicLink() && !/[\\/]_metadata[\\/]computed_hashes\.json$/.test(src); } catch { return false; } } });   // never follows a link out of the folder
         await ses.extensions.loadExtension(to); ok = true; how = 'copy';
       } catch (e) { console.error('[extensions] copy', it.chromeId, e.message); }
     }

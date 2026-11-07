@@ -1653,6 +1653,10 @@ app.on('web-contents-created', (_e, contents) => {
   contents.setWindowOpenHandler(({ url, disposition, frameName }) => {
     if (wantsSignInPopup({ url, disposition, frameName })) { const p = signInPopup(contents); if (p) { contents.__signInOpenedEmpty = url === 'about:blank'; return p; } return { action: 'deny' }; }
     const shellWc = shellFor(contents);
+    // An extension's own pages open only from that extension, or from the browser's own pages (Settings → Options):
+    // a website must not open an extension's inner pages with its own parameters (Chrome doesn't allow it either).
+    const extPage = /^chrome-extension:\/\/([a-p]{32})\//.exec(url);
+    if (extPage) { const from = contents.getURL(); if (!(from.startsWith(`chrome-extension://${extPage[1]}/`) || from.startsWith('stupid://'))) return { action: 'deny' }; }
     if (/^(https?|stupid|chrome-extension):/.test(url) && shellWc) shellWc.send('open-url', { url, where: disposition === 'background-tab' ? 'background' : 'foreground', opener: contents.id });
     else if (/^mailto:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -1898,6 +1902,7 @@ if (!app.requestSingleInstanceLock()) {
     try {
       extensions.setup({ partition: PERSIST, settings: getSettings, saveSettings: (p) => setSettings(p),
         persistentWindow: () => { const w = [...windows.values()].reverse().find((x) => !x.incognito && !x.win.isDestroyed()); return w ? w.win : null; },
+        normalWindow: (id) => { const w = windows.get(+id); return w && !w.incognito && !w.win.isDestroyed() ? w.win : null; },
         openWindow: (url) => createWindow({ urls: url ? [url] : null }) });
     } catch (e) { console.error('[extensions] setup', e); }
     if (s.appIcon) setTimeout(applyAppIcon, 500);
