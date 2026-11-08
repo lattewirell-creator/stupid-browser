@@ -142,7 +142,8 @@
     d.replaceChildren();
     if (w.thumbnail) { const img = el('img'); img.src = w.thumbnail; img.alt = ''; img.onerror = () => img.remove(); d.appendChild(img); }
     const body = el('div', 'body'); body.appendChild(el('h2', null, w.title)); body.appendChild(el('p', null, w.extract));
-    const a = el('a', 'from', (WIKI_NAME[w.lang] || 'Wikipedia') + ' ›'); if (/^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(w.url)) a.href = w.url; body.appendChild(a);
+    const okUrl = /^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(w.url);
+    const a = el(okUrl ? 'a' : 'span', 'from', (WIKI_NAME[w.lang] || 'Wikipedia') + (okUrl ? ' ›' : '')); if (okUrl) a.href = w.url; body.appendChild(a);
     d.appendChild(body); d.classList.remove('hidden');
   }
 

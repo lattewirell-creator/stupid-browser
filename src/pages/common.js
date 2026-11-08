@@ -9,8 +9,8 @@ const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87
 function applyAccent(s) { const c = ACCENTS[s && s.accent] || (/^#[0-9a-f]{6}$/i.test((s && s.accent) || '') ? s.accent : ACCENTS.clay); document.documentElement.style.setProperty('--accent', c); document.documentElement.style.setProperty('--accent-soft', c + '24'); }
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 // The site's own icon, asked from the site itself (not a third-party icon service that would see your sites).
-const favFor = (u) => { let h = ''; try { h = new URL(u).hostname; } catch {} return h ? `https://${h}/favicon.ico` : ''; };
-function favImg(u) { const i = el('img', 'fav'); i.src = favFor(u); i.onerror = () => { i.style.visibility = 'hidden'; }; return i; }
+const favFor = (u) => { let h = ''; try { const x = new URL(u); if (/^https?:$/.test(x.protocol)) h = x.hostname; } catch {} return h ? `https://${h}/favicon.ico` : ''; };   // web pages only: a stupid:// address has no site to ask
+function favImg(u) { if (/^stupid:\/\/search\//.test(u || '')) { const s = icon(SEARCH_ICON); s.classList.add('fav'); return s; } const i = el('img', 'fav'); i.src = favFor(u); i.onerror = () => { i.style.visibility = 'hidden'; }; return i; }   // a past search shows the search glass
 let toastT;
 function toast(msg) { let t = document.querySelector('.toast'); if (!t) { t = el('div', 'toast'); document.body.appendChild(t); } t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 2200); }
 const fmtBytes = (n) => (n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n > 1e3 ? Math.round(n / 1e3) + ' KB' : (n || 0) + ' B');

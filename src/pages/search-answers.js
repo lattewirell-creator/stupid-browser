@@ -10,7 +10,7 @@
   function calc(expr) {
     let s = String(expr).toLowerCase().replace(/\s+/g, ' ').trim();
     // Not sums: times (10:30), ratios (16:9), dates (2024-11-08), year ranges (2024-2025), phone numbers (08-123 456).
-    if (/^\d+(?:[-:\s]\d+)+$/.test(s) || /\d:\d/.test(s)) return null;
+    if (/\d:\d/.test(s) || /^\d{4}-\d{4}$/.test(s) || /^\d+(?:[-\s]\d+){2,}$/.test(s) || /^0\d[\d\s-]*$/.test(s)) return null;   // 12-5 is still a sum
     // "20% of 150" / "20 % av 150" → 150*20/100. "150 + 20%" → 150*(1+20/100).
     s = s.replace(/(\d+(?:[.,]\d+)?)\s*%\s*(?:of|av)\s*(\d+(?:[.,]\d+)?)/g, '($2)*($1)/100');
     s = s.replace(/(\d+(?:[.,]\d+)?)\s*([+-])\s*(\d+(?:[.,]\d+)?)\s*%(?!\s*[\d(])/g, '($1)*(1$2($3)/100)');

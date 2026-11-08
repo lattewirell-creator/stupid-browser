@@ -56,7 +56,7 @@ const internalName = (u) => { try { return new URL(u).hostname; } catch { return
 const tabById = (id) => tabs.find((t) => t.id === id);
 const activeTab = () => tabById(activeId);
 // The site's own icon, asked from the site itself (not a third-party icon service that would see your sites).
-const faviconFor = (url) => { const h = hostOf(url); return h ? `https://${h}/favicon.ico` : null; };
+const faviconFor = (url) => { const h = /^https?:\/\//.test(url || '') ? hostOf(url) : ''; return h ? `https://${h}/favicon.ico` : null; };   // web pages only (a remembered stupid://search has no site)
 // A site's icon from the best source that works: the icon the site itself announced (remembered from the sidebar),
 // its large app icon, favicon.ico, then DuckDuckGo's icon service (the default search engine). Some sites have no
 // favicon.ico at all (Discord) or send it in a form WebKit won't draw, which left only a letter.

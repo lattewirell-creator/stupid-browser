@@ -2,6 +2,7 @@
 // node test/search-parse.js: the DuckDuckGo HTML parser and the instant answers, with no network.
 const assert = require('assert');
 const mod = require('../src/search-main.js')({ app: { getLocale: () => 'sv', getVersion: () => '0' }, handle: () => {} });
+Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US' }, configurable: true });   // the decimal-comma rule looks at the browser language; pin it
 const answers = require('../src/pages/search-answers.js');
 const row = (href, title, snippet, ad) => `
 <div class="result results_links results_links_deep ${ad ? 'result--ad ' : ''}web-result">
@@ -44,7 +45,9 @@ assert.strictEqual(A('5 km to kg'), null, 'different kinds');
 console.log('[PASS] search parser and instant answers');
 // not sums: times, ratios, dates, year ranges, phone numbers, English thousands
 for (const q of ['10:30', '16:9', '2024-11-08', '2024-2025', '08-123 456']) assert.strictEqual(A(q), null, q + ' is not a sum');
-assert.strictEqual(A('1,000 + 500').big, '1\u2009500', 'English thousands (no Nordic navigator in node)');
+assert.strictEqual(A('1,000 + 500').big, '1\u2009500', 'English thousands');
+for (const [q, v] of [['12-5', '7'], ['100-7', '93'], ['1000-1', '999'], ['3 - 2 - 1', '0']]) assert.strictEqual(A(q).big, v, q + ' is a sum');
+for (const q of ['070-123 45 67', '08-123 456', '2024-11-08', '2024-2025', '1 2 3']) assert.strictEqual(A(q), null, q + ' is not a sum');
 assert.strictEqual(A('-2^2').big, '-4');
 assert.strictEqual(A('100/3').big, '33.3333');
 // next-token cleaning: only short string fields with plain names, and it must carry "s"

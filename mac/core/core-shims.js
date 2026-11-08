@@ -62,7 +62,7 @@ function applySettingsSideEffects(patch) {
   const s = getSettings(), slim = {};
   for (const k of NATIVE_KEYS) slim[k] = s[k];
   slim.searchUrl = searchUrlFor(s);
-  slim.engineName = s.search === "custom" ? "the web" : (SEARCH_ENGINES[s.search] || SEARCH_ENGINES.google).name;
+  slim.engineName = s.search === "custom" || s.search === "stupid" ? "the web" : (SEARCH_ENGINES[s.search] || SEARCH_ENGINES.google).name;
   const icon = "appIcon" in patch || "appIconImage" in patch ? { appIconImage: s.appIcon ? s.appIconImage || "" : "" } : {};
   host("settingsApplied", Object.assign({ changed: Object.keys(patch), settings: slim }, icon)).catch(() => {});
 }
