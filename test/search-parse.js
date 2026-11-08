@@ -46,8 +46,8 @@ console.log('[PASS] search parser and instant answers');
 // not sums: times, ratios, dates, year ranges, phone numbers, English thousands
 for (const q of ['10:30', '16:9', '2024-11-08', '2024-2025', '08-123 456']) assert.strictEqual(A(q), null, q + ' is not a sum');
 assert.strictEqual(A('1,000 + 500').big, '1\u2009500', 'English thousands');
-for (const [q, v] of [['12-5', '7'], ['100-7', '93'], ['1000-1', '999'], ['3 - 2 - 1', '0']]) assert.strictEqual(A(q).big, v, q + ' is a sum');
-for (const q of ['070-123 45 67', '08-123 456', '2024-11-08', '2024-2025', '1 2 3']) assert.strictEqual(A(q), null, q + ' is not a sum');
+for (const [q, v] of [['12-5', '7'], ['100-7', '93'], ['1000-1', '999'], ['3 - 2 - 1', '0'], ['100-20-5', '75']]) assert.strictEqual(A(q).big, v, q + ' is a sum');
+for (const q of ['070-123 45 67', '08-123 456', '2024-11-08', '2024-2025', '1 2 3', '8-11-2024']) assert.strictEqual(A(q), null, q + ' is not a sum');
 assert.strictEqual(A('-2^2').big, '-4');
 assert.strictEqual(A('100/3').big, '33.3333');
 // next-token cleaning: only short string fields with plain names, and it must carry "s"

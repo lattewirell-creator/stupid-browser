@@ -45,7 +45,7 @@
     try { const u = new URL(url); host = u.hostname.replace(/^www\./, ''); path = decodeURIComponent(u.pathname + u.search); } catch { path = ''; }   // a bad escape in the address: just no crumbs
     path = path.replace(/\/$/, ''); if (path.length > 60) path = path.slice(0, 57) + '…';
     const s = el('span', 'ss-site');
-    const img = el('img'); img.alt = ''; img.src = 'https://icons.duckduckgo.com/ip3/' + esc(host) + '.ico'; img.onerror = () => img.remove();
+    const img = el('img'); img.alt = ''; img.src = 'https://icons.duckduckgo.com/ip3/' + encodeURIComponent(host) + '.ico'; img.onerror = () => img.remove();
     s.appendChild(img); s.appendChild(el('span', 'host', host)); if (path && path !== '/') s.appendChild(el('span', 'path', path.replace(/^\//, '› ').replace(/\//g, ' › ')));
     return s;
   }
