@@ -6,7 +6,7 @@ const ERAS = [
     addressLabel: 'Location:', search: 'https://html.duckduckgo.com/html/?q=', bg: '#c0c0c0' },
   { id: 'explorer', label: '2000s', name: 'Buddy Net Explorer', years: [2000, 2005], year: 2002, tabs: false,
     addressLabel: 'Address', search: 'https://html.duckduckgo.com/html/?q=', bg: '#ece9d8' },
-  { id: 'chrome', label: 'Early Chrome', name: 'Buddy Net Chrome', years: [2006, 2009], year: 2008, tabs: true,
+  { id: 'chrome', label: 'Late 2000s', name: 'Buddy Net Chrome', years: [2006, 2009], year: 2008, tabs: true,
     addressLabel: '', search: 'https://duckduckgo.com/?q=', bg: '#d6e3f5' },
   { id: 'labs', label: '2010s Labs', name: 'Buddy Net Labs', years: [2010, 2016], year: 2012, tabs: true,
     addressLabel: '', search: 'https://duckduckgo.com/?q=', bg: '#f2f2f2' },
