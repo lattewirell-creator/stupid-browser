@@ -80,7 +80,7 @@ const DEFAULT_SETTINGS = () => ({
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
-  adblock: true, dnt: false, savePasswords: true, saveCards: true,
+  adblock: true, cookieBanners: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
   pinned: []
@@ -407,6 +407,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Cookie pop-ups: answered with "no" for you (private windows too).
+  if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'consent-preload.js') });
   // Saved payment cards: offered and filled in private windows too (the cards themselves live in the normal profile).
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'card-preload.js') });
   // Chrome Web Store pages get an "Add to The Stupid Browser" button (normal windows: extensions never run in private ones).
@@ -1116,6 +1118,17 @@ ipcMain.handle('pw:query', (e) => {
   let origin; try { origin = e.senderFrame.origin; } catch { return []; }
   if (!/^https?:/.test(origin)) return [];
   return getPasswords().filter((p) => p.origin === origin && !p.never).map((p) => ({ username: p.username, password: dec(p.password) }));
+});
+// Cookie pop-ups (consent-preload.js): on unless turned off; a quiet note in the browser the first time per site and window.
+ipcMain.handle('consent:on', (e) => e.sender.getType() === 'webview' && getSettings().cookieBanners !== false);
+const consentNoted = new WeakMap();   // shell webContents -> Set of hosts already mentioned
+ipcMain.on('consent:declined', (e) => {
+  if (e.sender.getType() !== 'webview') return;
+  let host = ''; try { host = new URL(e.senderFrame.url).hostname.replace(/^www\./, ''); } catch { return; }
+  const shell = shellFor(e.sender); if (!shell || shell.isDestroyed()) return;
+  let seen = consentNoted.get(shell); if (!seen) consentNoted.set(shell, (seen = new Set()));
+  if (seen.has(host)) return; seen.add(host);
+  shell.send('consent:declined', { host, wcId: e.sender.id });
 });
 /* ---------- drag a picture out of a page as a file (drag-preload.js) ---------- */
 // The picture is saved in a temporary folder (emptied when the browser quits) and dragged as that file. It's

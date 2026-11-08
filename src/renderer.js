@@ -304,7 +304,7 @@ function activate_(id) {
   scheduleSave();
 }
 
-function closeTab(id, { record = true } = {}) {
+function closeTab(id, { record = true, quiet = false } = {}) {
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) return;
   const tab = tabs[i];
@@ -313,7 +313,7 @@ function closeTab(id, { record = true } = {}) {
     if (closedStack.length > 25) closedStack.shift();
     // Closed by mistake? One click brings it back (Ctrl+Shift+T does too).
     const name = (tab.title || tab.url.replace(/^https?:\/\//, '')).slice(0, 40);
-    setTimeout(() => toast(`Closed “${name}” · click to undo`, () => reopenClosed()), 0);
+    if (!quiet) setTimeout(() => toast(`Closed “${name}” · click to undo`, () => reopenClosed()), 0);
   }
   tabs.splice(i, 1);
   if (tab.wv) tab.wv.remove();
@@ -736,10 +736,61 @@ document.addEventListener('mousedown', (e) => {
 });
 addEventListener('blur', () => { hideMenus(); hideHoverCard(); });
 
+// Copied links leave the tracking tags behind (utm_…, fbclid, gclid…), so what you share is just the page.
+// Only those tags go: the rest of the address stays exactly as it was (signed links keep working).
+const TRACKING = /^(?:utm_\w+|fbclid|gclid|gclsrc|dclid|gbraid|wbraid|msclkid|yclid|twclid|ttclid|li_fat_id|igshid|mc_cid|mc_eid|_hsenc|_hsmi|__hstc|__hssc|__hsfp|mkt_tok|oly_anon_id|oly_enc_id|vero_id|vero_conv|wickedid|_openstat|rb_clickid)$/i;
+function cleanUrl(u) {
+  try {
+    const x = new URL(u);
+    if (!/^https?:$/.test(x.protocol) || !x.search) return u;
+    const siTag = /(^|\.)(youtube\.com|youtu\.be|spotify\.com)$/.test(x.hostname);   // "si" is a tag only there
+    const parts = x.search.slice(1).split('&');
+    const kept = parts.filter((p) => { let k = p.split('=')[0]; try { k = decodeURIComponent(k); } catch {} return !(TRACKING.test(k) || (siTag && k === 'si')); });
+    if (kept.length === parts.length) return u;
+    const i = u.indexOf('?'), h = u.indexOf('#', i);
+    return u.slice(0, i) + (kept.length ? '?' + kept.join('&') : '') + (h >= 0 ? u.slice(h) : '');
+  } catch { return u; }
+}
 function copyLink(tab) {
   if (!tab || !tab.url || isNewtab(tab.url)) return;
-  call('clipboard:write', tab.url).then(() => toast('Link copied')).catch(() => toast('Couldn’t copy the link'));
+  const url = cleanUrl(tab.url);
+  call('clipboard:write', url).then(() => toast(url !== tab.url ? 'Link copied, without the tracking bits' : 'Link copied')).catch(() => toast('Couldn’t copy the link'));
 }
+// Same page open twice or more: keep one (the one you're on, else a pinned one, else the first) and close the rest.
+// Tabs you've arranged on purpose (pinned, in a group, in split view) are never closed. The #part counts: on many
+// apps (mail, #/routes) it is a different page.
+const sameUrl = (u) => { try { const x = new URL(cleanUrl(u)); return x.origin + x.pathname.replace(/\/$/, '') + x.search + x.hash; } catch { return u; } };
+function duplicateTabs() {
+  const keep = new Map(), extra = [];
+  const order = [...tabs].sort((a, b) => (b.id === activeId) - (a.id === activeId) || (b.pinned - a.pinned) || (!!b.groupId - !!a.groupId));
+  for (const t of order) {
+    if (!t.url || isNewtab(t.url) || isInternal(t.url)) continue;
+    const k = sameUrl(t.url);
+    if (!keep.has(k)) keep.set(k, t);
+    else if (!t.pinned && !t.groupId && !(split && split.includes(t.id)) && t.id !== activeId) extra.push(t);
+  }
+  return extra;
+}
+function closeDuplicates() {
+  const extra = duplicateTabs();
+  if (!extra.length) { toast('No duplicate tabs'); return; }
+  // Close from the right so the undo puts each one back where it was.
+  extra.sort((a, b) => tabs.indexOf(b) - tabs.indexOf(a));
+  const closed = [];
+  for (const t of extra) { closeTab(t.id, { quiet: true }); closed.push(closedStack[closedStack.length - 1]); }
+  const n = extra.length;
+  // Undo brings back exactly these tabs (whatever else was closed meanwhile), in place, without leaving the tab you're on.
+  toast(`Closed ${n} duplicate tab${n === 1 ? '' : 's'} · click to undo`, () => {
+    for (const c of closed.reverse()) {
+      const at = closedStack.lastIndexOf(c); if (at >= 0) closedStack.splice(at, 1);
+      newTab(c.url, { activate: false, lazy: true, title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
+    }
+  });
+}
+api.on('consent:declined', ({ host, wcId }) => {
+  const t = activeTab();
+  if (t && t.wcId === wcId) toast(`Said no to cookies on ${host}`);
+});
 function tabMenu(tab, x, y) {
   const i = tabs.indexOf(tab);
   const otherGroups = [...groups.values()].filter((g) => g.id !== tab.groupId);
@@ -762,6 +813,7 @@ function tabMenu(tab, x, y) {
     { label: 'Close', key: 'Ctrl+W', fn: () => closeTab(tab.id) },
     { label: 'Close other tabs', disabled: tabs.filter((t) => !t.pinned).length < 2, fn: () => closeOthers(tab) },
     { label: 'Close tabs to the right', disabled: i === tabs.length - 1, fn: () => closeRight(tab) },
+    (() => { const n = duplicateTabs().length; return { label: n ? `Close ${n} duplicate tab${n === 1 ? '' : 's'}` : 'Close duplicate tabs', disabled: !n, fn: closeDuplicates }; })(),
     '-',
     { label: 'Reopen closed tab', key: 'Ctrl+Shift+T', disabled: !closedStack.length, fn: reopenClosed });
   showMenu('ctxMenu', items, x, y);
@@ -1349,7 +1401,7 @@ function renderCmd() {
   if (q) cmdItems.push({ kind: 'go', label: toUrl(raw) === searchUrl(raw) ? `Search ${engineName()} for “${raw}”` : toUrl(raw), url: toUrl(raw), k: 'New tab' });
   const m = (s) => !q || (s || '').toLowerCase().includes(q);
   for (const t of tabs) if (t.id !== activeId && !isNewtab(t.url) && (m(t.title) || m(t.url))) cmdItems.push({ kind: 'tab', label: prettyTitle(t), fav: t.favicon, id: t.id, k: 'Switch to tab' });
-  const actions = [['Settings', () => openInternal('settings')], ['History', () => openInternal('history')], ['Downloads', () => openInternal('downloads')], ['Bookmarks', () => openInternal('bookmarks')], ['New private window', () => call('win:new', { incognito: true })], ['Reopen closed tab', reopenClosed], ['Toggle split view', () => toggleSplit()], ['Toggle AI sidebar', toggleAI]];
+  const actions = [['Settings', () => openInternal('settings')], ['History', () => openInternal('history')], ['Downloads', () => openInternal('downloads')], ['Bookmarks', () => openInternal('bookmarks')], ['New private window', () => call('win:new', { incognito: true })], ['Reopen closed tab', reopenClosed], ['Toggle split view', () => toggleSplit()], ['Toggle AI sidebar', toggleAI], ['Close duplicate tabs', closeDuplicates], ['Copy link', () => copyLink(activeTab())]];
   for (const [label, fn] of actions) if (q && label.toLowerCase().includes(q)) cmdItems.push({ kind: 'act', label, fn, k: 'Action' });
   for (const b of bookmarks) if (q && b.type === 'bookmark' && (m(b.title) || m(b.url))) cmdItems.push({ kind: 'url', label: b.title, fav: faviconFor(b.url), url: b.url, k: 'Bookmark' });
   for (const b of bots) if (q && m(b.name)) cmdItems.push({ kind: 'bot', label: 'Ask ' + b.name, url: b.url, k: 'AI sidebar' });
