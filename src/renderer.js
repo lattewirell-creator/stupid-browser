@@ -759,7 +759,7 @@ function copyLink(tab) {
 // Same page open twice or more: keep one (the one you're on, else a pinned one, else the first) and close the rest.
 // Tabs you've arranged on purpose (pinned, in a group, in split view) are never closed. The #part counts: on many
 // apps (mail, #/routes) it is a different page.
-const sameUrl = (u) => cleanUrl(u).replace(/\/(?=$|[?#])/, '');
+const sameUrl = (u) => { try { const x = new URL(cleanUrl(u)); return x.origin + x.pathname.replace(/\/$/, '') + x.search + x.hash; } catch { return u; } };
 function duplicateTabs() {
   const keep = new Map(), extra = [];
   const order = [...tabs].sort((a, b) => (b.id === activeId) - (a.id === activeId) || (b.pinned - a.pinned) || (!!b.groupId - !!a.groupId));
@@ -776,9 +776,16 @@ function closeDuplicates() {
   if (!extra.length) { toast('No duplicate tabs'); return; }
   // Close from the right so the undo puts each one back where it was.
   extra.sort((a, b) => tabs.indexOf(b) - tabs.indexOf(a));
-  for (const t of extra) closeTab(t.id, { quiet: true });
+  const closed = [];
+  for (const t of extra) { closeTab(t.id, { quiet: true }); closed.push(closedStack[closedStack.length - 1]); }
   const n = extra.length;
-  toast(`Closed ${n} duplicate tab${n === 1 ? '' : 's'} · click to undo`, () => { for (let k = 0; k < n; k++) reopenClosed(); });
+  // Undo brings back exactly these tabs (whatever else was closed meanwhile), in place, without leaving the tab you're on.
+  toast(`Closed ${n} duplicate tab${n === 1 ? '' : 's'} · click to undo`, () => {
+    for (const c of closed.reverse()) {
+      const at = closedStack.lastIndexOf(c); if (at >= 0) closedStack.splice(at, 1);
+      newTab(c.url, { activate: false, lazy: true, title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
+    }
+  });
 }
 api.on('consent:declined', ({ host, wcId }) => {
   const t = activeTab();

@@ -4,7 +4,7 @@
 // Looks a few times while the page settles (no MutationObserver: watching every change slows busy pages down).
 const { ipcRenderer } = require('electron');
 // Sign-in and permission pages ("Allow this app?") are never touched.
-const AUTH_PAGE = /oauth|authori[sz]e|consent|login|signin|sign-in|sso|account/i;
+const AUTH_PAGE = /(?:^|[\/._\s-])(?:oauth2?|authori[sz]e|consent|log-?in|sign-?in|sso|accounts?)(?:[\/._\s-]|$)/i;
 const GOOGLE_CONSENT = /^consent\.(google|youtube)\./;   // Google's own cookie page, which is what it sounds like
 if (/^https?:$/.test(location.protocol) && window.top === window && (GOOGLE_CONSENT.test(location.hostname) || !AUTH_PAGE.test(location.pathname + ' ' + location.hostname.split('.')[0]))) {
   // Buttons of the common consent tools that mean "no". (Tools that draw their notice in an iframe, like
@@ -42,6 +42,9 @@ if (/^https?:$/.test(location.protocol) && window.top === window && (GOOGLE_CONS
   const NOTICE = '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [id*="gdpr" i], [class*="gdpr" i], [aria-label*="cookie" i], [aria-label*="consent" i], [role="dialog"], [aria-modal="true"], dialog';
   const NAMED = /cookie|kakor|gdpr|consent-?(?:banner|bar|modal|popup|notice|dialog|layer|wall)/i;   // the box's own name says so
   const TEXT_COOKIES = /\bcookies?\b|\bkakor\b/i;
+  // Outside a box that names itself a cookie notice, the "no" button must itself be about cookies: "Reject all" on its
+  // own is also what an editor's suggestions panel or a moderation queue says.
+  const ABOUT = /cookie|kakor|necessary|essential|nödvändiga|notwendige|erforderliche|without accepting|without agreeing|utan att godkänna|sans accepter/i;
   const BUTTONS = 'button, a[role="button"], [role="button"], input[type="button"], input[type="submit"]';
   const shown = (el) => !!(el && el.getClientRects().length) && getComputedStyle(el).visibility !== 'hidden';
   const label = (b) => (b.innerText || b.value || b.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().replace(/[.!→›»]+$/, '').trim();
@@ -53,15 +56,15 @@ if (/^https?:$/.test(location.protocol) && window.top === window && (GOOGLE_CONS
       // looked at, and anything with a login form.
       if (box === document.body || box === document.documentElement || looked.some((l) => l.contains(box))) continue;
       if ((box.textContent || '').length > 8000 || !shown(box) || box.querySelector('input[type="password"], main, article')) continue;
-      looked.push(box);
       const named = NAMED.test((box.id || '') + ' ' + (typeof box.className === 'string' ? box.className : '') + ' ' + (box.getAttribute('aria-label') || ''));
-      if (!named && !TEXT_COOKIES.test((box.innerText || '').slice(0, 3000))) continue;
+      if (named) looked.push(box);   // a cookie notice's inner parts needn't be looked at again
+      else if (!TEXT_COOKIES.test((box.innerText || '').slice(0, 3000))) continue;
       let no = null, yes = false;
       for (const b of box.querySelectorAll(BUTTONS)) {
         if (!shown(b)) continue;
         const t = label(b); if (!t || t.length > 48) continue;
         if (YES.test(t)) yes = true;
-        else if (!no && (NO.test(t) || (named && NO_BARE.test(t)))) no = b;
+        else if (!no && (named ? NO.test(t) || NO_BARE.test(t) : NO.test(t) && ABOUT.test(t))) no = b;
       }
       if (no && yes) return no;
     }
