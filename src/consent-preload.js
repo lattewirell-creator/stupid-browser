@@ -57,14 +57,18 @@ if (/^https?:$/.test(location.protocol) && window.top === window && (GOOGLE_CONS
       if (box === document.body || box === document.documentElement || looked.some((l) => l.contains(box))) continue;
       if ((box.textContent || '').length > 8000 || !shown(box) || box.querySelector('input[type="password"], main, article')) continue;
       const named = NAMED.test((box.id || '') + ' ' + (typeof box.className === 'string' ? box.className : '') + ' ' + (box.getAttribute('aria-label') || ''));
-      if (named) looked.push(box);   // a cookie notice's inner parts needn't be looked at again
-      else if (!TEXT_COOKIES.test((box.innerText || '').slice(0, 3000))) continue;
+      const talks = TEXT_COOKIES.test((box.innerText || '').slice(0, 3000));
+      if (!named && !talks) continue;
+      // Sure it's a cookie notice only when it's both called one and talks about cookies (an admin list of
+      // "gdpr-request" rows or a bakery's "cookie-order" rows is neither).
+      const sure = named && talks;
+      if (sure) looked.push(box);   // its inner parts needn't be looked at again
       let no = null, yes = false;
       for (const b of box.querySelectorAll(BUTTONS)) {
         if (!shown(b)) continue;
         const t = label(b); if (!t || t.length > 48) continue;
         if (YES.test(t)) yes = true;
-        else if (!no && (named ? NO.test(t) || NO_BARE.test(t) : NO.test(t) && ABOUT.test(t))) no = b;
+        else if (!no && (sure ? NO.test(t) || NO_BARE.test(t) : NO.test(t) && ABOUT.test(t))) no = b;
       }
       if (no && yes) return no;
     }
