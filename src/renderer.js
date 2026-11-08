@@ -1601,22 +1601,64 @@ api.on('sidebar:changed', (s) => { sideItems = s; renderRail(); });
 
 /* ---------------- update banner ---------------- */
 let updateDismissed = null;
+// Updates, made pleasant: a quiet ring on the menu button while one downloads, a card when it's ready (with what's new),
+// a calm full-window "Updating…" while it installs, and a "You're on <version>" card once the browser is back.
+const updateOrb = () => { const o = el('span', 'up-orb'); o.append(el('i'), el('i')); return o; };
+function notesList(notes) { const ul = el('ul', 'up-notes'); for (const n of (notes || []).slice(0, 4)) ul.appendChild(el('li', null, n)); return ul; }
 function renderUpdate(u) {
+  // download progress: a thin ring around the menu button
+  const mb = $('menuBtn');
+  if (mb) {
+    const downloading = u && u.status === 'downloading';
+    mb.classList.toggle('updating', downloading);
+    mb.style.setProperty('--up', downloading ? (u.progress || 0) : 0);
+    mb.title = downloading ? `Downloading version ${u.version || 'update'}… ${u.progress || 0}%` : 'Menu';
+  }
   let b = $('updateBanner');
-  if (!u || u.status !== 'ready' || updateDismissed === u.version) { if (b) b.remove(); return; }
+  if (!u || u.status !== 'ready' || updateDismissed === u.version) { if (b) leave(b); return; }
   if (b) return;
-  b = el('div', 'update-banner'); b.id = 'updateBanner';
-  const txt = el('div', 'ub-text');
-  txt.appendChild(el('div', 'ub-title serif', 'An update is ready'));
-  txt.appendChild(el('div', 'ub-sub', `Version ${u.version} is downloaded. Restart to finish, or it installs when you close the browser.`));
+  b = el('div', 'update-card'); b.id = 'updateBanner';
+  const head = el('div', 'up-head');
+  const t = el('div', 'up-titles');
+  t.append(el('div', 'up-kicker', 'Update ready'), el('div', 'up-title serif', `Version ${u.version}`));
+  head.append(updateOrb(), t);
+  b.appendChild(head);
+  if (u.notes && u.notes.length) b.appendChild(notesList(u.notes));
+  b.appendChild(el('div', 'up-sub', 'Takes a few seconds. Your tabs come back just as they are.'));
+  const row = el('div', 'up-actions');
   const later = el('button', 'pill', 'Later');
-  later.addEventListener('click', () => { updateDismissed = u.version; b.remove(); });
-  const go = el('button', 'pill solid', 'Restart to update');
-  go.addEventListener('click', async () => { go.disabled = true; go.textContent = 'Restarting…'; const ok = await call('update:install'); if (!ok) { go.disabled = false; go.textContent = 'Restart to update'; toast('Update could not start — try again from Settings'); } });
-  b.append(el('span', 'ub-dot'), txt, later, go);
+  later.title = 'It installs by itself the next time you close the browser';
+  later.addEventListener('click', () => { updateDismissed = u.version; leave(b); });
+  const go = el('button', 'pill solid', 'Restart now');
+  go.addEventListener('click', async () => { go.disabled = true; const ok = await call('update:install'); if (!ok) { go.disabled = false; toast('The update couldn’t start — try again from Settings'); } });
+  row.append(later, go); b.appendChild(row);
   document.body.appendChild(b);
 }
 api.on('update:status', renderUpdate);
+// Installing: the whole window settles into a calm screen while the browser closes, updates and comes back.
+api.on('update:installing', ({ version }) => {
+  if ($('updatingScreen')) return;
+  const sc = el('div', 'updating-screen'); sc.id = 'updatingScreen';
+  const box = el('div', 'us-box');
+  box.append(updateOrb(), el('div', 'us-title serif', `Updating to ${version}`), el('div', 'us-sub', 'Back in a moment, with all your tabs.'));
+  const bar = el('div', 'us-bar'); bar.appendChild(el('i')); box.appendChild(bar);
+  sc.appendChild(box); document.body.appendChild(sc);
+  requestAnimationFrame(() => sc.classList.add('in'));
+});
+// Back after an update: say so, once, with what's new.
+async function showJustUpdated() {
+  let j = null; try { j = await call('update:justUpdated'); } catch {}
+  if (!j) return;
+  const c = el('div', 'update-card updated'); c.id = 'updatedCard';
+  const head = el('div', 'up-head');
+  const t = el('div', 'up-titles');
+  t.append(el('div', 'up-kicker', 'Updated'), el('div', 'up-title serif', `You’re on ${j.version}`));
+  head.append(updateOrb(), t); c.appendChild(head);
+  if (j.notes.length) { c.appendChild(el('div', 'up-sub', 'What’s new')); c.appendChild(notesList(j.notes)); }
+  const row = el('div', 'up-actions'); const ok = el('button', 'pill solid', 'Nice'); ok.addEventListener('click', () => leave(c)); row.appendChild(ok); c.appendChild(row);
+  document.body.appendChild(c);
+  setTimeout(() => { if (c.isConnected) leave(c); }, 20000);
+}
 
 /* ---------------- boot ---------------- */
 (async function boot() {
@@ -1644,6 +1686,7 @@ api.on('update:status', renderUpdate);
   for (const d of prev.filter((x) => x.state === 'progressing')) dls.set(d.id, d);
   renderDlBtn();
   renderUpdate(await call('update:status'));
+  if (!info.incognito) setTimeout(showJustUpdated, 900);
 })();
 
 /* ---------- extensions asking for tabs (chrome.tabs.create / update / remove) ---------- */
