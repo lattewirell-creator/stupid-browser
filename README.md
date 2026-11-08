@@ -41,7 +41,7 @@ address bar lands there. The browser itself fetches DuckDuckGo's results (`src/s
 Wikipedia card, a sum or unit conversion worked out on your computer (`src/pages/search-answers.js`), and the matching pages
 from your bookmarks and history. Images, videos, news and maps open on DuckDuckGo, YouTube and OpenStreetMap; "Ask Buddy"
 hands the question to `stupid://ask`. Nothing is sent anywhere but DuckDuckGo (and Wikipedia for the card), with no cookies.
-On Mac and Android the page loads, but web results wait for the core to get a `search:web` handler.
+On Mac and Android the page loads and says that web results aren't in that version yet (the core has no `search:web` handler), with a link to DuckDuckGo.
 `npm run test:search` checks the parser and the answers without a network.
 
 ## Buddy Net

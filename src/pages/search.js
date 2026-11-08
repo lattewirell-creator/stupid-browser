@@ -6,8 +6,8 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const q0 = (new URLSearchParams(location.search).get('q') || '').replace(/\s+/g, ' ').trim();
   const enc = encodeURIComponent;
-  const buddyName = () => ((settings.buddyLook && settings.buddyLook.name) || 'Buddy').slice(0, 20);
   let settings = {};
+  const buddyName = () => ((settings.buddyLook && settings.buddyLook.name) || 'Buddy').slice(0, 20);
   let next = null, loading = false;
 
   /* ---------- the search box ---------- */
@@ -17,7 +17,7 @@
   box.addEventListener('input', () => $('clear').classList.toggle('hidden', !box.value));
   $('clear').onclick = () => { box.value = ''; $('clear').classList.add('hidden'); box.focus(); };
   $('form').addEventListener('submit', (e) => { e.preventDefault(); const q = box.value.replace(/\s+/g, ' ').trim(); if (q) location.href = 'stupid://search/?q=' + enc(q); });
-  document.addEventListener('keydown', (e) => { if (e.key === '/' && document.activeElement !== box) { e.preventDefault(); box.focus(); box.select(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && document.activeElement !== box) { e.preventDefault(); box.focus(); box.select(); } });
 
   /* ---------- where else to look: images, videos, news, maps, Buddy ---------- */
   const TABS = (q) => [
@@ -42,27 +42,28 @@
   /* ---------- results ---------- */
   function siteLine(url) {
     let host = '', path = '';
-    try { const u = new URL(url); host = u.hostname.replace(/^www\./, ''); path = (u.pathname + u.search).replace(/\/$/, ''); if (path.length > 60) path = path.slice(0, 57) + '…'; } catch {}
+    try { const u = new URL(url); host = u.hostname.replace(/^www\./, ''); path = decodeURIComponent(u.pathname + u.search); } catch { path = ''; }   // a bad escape in the address: just no crumbs
+    path = path.replace(/\/$/, ''); if (path.length > 60) path = path.slice(0, 57) + '…';
     const s = el('span', 'ss-site');
     const img = el('img'); img.alt = ''; img.src = 'https://icons.duckduckgo.com/ip3/' + esc(host) + '.ico'; img.onerror = () => img.remove();
-    s.appendChild(img); s.appendChild(el('span', 'host', host)); if (path && path !== '/') s.appendChild(el('span', 'path', decodeURIComponent(path).replace(/^\//, '› ').replace(/\//g, ' › ')));
+    s.appendChild(img); s.appendChild(el('span', 'host', host)); if (path && path !== '/') s.appendChild(el('span', 'path', path.replace(/^\//, '› ').replace(/\//g, ' › ')));
     return s;
   }
   const words = (q) => [...new Set(q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1))];
   function highlight(text, q) {
     const ws = words(q).filter((w) => w.length > 2); if (!ws.length) return esc(text);
     const re = new RegExp('(' + ws.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'giu');
-    return esc(text).split(re).map((part, i) => (i % 2 ? '<b>' + part + '</b>' : part)).join('');
+    return String(text).split(re).map((part, i) => (i % 2 ? '<b>' + esc(part) + '</b>' : esc(part))).join('');
   }
   function addResults(results, q) {
     const list = $('list'); const start = list.children.length;
-    results.forEach((r, i) => {
+    results.forEach((r, i) => { try {
       const li = el('li'); li.style.animationDelay = Math.min(i, 12) * 25 + 'ms';
       li.appendChild(siteLine(r.url));
       const a = el('a', 'ss-title', r.title); a.href = r.url; li.appendChild(a);
       if (r.snippet) { const p = el('p', 'ss-snippet'); p.innerHTML = highlight(r.snippet, q); li.appendChild(p); }
       list.appendChild(li);
-    });
+    } catch {} });   // one odd result never takes the rest of the list with it
     return list.children.length - start;
   }
   const NOTICE = {
@@ -70,7 +71,7 @@
     offline: { h: 'Can’t reach the web', p: 'The browser couldn’t get an answer from DuckDuckGo. Are you online?' },
     timeout: { h: 'That took too long', p: 'DuckDuckGo didn’t answer in time. Try again, or open the results there.' },
     http: { h: 'DuckDuckGo had a hiccup', p: 'It answered with an error instead of results. Try again in a moment, or open the results there.' },
-    nobridge: { h: 'Web results aren’t in this version yet', p: 'On this platform the browser can’t fetch results itself yet. Open them on DuckDuckGo instead.' },
+    nobridge: { h: 'Web results aren’t in this version yet', p: 'This version of the browser can’t fetch results itself yet. Open them on DuckDuckGo instead.' },
     none: { h: 'Nothing found', p: 'No pages matched that. Try fewer or different words.' }
   };
   function notice(kind, q) {
@@ -90,7 +91,7 @@
   }
   async function fetchWeb(q, token) {
     try { return await call('search:web', q, token); }
-    catch (e) { return { error: /blocked|no bridge|No handler|unknown/i.test(String(e && e.message)) ? 'nobridge' : 'offline' }; }
+    catch (e) { return { error: /blocked|no bridge|isn.t in the .* version yet|No handler/i.test(String(e && e.message || e)) ? 'nobridge' : 'offline' }; }
   }
   async function run(q) {
     if (loading) return; loading = true; next = null;
@@ -111,10 +112,11 @@
     $('more').disabled = true; $('more').textContent = 'Loading…';
     const r = await fetchWeb(q, token);
     loading = false; $('more').disabled = false; $('more').textContent = 'More results';
-    const added = r.results ? addResults(r.results, q) : 0;
+    if (r.error) { next = token; toast('Couldn’t load more results. Try again?'); return; }   // keep the token: the next click retries
+    const added = addResults(r.results || [], q);
     next = added ? r.next : null;
     $('moreWrap').classList.toggle('hidden', !next);
-    if (!added) toast(r.error ? 'Couldn’t load more results.' : 'That’s all DuckDuckGo had.');
+    if (!added) toast('That’s all DuckDuckGo had.');
   };
 
   /* ---------- instant answer (on this computer) ---------- */
@@ -122,11 +124,12 @@
   function instant(q) {
     const a = window.searchAnswers && window.searchAnswers.answer(q);
     const d = $('answer'); if (!a) { d.classList.add('hidden'); return; }
-    d.replaceChildren(el('div', 'kind', a.kind === 'sum' ? 'Sum' : 'Conversion'), el('div', 'big', a.big), el('div', 'sub', a.sub));
+    d.replaceChildren(el('div', 'kind', a.kind === 'sum' ? 'Answer' : 'Conversion'), el('div', 'big', a.big), el('div', 'sub', a.sub));
     d.classList.remove('hidden');
   }
 
   /* ---------- Wikipedia card ---------- */
+  const WIKI_NAME = { en: 'Wikipedia', sv: 'Swedish Wikipedia', no: 'Norwegian Wikipedia', da: 'Danish Wikipedia', fi: 'Finnish Wikipedia', de: 'German Wikipedia', fr: 'French Wikipedia', es: 'Spanish Wikipedia', it: 'Italian Wikipedia', nl: 'Dutch Wikipedia', pl: 'Polish Wikipedia', pt: 'Portuguese Wikipedia' };
   async function wiki(q) {
     const d = $('wiki');
     if (!$('answer').classList.contains('hidden') || !/\p{L}{3}/u.test(q)) { d.classList.add('hidden'); return; }   // a sum or a number: no article wanted
@@ -139,7 +142,7 @@
     d.replaceChildren();
     if (w.thumbnail) { const img = el('img'); img.src = w.thumbnail; img.alt = ''; img.onerror = () => img.remove(); d.appendChild(img); }
     const body = el('div', 'body'); body.appendChild(el('h2', null, w.title)); body.appendChild(el('p', null, w.extract));
-    const a = el('a', 'from', (w.lang === 'en' ? 'Wikipedia' : 'Wikipedia (' + w.lang + ')') + ' ›'); a.href = w.url; body.appendChild(a);
+    const a = el('a', 'from', (WIKI_NAME[w.lang] || 'Wikipedia') + ' ›'); if (/^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(w.url)) a.href = w.url; body.appendChild(a);
     d.appendChild(body); d.classList.remove('hidden');
   }
 
@@ -164,7 +167,7 @@
     d.replaceChildren(el('div', 'kind', 'From your bookmarks and history'));
     for (const h of top) {
       const a = el('a'); a.href = h.url;
-      const img = el('img'); img.alt = ''; img.src = 'https://icons.duckduckgo.com/ip3/' + esc(hostOf(h.url)) + '.ico'; img.onerror = () => img.remove();
+      const img = favImg(h.url); img.alt = '';   // the site's own icon (common.js), not an icon service that would see your bookmarks
       a.appendChild(img); a.appendChild(el('span', 't', h.title)); a.appendChild(el('span', 'h', hostOf(h.url)));
       if (h.kind === 'bookmark') a.appendChild(el('span', 'tag', 'Bookmark'));
       d.appendChild(a);

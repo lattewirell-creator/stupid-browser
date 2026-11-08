@@ -42,3 +42,16 @@ assert.strictEqual(A('1/0'), null, 'infinity is not an answer');
 assert.strictEqual(A('alert(1)'), null);
 assert.strictEqual(A('5 km to kg'), null, 'different kinds');
 console.log('[PASS] search parser and instant answers');
+// not sums: times, ratios, dates, year ranges, phone numbers, English thousands
+for (const q of ['10:30', '16:9', '2024-11-08', '2024-2025', '08-123 456']) assert.strictEqual(A(q), null, q + ' is not a sum');
+assert.strictEqual(A('1,000 + 500').big, '1\u2009500', 'English thousands (no Nordic navigator in node)');
+assert.strictEqual(A('-2^2').big, '-4');
+assert.strictEqual(A('100/3').big, '33.3333');
+// next-token cleaning: only short string fields with plain names, and it must carry "s"
+assert.deepStrictEqual(mod.cleanNext({ s: '30', 'bad key': 'x', n: 5, long: 'y'.repeat(401), vqd: 'ok' }), { s: '30', vqd: 'ok' });
+assert.strictEqual(mod.cleanNext({ q: 'x' }), null); assert.strictEqual(mod.cleanNext('s=30'), null);
+// entities: emoji and a literal &lt; in text
+assert.strictEqual(mod.decode('&#128512; &amp;lt; &quot;x&quot;'), '😀 &lt; "x"');
+assert.strictEqual(mod.realUrl('https://duckduckgo.com'), ''); assert.strictEqual(mod.realUrl('https://duckduckgo.com:443/x'), '');
+assert.strictEqual(mod.parseResults('<div class="result x"><a class="result__a" href="https://a.com/caf%E9">T</a></div>').length, 1, 'odd escapes in addresses are kept for the page to handle');
+console.log('[PASS] edge cases');

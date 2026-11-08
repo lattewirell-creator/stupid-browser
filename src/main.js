@@ -519,7 +519,7 @@ function handleDownload(item, wc, incognito) {
 
 /* ---------- history ---------- */
 function addHistory(url, title) {
-  if (!/^https?:\/\//.test(url)) return;
+  if (!/^https?:\/\//.test(url) && !/^stupid:\/\/search\/\?q=./.test(url)) return;   // web pages, and searches on the browser's own page
   const h = getHistory();
   const last = h[h.length - 1];
   if (last && last.url === url && Date.now() - last.ts < 30000) { if (title) last.title = title; store.write('history.json', h, 1500); return; }
@@ -1436,7 +1436,7 @@ function pageContextMenu(wc, p) {
   const shellWc = shellFor(wc); if (!shellWc) return;
   const win = BrowserWindow.fromWebContents(shellWc);
   const s = getSettings();
-  const engine = s.search === 'custom' ? 'the web' : (SEARCH_ENGINES[s.search] || SEARCH_ENGINES.google).name;
+  const engine = s.search === 'custom' || s.search === 'stupid' ? 'the web' : (SEARCH_ENGINES[s.search] || SEARCH_ENGINES.google).name;
   const openUrl = (url, where) => shellWc.send('open-url', { url, where });
   const T = [];
   const sep = () => { if (T.length && T[T.length - 1].type !== 'separator') T.push({ type: 'separator' }); };

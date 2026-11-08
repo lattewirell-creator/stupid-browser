@@ -1,13 +1,13 @@
 'use strict';
 /* Stupid Search (stupid://search/?q=…): the browser's own results page.
    The page can't fetch other sites itself (stupid:// pages have no CORS), so the web results are fetched here, in the
-   main process, from DuckDuckGo's HTML version: a plain request with the browser's user agent, no cookies, no account,
+   main process, from DuckDuckGo's HTML version: a plain Chrome-looking request, no cookies, no account,
    nothing stored anywhere but a short in-memory cache. Ads are dropped before the page ever sees them.
    The Wikipedia card uses Wikipedia's public API the same way. */
 module.exports = function search({ app, handle }) {
   const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.8' };
   const timed = (ms) => AbortSignal.timeout(ms);
-  const decode = (s) => String(s || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16))).replace(/&nbsp;/g, ' ').replace(/&#39;|&apos;/g, '\'');
+  const decode = (s) => String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_, n) => (+n < 0x110000 ? String.fromCodePoint(+n) : '')).replace(/&#x([0-9a-f]+);/gi, (_, n) => (parseInt(n, 16) < 0x110000 ? String.fromCodePoint(parseInt(n, 16)) : '')).replace(/&nbsp;/g, ' ').replace(/&#39;|&apos;/g, '\'').replace(/&amp;/g, '&');   // &amp; last, so &amp;lt; stays the text "&lt;"
   const strip = (html) => decode(String(html || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
   const MAX_Q = 400;
 
@@ -29,7 +29,8 @@ module.exports = function search({ app, handle }) {
     let url = decode(href);
     const u = /[?&]uddg=([^&]+)/.exec(url); if (u) { try { url = decodeURIComponent(u[1]); } catch { return ''; } }
     if (url.startsWith('//')) url = 'https:' + url;
-    if (!/^https?:\/\/[^\s"'<>]+$/i.test(url) || /^https?:\/\/(?:[a-z0-9-]+\.)*duckduckgo\.com\//i.test(url)) return '';
+    if (!/^https?:\/\/[^\s"'<>]+$/i.test(url)) return '';
+    try { const h = new URL(url).hostname; if (h === 'duckduckgo.com' || h.endsWith('.duckduckgo.com')) return ''; } catch { return ''; }   // DuckDuckGo's own pages are never results
     return url;
   }
   /** The web results in a DuckDuckGo HTML page: title, address, snippet. Ads (result--ad) are skipped. */
@@ -81,7 +82,8 @@ module.exports = function search({ app, handle }) {
     } catch (err) {
       return { error: /abort|timeout/i.test(String(err && err.name)) ? 'timeout' : 'offline' };
     }
-    const html = await r.text();
+    let html;
+    try { html = await r.text(); } catch { return { error: 'offline' }; }
     // 202 (or a page without results that talks about a challenge) means DuckDuckGo wants a human to prove it.
     if (r.status === 202 || (!/result__a/.test(html) && /anomaly|challenge|bots|unusual traffic/i.test(html))) return { error: 'blocked' };
     if (!r.ok) return { error: 'http', status: r.status };
@@ -120,5 +122,5 @@ module.exports = function search({ app, handle }) {
     return wikipedia(q);
   });
 
-  return { parseResults, parseNext, realUrl };   // for tests
+  return { parseResults, parseNext, realUrl, cleanNext, decode };   // for tests
 };

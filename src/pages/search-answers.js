@@ -9,12 +9,17 @@
   /** Tiny recursive-descent calculator. Only numbers, + - * / ^ %, brackets, a few functions and constants. */
   function calc(expr) {
     let s = String(expr).toLowerCase().replace(/\s+/g, ' ').trim();
+    // Not sums: times (10:30), ratios (16:9), dates (2024-11-08), year ranges (2024-2025), phone numbers (08-123 456).
+    if (/^\d+(?:[-:\s]\d+)+$/.test(s) || /\d:\d/.test(s)) return null;
     // "20% of 150" / "20 % av 150" → 150*20/100. "150 + 20%" → 150*(1+20/100).
     s = s.replace(/(\d+(?:[.,]\d+)?)\s*%\s*(?:of|av)\s*(\d+(?:[.,]\d+)?)/g, '($2)*($1)/100');
     s = s.replace(/(\d+(?:[.,]\d+)?)\s*([+-])\s*(\d+(?:[.,]\d+)?)\s*%(?!\s*[\d(])/g, '($1)*(1$2($3)/100)');
     // Decimal comma (Swedish) when there's no decimal point; thousands separators "1 000" / "1,000.5".
-    if (!s.includes('.') && /\d,\d/.test(s)) s = s.replace(/(\d),(\d)/g, '$1.$2'); else s = s.replace(/(\d),(\d{3})(?!\d)/g, '$1$2');
-    s = s.replace(/(\d) (\d{3})(?!\d)/g, '$1$2').replace(/×|x(?=\s*[\d(])/g, '*').replace(/÷|:(?=\s*\d)/g, '/').replace(/,/g, '');
+    // "1,000 + 500" is a thousand in English and "1,5" a decimal in Swedish: exactly three digits after the comma reads as
+    // thousands unless the browser is Swedish-ish (sv, nb, da, fi), where 1,000 is one point zero zero zero.
+    const nordic = typeof navigator !== 'undefined' && /^(sv|nb|nn|no|da|fi)\b/i.test(navigator.language || '');
+    if (!s.includes('.') && /\d,\d/.test(s) && (nordic || !/\d,\d{3}(?!\d)/.test(s))) s = s.replace(/(\d),(\d)/g, '$1.$2'); else s = s.replace(/(\d),(\d{3})(?!\d)/g, '$1$2');
+    s = s.replace(/(\d) (\d{3})(?!\d)/g, '$1$2').replace(/×|x(?=\s*[\d(])/g, '*').replace(/÷/g, '/').replace(/,/g, '');
     if (!/^[\d.+\-*/^%() a-z]+$/.test(s) || !/\d/.test(s) || !/[+\-*/^%]|sqrt|\(/.test(s)) return null;
     if (/^[\d.]+$/.test(s)) return null;   // a lone number is not a sum
     let i = 0;
@@ -31,7 +36,8 @@
       if (w[0] in FN) { skip(); if (peek() !== '(') throw 0; i++; const v = expr0(); skip(); if (peek() !== ')') throw 0; i++; return FN[w[0]](v); }
       throw 0;
     }
-    function power() { let v = number(); skip(); if (peek() === '^') { i++; return Math.pow(v, power()); } return v; }
+    // -2^2 is -(2^2): the minus binds looser than the power, like on a calculator.
+    function power() { skip(); if (peek() === '-') { i++; return -power(); } let v = number(); skip(); if (peek() === '^') { i++; return Math.pow(v, power()); } return v; }
     function term() { let v = power(); for (;;) { skip(); const c = peek(); if (c === '*') { i++; v *= power(); } else if (c === '/') { i++; v /= power(); } else if (c === '%') { i++; v %= power(); } else return v; } }
     function expr0() { let v = term(); for (;;) { skip(); const c = peek(); if (c === '+') { i++; v += term(); } else if (c === '-') { i++; v -= term(); } else return v; } }
     try { const v = expr0(); skip(); if (i !== s.length || !isFinite(v)) return null; return v; } catch { return null; }
