@@ -36,12 +36,12 @@ All three share the same look and features. The interface lives in `src/` and ru
   Release signing reads `android/keystore.properties` (not in git). Refresh the ad list with `node scripts/build-android-blocklist.js`.
 
 ## Stupid Search
-`stupid://search/?q=…` is the browser's own search engine page: pick **Stupid Search** in Settings → Search engine and the
-address bar lands there. The browser itself fetches DuckDuckGo's results (`src/search-main.js`), drops the ads, and adds a
+`stupid://search/?q=…` is the browser's own search engine page and the default search engine on Windows and Linux (new
+installs, and installs that still had the old DuckDuckGo default). Any other engine is a pick away in Settings → Search engine. The browser itself fetches DuckDuckGo's results (`src/search-main.js`), drops the ads, and adds a
 Wikipedia card, a sum or unit conversion worked out on your computer (`src/pages/search-answers.js`), and the matching pages
 from your bookmarks and history. Images, videos, news and maps open on DuckDuckGo, YouTube and OpenStreetMap; "Ask Buddy"
 hands the question to `stupid://ask`. Nothing is sent anywhere but DuckDuckGo, Wikipedia for the card, and your own bookmarked sites for their icons, with no cookies.
-On Mac and Android the page loads and says that web results aren't in that version yet (the core has no `search:web` handler), with a link to DuckDuckGo.
+On Mac and Android DuckDuckGo stays the default: the page loads and says that web results aren't in that version yet (the core has no `search:web` handler), with a link to DuckDuckGo.
 `npm run test:search` checks the parser and the answers without a network.
 
 ## Buddy Net

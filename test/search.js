@@ -34,13 +34,13 @@
   // searches are remembered: Recent on the home page
   navigate('stupid://search/'); await sleep(1500);
   ok(await inPage(`[...document.querySelectorAll('#recentList a')].map((a) => a.textContent).join('|')`).then((t) => /stockholm/.test(t) && /2\^10/.test(t)), 'recent searches on the home page');
-  // address bar goes through Stupid Search once it's the engine
-  await call('settings:set', { search: 'stupid' }); await sleep(300);
+  // Stupid Search is the default engine, so the address bar lands on it
+  ok((await call('settings:get')).search === 'stupid', 'Stupid Search is the default engine');
   navigate('5 km in miles'); await sleep(1500);
   ok(activeTab().url === 'stupid://search/?q=5%20km%20in%20miles', 'address bar search goes to stupid://search');
   ok(await inPage(`document.getElementById('answer').textContent.includes('3.1069 miles')`), 'conversion answer');
   ok($('address').placeholder === 'Search the web or type a URL', 'address placeholder');
   console.log('SHOT:search-convert'); await sleep(500);
-  await call('settings:set', { search: 'duckduckgo' }); await call('bookmarks:set', []);
+  await call('bookmarks:set', []);
   console.log('QUIT');
 })();

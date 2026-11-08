@@ -71,7 +71,8 @@ Self-test: STUPID_SELFTEST=/tmp/s.png STUPID_SELFTEST_STEPS="quit@170000" STUPID
   DuckDuckGo's HTML results fetched by the main process (region from the app language, ads dropped, "More results" via
   the Next form's fields), Wikipedia card, local instant answers (sums, percentages, unit conversions incl. Swedish mil),
   matching bookmarks/history, recent searches on the empty page, Images/Videos/News/Maps/Ask Buddy tabs.
-  Selectable as the search engine ("stupid"); the 9-dot Search tile opens it. Electron only for now: the Mac/Android
+  The default search engine on Electron ("stupid"; installs on the old DuckDuckGo default move over once, flag
+  searchDefaultMoved); the 9-dot Search tile opens it. Mac/Android core keeps DuckDuckGo (DEFAULT_SEARCH in gen-core.py). Electron only for now: the Mac/Android
   shells serve the page but have no search:web handler yet (the page says so and offers DuckDuckGo).
 
 ## 1.3.0 (in progress)

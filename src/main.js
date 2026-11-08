@@ -72,6 +72,9 @@ const SEARCH_ENGINES = {
   wikipedia: { name: 'Wikipedia', url: 'https://en.wikipedia.org/w/index.php?search=%s' },
   youtube: { name: 'YouTube', url: 'https://www.youtube.com/results?search_query=%s' }
 };
+// Stupid Search is the default where its results page works (Electron). The Mac/Android core has no search:web handler
+// yet, so mac/tools/gen-core.py gives it DEFAULT_SEARCH = 'duckduckgo' until it does.
+const DEFAULT_SEARCH = 'stupid';
 const DEFAULT_SETTINGS = () => ({
   name: '', email: '', profileColor: 'clay', profileImage: '', mail: 'gmail', mailUrl: '',
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
@@ -80,7 +83,7 @@ const DEFAULT_SETTINGS = () => ({
   bg: 'none', bgDim: 25, tabSleep: 15, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], toolbar: { order: [], custom: [] }, brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
-  search: 'duckduckgo', customSearch: '',
+  search: DEFAULT_SEARCH, customSearch: '',
   adblock: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
@@ -1907,6 +1910,10 @@ if (!app.requestSingleInstanceLock()) {
         normalWindow: (id) => { const w = windows.get(+id); return w && !w.incognito && !w.win.isDestroyed() ? w.win : null; },
         openWindow: (url) => createWindow({ urls: url ? [url] : null }) });
     } catch (e) { console.error('[extensions] setup', e); }
+    // 1.9.0: Stupid Search became the default. Installs still on the old default (DuckDuckGo) move over once; whatever
+    // you pick after that stays, and a custom engine or any other choice is never touched.
+    if (s.search === 'duckduckgo' && !s.searchDefaultMoved) setSettings({ search: DEFAULT_SEARCH, searchDefaultMoved: true });
+    else if (!s.searchDefaultMoved) setSettings({ searchDefaultMoved: true });
     if (s.appIcon) setTimeout(applyAppIcon, 500);
     const argUrl = normalizeArgUrl(urlFromArgv(process.argv));
     if (firstRun) { setSettings({ onboarded: false }); createWindow({ urls: ['stupid://welcome/', ...(argUrl ? [argUrl] : []), ...pendingOpen.splice(0)] }); }
