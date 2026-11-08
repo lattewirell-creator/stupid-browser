@@ -23,7 +23,7 @@ import java.util.Set;
  *  ".internal" names never exist on the internet, so nothing here can be confused with a real site. */
 final class Assets {
     static final String SHELL = "https://shell.stupidapp.internal", CORE = "https://core.stupidapp.internal";
-    static final Set<String> PAGES = new HashSet<>(Arrays.asList("newtab", "settings", "history", "downloads", "bookmarks", "source", "welcome", "rewind"));
+    static final Set<String> PAGES = new HashSet<>(Arrays.asList("newtab", "settings", "history", "downloads", "bookmarks", "source", "welcome", "rewind", "search"));
     /** The browser's own screens never zoom (only web pages do, with pinch or the ⋮ menu's Zoom). */
     static final float UI_SCALE = 1f;
     private static final String VIEWPORT = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=" + UI_SCALE + ", minimum-scale=" + UI_SCALE

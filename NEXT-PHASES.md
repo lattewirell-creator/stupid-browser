@@ -66,6 +66,14 @@ Self-test: STUPID_SELFTEST=/tmp/s.png STUPID_SELFTEST_STEPS="quit@170000" STUPID
   "Ask an AI" tiles removed from the new tab.
 - Easter egg: Konami code opens the Zelda secret sound on YouTube (main.js, before-input-event).
 
+## 1.9.0
+- Stupid Search (src/search-main.js, src/pages/search.*): the browser's own results page at stupid://search/?q=….
+  DuckDuckGo's HTML results fetched by the main process (region from the app language, ads dropped, "More results" via
+  the Next form's fields), Wikipedia card, local instant answers (sums, percentages, unit conversions incl. Swedish mil),
+  matching bookmarks/history, recent searches on the empty page, Images/Videos/News/Maps/Ask Buddy tabs.
+  Selectable as the search engine ("stupid"); the 9-dot Search tile opens it. Electron only for now: the Mac/Android
+  shells serve the page but have no search:web handler yet (the page says so and offers DuckDuckGo).
+
 ## 1.3.0 (in progress)
 - Mac auto-updates without a Developer ID (src/mac-updater.js): GitHub Releases → zip for this chip → SHA-512 check
   against latest-mac.yml → swap on restart/quit. Needs the app in a writable folder (e.g. /Applications).

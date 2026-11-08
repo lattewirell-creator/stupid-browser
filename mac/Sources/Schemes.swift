@@ -4,7 +4,7 @@ import Foundation
 import WebKit
 import UniformTypeIdentifiers
 
-let INTERNAL_PAGES: Set<String> = ["newtab", "settings", "history", "downloads", "bookmarks", "source", "welcome", "rewind"]
+let INTERNAL_PAGES: Set<String> = ["newtab", "settings", "history", "downloads", "bookmarks", "source", "welcome", "rewind", "search"]
 
 func mimeType(_ url: URL) -> String {
   switch url.pathExtension.lowercased() {

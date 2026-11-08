@@ -1,7 +1,7 @@
 # The Stupid Browser
 
 A calm, warm-toned personal web browser for Mac, Windows, Linux and Android.
-Tabs and tab groups, Buddy (a little AI helper), an AI sidebar (Claude first), an app sidebar, the Shield ad & tracker blocker,
+Tabs and tab groups, Stupid Search (its own calm results page), Buddy (a little AI helper), an AI sidebar (Claude first), an app sidebar, the Shield ad & tracker blocker,
 Rewind, the music island, history, downloads, bookmarks, passwords, profiles, private windows and automatic updates.
 
 - **Mac:** a native app on Apple's WebKit (Safari's engine). One download for Apple chip and Intel Macs, about 7 MB.
@@ -34,6 +34,15 @@ All three share the same look and features. The interface lives in `src/` and ru
   full-screen video, dark mode, and it can be your default browser.
 - Build it (needs JDK 17 and the Android SDK): `cd android && ./gradlew assembleRelease`.
   Release signing reads `android/keystore.properties` (not in git). Refresh the ad list with `node scripts/build-android-blocklist.js`.
+
+## Stupid Search
+`stupid://search/?q=…` is the browser's own search engine page: pick **Stupid Search** in Settings → Search engine and the
+address bar lands there. The browser itself fetches DuckDuckGo's results (`src/search-main.js`), drops the ads, and adds a
+Wikipedia card, a sum or unit conversion worked out on your computer (`src/pages/search-answers.js`), and the matching pages
+from your bookmarks and history. Images, videos, news and maps open on DuckDuckGo, YouTube and OpenStreetMap; "Ask Buddy"
+hands the question to `stupid://ask`. Nothing is sent anywhere but DuckDuckGo (and Wikipedia for the card), with no cookies.
+On Mac and Android the page loads, but web results wait for the core to get a `search:web` handler.
+`npm run test:search` checks the parser and the answers without a network.
 
 ## Buddy Net
 A separate, playful time-travelling browser lives in [`buddy-net/`](buddy-net/README.md): switch between the 90s, Internet Explorer, early Chrome, the experimental 2010s and the AI-filled 2020s.

@@ -10,7 +10,7 @@ const NEWTAB = new URLSearchParams(location.search).get('incognito') === '1' ? '
 const ACCENTS = { clay: '#D97757', sand: '#C9963F', sage: '#6F9161', sky: '#5B87B5', plum: '#9A6390', rose: '#C8606F', ink: '#5A5548' };
 const GROUP_COLORS = { clay: '#D97757', sand: '#C9A15A', sage: '#7C9A6E', sky: '#6A8FB5', plum: '#9B6A8E', rose: '#C96A7A', teal: '#5E9A94', slate: '#8A857A', ink: '#3D3929' };
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
-const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome', rewind: 'Rewind' };
+const INTERNAL_TITLES = { newtab: 'New tab', settings: 'Settings', history: 'History', downloads: 'Downloads', bookmarks: 'Bookmarks', source: 'Page source', welcome: 'Welcome', rewind: 'Rewind', ask: 'Ask Buddy', search: 'Search' };
 
 let info = {};
 let settings = {};
@@ -74,6 +74,9 @@ function loadIcon(img, sources, onFail) {
 }
 function searchUrl(q) { return (settings.searchUrl || 'https://duckduckgo.com/?q=%s').replace('%s', encodeURIComponent(q)); }
 function engineName() { return settings.search === 'custom' ? 'custom search' : ((settings.engines || {})[settings.search] || { name: 'DuckDuckGo' }).name; }
+// "Stupid Search" already says search, so it's "Stupid Search" / "Search the web", not "Stupid Search search".
+const engineLabel = () => (settings.search === 'stupid' ? 'Stupid Search' : `${engineName()} search`);
+const searchVerb = () => (settings.search === 'stupid' ? 'Search the web' : `Search ${engineName()}`);
 // Community / site searches: "!r how to…" → your engine limited to Reddit, etc.
 const SCOPES = [
   { key: 'reddit', bang: ['r', 'reddit'], name: 'Reddit', site: 'reddit.com' },
@@ -1048,7 +1051,7 @@ async function updateSuggest(inline) {
   { const a = $('address'); if (a.value.slice(0, a.selectionStart === a.selectionEnd ? undefined : a.selectionStart) !== raw) return; }
   const go = toUrl(q);
   const isSearch = go.startsWith(searchUrl('').split('?')[0]) && !/^https?:\/\//i.test(q) && go === searchUrl(q);
-  sugItems = [{ kind: isSearch ? 'search' : 'url', label: isSearch ? q : go, sub: isSearch ? `${engineName()} search` : 'Open', url: go }];
+  sugItems = [{ kind: isSearch ? 'search' : 'url', label: isSearch ? q : go, sub: isSearch ? engineLabel() : 'Open', url: go }];
   const lq = q.toLowerCase();
   for (const t of tabs) if (t.id !== activeId && !isInternal(t.url) && ((t.title || '').toLowerCase().includes(lq) || t.url.toLowerCase().includes(lq))) sugItems.push({ kind: 'tab', label: prettyTitle(t), sub: 'Switch to this tab', id: t.id, fav: t.favicon });
   for (const r of res) if (r.url !== go) sugItems.push({ kind: r.kind, label: r.title || r.url, sub: r.url.replace(/^https?:\/\/(www\.)?/, ''), url: r.url, fav: faviconFor(r.url) });
@@ -1346,7 +1349,7 @@ function closeCmd() { $('cmdbar').classList.add('hidden'); }
 function renderCmd() {
   const raw = $('cmdInput').value.trim(); const q = raw.toLowerCase();
   const box = $('cmdResults'); box.innerHTML = ''; cmdItems = [];
-  if (q) cmdItems.push({ kind: 'go', label: toUrl(raw) === searchUrl(raw) ? `Search ${engineName()} for “${raw}”` : toUrl(raw), url: toUrl(raw), k: 'New tab' });
+  if (q) cmdItems.push({ kind: 'go', label: toUrl(raw) === searchUrl(raw) ? `${searchVerb()} for “${raw}”` : toUrl(raw), url: toUrl(raw), k: 'New tab' });
   const m = (s) => !q || (s || '').toLowerCase().includes(q);
   for (const t of tabs) if (t.id !== activeId && !isNewtab(t.url) && (m(t.title) || m(t.url))) cmdItems.push({ kind: 'tab', label: prettyTitle(t), fav: t.favicon, id: t.id, k: 'Switch to tab' });
   const actions = [['Settings', () => openInternal('settings')], ['History', () => openInternal('history')], ['Downloads', () => openInternal('downloads')], ['Bookmarks', () => openInternal('bookmarks')], ['New private window', () => call('win:new', { incognito: true })], ['Reopen closed tab', reopenClosed], ['Toggle split view', () => toggleSplit()], ['Toggle AI sidebar', toggleAI]];
@@ -1590,7 +1593,7 @@ function applySettings() {
   if (window.applyCustomize) window.applyCustomize();
   document.body.classList.toggle('no-home', settings.showHome === false);
   document.body.classList.toggle('no-bm', settings.showBookmarksBar === false);
-  $('address').placeholder = `Search ${engineName()} or type a URL`;
+  $('address').placeholder = `${searchVerb()} or type a URL`;
   renderShield({ on: settings.adblock, count: +$('blockedCount').textContent || 0 });
   renderRail();
 }

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<style id="early-bg">html{background:#FAF9F5}@media (prefers-color-scheme: dark){html{background:#1F1E1D}}</style>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Stupid Search</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="search.css">
+</head>
+<body>
+<div class="ss" id="page">
+  <header class="ss-head">
+    <a class="ss-brand" href="stupid://search/" title="Stupid Search"><span class="ss-ring" aria-hidden="true"></span><span class="ss-name">Stupid Search</span></a>
+    <form id="form" class="ss-box" role="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+      <input id="q" type="search" placeholder="Search the web" autocomplete="off" spellcheck="false" aria-label="Search the web">
+      <button type="button" id="clear" class="icon-btn hidden" title="Clear" aria-label="Clear"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <button class="btn primary" type="submit">Search</button>
+    </form>
+  </header>
+  <nav class="ss-tabs" id="tabs" aria-label="Search in"></nav>
+
+  <section id="home" class="ss-home hidden">
+    <h1>Search, without the noise.</h1>
+    <p class="ss-tagline">Type what you’re looking for. Your browser asks DuckDuckGo for the results and shows them here: no ads, no cookies, no account, nothing about you kept anywhere.</p>
+    <div id="recent" class="ss-recent hidden"><span class="ss-recent-label">Recent</span><div id="recentList"></div></div>
+  </section>
+
+  <div id="results" class="ss-results hidden">
+    <main class="ss-main">
+      <div id="answer" class="ss-answer hidden"></div>
+      <div id="mine" class="ss-mine hidden"></div>
+      <div id="status" class="ss-status"><span class="ss-spinner" aria-hidden="true"></span><span id="statusText">Searching…</span></div>
+      <ol id="list" class="ss-list"></ol>
+      <div id="notice" class="ss-notice hidden"></div>
+      <div id="moreWrap" class="ss-more hidden"><button id="more" class="btn">More results</button></div>
+      <div id="elsewhere" class="ss-elsewhere hidden"></div>
+    </main>
+    <aside class="ss-side">
+      <div id="wiki" class="ss-wiki hidden"></div>
+    </aside>
+  </div>
+  <footer class="ss-foot"><span id="footNote">Results come from DuckDuckGo, fetched by your browser. Ads are left out.</span> <a href="stupid://settings/#search">Search settings</a></footer>
+</div>
+<script src="keys.js"></script>
+<script src="common.js"></script>
+<script src="search-answers.js"></script>
+<script src="search.js"></script>
+</body>
+</html>

@@ -13,3 +13,5 @@ D=$(mktemp -d)
 run selftest.js "$D" 170
 run restore.js "$D" 60
 run extra.js "$(mktemp -d)" 40
+run search.js "$(mktemp -d)" 45
+node test/search-parse.js

@@ -56,6 +56,7 @@ const DEFAULT_BOTS = [
   { name: 'Perplexity', url: 'https://www.perplexity.ai' }
 ];
 const SEARCH_ENGINES = {
+  stupid: { name: 'Stupid Search', url: 'stupid://search/?q=%s' },   // the browser's own results page (src/search-main.js)
   google: { name: 'Google', url: 'https://www.google.com/search?q=%s' },
   bing: { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
   duckduckgo: { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
@@ -97,7 +98,7 @@ const DEFAULT_SIDEBAR = [
 // App grid (9-dot launcher). 'mail' opens whichever mail service the profile picked.
 const DEFAULT_LAUNCHER = [
   { id: 'mail', name: 'Mail', url: 'mail' },
-  { id: 'search', name: 'Search', url: 'https://duckduckgo.com' },
+  { id: 'search', name: 'Search', url: 'stupid://search/' },
   { id: 'youtube', name: 'YouTube', url: 'https://www.youtube.com' },
   { id: 'maps', name: 'Maps', url: 'https://maps.google.com' },
   { id: 'drive', name: 'Drive', url: 'https://drive.google.com' },
@@ -109,7 +110,7 @@ const DEFAULT_LAUNCHER = [
   { id: 'news', name: 'News', url: 'https://news.google.com' },
   { id: 'claude', name: 'Claude', url: 'https://claude.ai' }
 ];
-const INTERNAL_PAGES = ['newtab', 'private', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind', 'ask'];
+const INTERNAL_PAGES = ['newtab', 'private', 'settings', 'history', 'downloads', 'bookmarks', 'source', 'welcome', 'rewind', 'ask', 'search'];
 const PERM_KINDS = ['camera', 'microphone', 'location', 'notifications'];
 const FONT_SIZES = { small: 14, medium: 16, large: 19, xlarge: 22 };
 
@@ -1094,6 +1095,7 @@ handle('profiles:open', ['shell'], (_e, id) => profiles.open(String(id)));
 handle('profiles:create', ['shell'], (_e, p) => { const made = profiles.create(p); if (made) profiles.open(made.id); return made; });
 handle('profiles:remove', ['shell'], (_e, id) => profiles.remove(String(id)));
 require('./buddy-main')({ handle, store, enc, dec, getSettings, entryFor });
+require('./search-main')({ app, handle });
 const rewindThumb = require('./rewind-main')({ app, handle, store, getSettings, entryFor, broadcast });
 require('./import-bookmarks')({ handle, store, getBookmarks, broadcast, getHistory, getPasswords, enc });
 
