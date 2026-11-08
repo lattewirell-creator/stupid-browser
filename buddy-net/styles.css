@@ -313,16 +313,35 @@ body[data-era="labs"] #btn-labs:hover { background: #008a00; }
 body[data-era="labs"] #linksbar { display: none; }
 body[data-era="labs"].exp-social #linksbar { display: flex; padding: 4px 10px; gap: 6px; background: #fff; border-bottom: 1px solid #e0e0e0; }
 body[data-era="labs"] .social { display: flex !important; gap: 6px; align-items: center; }
-body[data-era="labs"] .share { padding: 3px 10px; border-radius: 3px; color: #fff !important; font-size: 12px; font-weight: 600; }
-body[data-era="labs"] .share:nth-child(1) { background: #3b5998 !important; }
-body[data-era="labs"] .share:nth-child(2) { background: #55acee !important; }
-body[data-era="labs"] .share:nth-child(3) { background: #dd4b39 !important; }
-body[data-era="labs"] .share:nth-child(4) { background: #cb2027 !important; }
-body[data-era="labs"] .html5 { margin-left: auto; padding: 2px 8px; background: #e34f26; color: #fff; font-weight: 700; font-size: 11px; }
-body[data-era="labs"] #labs-panel { background: #fff; border-left: 1px solid #e0e0e0; }
-body[data-era="labs"] #labs-panel h2 { font-weight: 300; font-size: 22px; color: #00a300; }
-.exp { display: flex; gap: 10px; padding: 10px; margin: 8px 0; background: #f6f6f6; align-items: flex-start; }
-.exp b { display: block; }
+/* 2012-style share buttons with count bubbles */
+body[data-era="labs"] .share { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px 0 4px; border-radius: 3px; font: 600 11px/1 "Helvetica Neue", Arial, sans-serif; }
+body[data-era="labs"] .share i { font-style: normal; font-weight: 800; display: grid; place-items: center; min-width: 16px; height: 16px; border-radius: 2px; font-size: 11px; }
+body[data-era="labs"] .share .count { position: relative; margin-left: 8px; padding: 3px 6px; border: 1px solid #d3d6db; border-radius: 2px; background: #fff; color: #333; font-weight: 400; }
+body[data-era="labs"] .share .count::before { content: ""; position: absolute; left: -5px; top: 50%; width: 7px; height: 7px; background: #fff;
+  border-left: 1px solid #d3d6db; border-bottom: 1px solid #d3d6db; transform: translateY(-50%) rotate(45deg); }
+body[data-era="labs"] .share.fb { background: #4c69ba !important; color: #fff !important; border: 1px solid #4267b2; }
+body[data-era="labs"] .share.fb i { background: #fff; color: #4c69ba; }
+body[data-era="labs"] .share.tw { background: linear-gradient(#fff, #dedede) !important; color: #333 !important; border: 1px solid #ccc; }
+body[data-era="labs"] .share.tw i { color: #2ba9e1; font-size: 13px; }
+body[data-era="labs"] .share.gp { background: linear-gradient(#f9f9f9, #ececec) !important; color: #dd4b39 !important; border: 1px solid #d9d9d9; }
+body[data-era="labs"] .share.gp i { background: #dd4b39; color: #fff; padding: 0 2px; }
+body[data-era="labs"] .share.pin { background: linear-gradient(#fefefe, #f0f0f0) !important; color: #cb2027 !important; border: 1px solid #ccc; }
+body[data-era="labs"] .share.pin i { background: #cb2027; color: #fff; border-radius: 50%; font-family: Georgia, serif; }
+body[data-era="labs"] .share:active { transform: translateY(1px); }
+body[data-era="labs"] .html5 { margin-left: auto; padding: 3px 8px 3px 24px; background: #e34f26; color: #fff; font: 800 11px/1 Arial, sans-serif; position: relative; }
+body[data-era="labs"] .html5::before { content: "5"; position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 14px; height: 15px; display: grid; place-items: center;
+  background: #fff; color: #e34f26; font-size: 10px; clip-path: polygon(0 0, 100% 0, 92% 85%, 50% 100%, 8% 85%); }
+body[data-era="labs"] #labs-panel { background: #1f1f1f; color: #eee; border-left: 0; padding: 22px 20px; }
+body[data-era="labs"] #labs-panel h2 { font-weight: 200; font-size: 28px; color: #fff; margin-bottom: 4px; }
+/* Labs experiments as Windows 8-style toggle switches */
+.exp { display: flex; gap: 14px; padding: 12px 0; margin: 0; border-bottom: 1px solid #333; align-items: flex-start; flex-direction: row-reverse; justify-content: space-between; }
+.exp b { display: block; font-weight: 400; font-size: 15px; color: #fff; margin-bottom: 2px; }
+.exp span { color: #aaa; font-size: 12px; }
+.exp input { appearance: none; flex: none; width: 46px; height: 20px; margin: 2px 0 0; border: 2px solid #ccc; background: transparent; position: relative; cursor: default; }
+.exp input::after { content: ""; position: absolute; top: -4px; left: -4px; width: 11px; height: 24px; background: #fff; border: 1px solid #1f1f1f; transition: left .15s; }
+.exp input:checked { background: #00a300; border-color: #00a300; }
+.exp input:checked::after { left: 31px; }
+.exp input:checked + span b::after { content: " On"; color: #00c300; font-size: 11px; margin-left: 6px; }
 body[data-era="labs"] #snapshot:not(:empty) { background: #2d89ef; color: #fff; border: 0; border-radius: 0; }
 body[data-era="labs"] #status:not(:empty) { background: #fff; border-color: #ccc; border-radius: 0; }
 body[data-era="labs"] #timemachine { background: #1d1d1d; color: #eee; }

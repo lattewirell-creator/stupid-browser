@@ -8,7 +8,7 @@ the window, the toolbar, the sounds and the web itself.
 | **90s** (1996–1999) | Buddy Net Navigator | Grey bevelled Windows 95 chrome, big labelled buttons, a "Location:" field, the shooting-star throbber, an Images on/off button, and a dial-up modem handshake when you connect. |
 | **2000s** (2000–2005) | Buddy Net Explorer | Windows XP blue title bar, round green Back/Forward buttons, an "Address" bar with Go, a Links bar, a junk BuddyBar™ toolbar, the yellow pop-up blocker bar, and an XP-style taskbar. |
 | **Late 2000s** (2006–2009) | Buddy Net Chrome | Blue frame with slanted tabs on top, one omnibox, a wrench menu and a "Most visited" thumbnail new tab page. |
-| **2010s Labs** (2010–2016) | Buddy Net Labs | Flat, colourful start-screen tiles, a social bar (Like, Tweet, +1, Pin it) and a Labs panel full of experiments: Instafilter, 3D Web, Night Mode and leather-and-stitches skeuomorphism. |
+| **2010s Labs** (2010–2016) | Buddy Net Labs | A Windows 8-style start screen with app logos and live tiles that flip to show news, a 2012-style share bar with counters (Like, Tweet, +1, Pin it) and a Labs panel full of experiments: Instafilter, 3D Web, Night Mode and leather-and-stitches skeuomorphism. |
 | **AI 2020s** (today) | Buddy Net AI | Dark and rounded, "Ask Buddy or type a URL", AI insight pills and the Buddy AI sidebar that summarizes, explains or answers questions about the page you're on. |
 
 ## Time travel

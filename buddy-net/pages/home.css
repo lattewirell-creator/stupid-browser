@@ -64,15 +64,44 @@ body[data-era="chrome"] { background: #fff; color: #222; font: 13px "Segoe UI", 
 .nt-foot { color: #777; font-size: 12px; }
 .nt-foot a { color: #3f72c8; }
 
-/* ---------- 2010s Labs tiles ---------- */
-body[data-era="labs"] { background: #1d1d1d; color: #fff; font: 14px "Segoe UI", "Open Sans", sans-serif; }
-section[data-era="labs"] { padding: 30px 46px; }
-.start { font-weight: 200; font-size: 48px; margin: 0 0 24px; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; max-width: 760px; }
-.tile { display: flex; align-items: flex-end; height: 140px; padding: 10px; color: #fff; text-decoration: none; font-size: 15px; transition: transform .15s; }
-.tile:first-child, .tile:nth-child(5) { grid-column: span 2; }
-.tile:hover { transform: scale(.97); outline: 3px solid rgba(255,255,255,.5); }
-.labs-foot { color: #999; margin-top: 24px; }
+/* ---------- 2010s Labs: Windows 8-style start screen ---------- */
+body[data-era="labs"] { color: #fff; font: 14px "Segoe UI", "Open Sans", "Helvetica Neue", Arial, sans-serif; min-height: 100vh;
+  background: radial-gradient(circle at 85% 110%, rgba(255,255,255,.07) 0 18%, transparent 18.2%),
+              radial-gradient(circle at 92% 95%, rgba(255,255,255,.05) 0 30%, transparent 30.2%),
+              linear-gradient(135deg, #2b1a5c, #3e1f75 45%, #24124a); background-attachment: fixed; }
+section[data-era="labs"] { padding: 34px 0 30px 56px; }
+.w8-head { display: flex; align-items: center; justify-content: space-between; padding-right: 48px; margin-bottom: 30px; }
+.w8-head h1 { margin: 0; font-weight: 200; font-size: 52px; letter-spacing: -.5px; }
+.w8-user { display: flex; align-items: center; gap: 12px; }
+.w8-name { display: flex; flex-direction: column; align-items: flex-end; font-size: 22px; font-weight: 300; line-height: 1.1; }
+.w8-name small { font-size: 12px; opacity: .7; }
+.w8-avatar { display: grid; place-items: center; width: 42px; height: 42px; background: #00a300; font-weight: 300; font-size: 22px; }
+.w8-groups { display: flex; gap: 56px; overflow-x: auto; padding: 0 48px 18px 0; scrollbar-width: thin; }
+.w8-group h2 { margin: 0 0 12px; font-weight: 300; font-size: 20px; opacity: .9; }
+.w8-grid { display: grid; grid-template-columns: repeat(2, 150px); grid-auto-rows: 150px; grid-auto-flow: dense; gap: 8px; }
+.w8-tile { position: relative; overflow: hidden; color: #fff; text-decoration: none; perspective: 600px; outline: 0;
+  opacity: 0; animation: tileIn .45s cubic-bezier(.1,.9,.2,1) forwards; transition: transform .12s, box-shadow .12s; }
+.w8-tile.w { grid-column: span 2; }
+.w8-tile:hover { box-shadow: inset 0 0 0 3px rgba(255,255,255,.55); }
+.w8-tile:active { transform: scale(.96) rotateX(4deg); }
+.w8-tile.dark { color: #222; }
+@keyframes tileIn { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: none; } }
+.face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.logo svg { width: 56px; height: 56px; fill: #fff; display: block; filter: drop-shadow(0 1px 0 rgba(0,0,0,.08)); }
+.w8-tile.w .logo svg { width: 64px; height: 64px; }
+.label { position: absolute; left: 10px; bottom: 7px; font-size: 13px; }
+/* Live tiles roll up to show the latest news, then back to the logo. */
+.w8-tile.live .face { animation: flipFront 9s var(--flip-delay, 2s) infinite; }
+.w8-tile.live .back { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; padding: 0 16px 18px; transform: translateY(100%);
+  animation: flipBack 9s var(--flip-delay, 2s) infinite; background: inherit; }
+.news { font-size: 15px; line-height: 1.25; }
+.news:first-child { font-size: 19px; font-weight: 300; }
+.news + .news { opacity: .8; font-size: 13px; }
+.mini { position: absolute; right: 10px; bottom: 8px; }
+.mini svg { width: 22px; height: 22px; fill: #fff; display: block; }
+@keyframes flipFront { 0%, 40% { transform: none; } 46%, 90% { transform: translateY(-100%); } 96%, 100% { transform: none; } }
+@keyframes flipBack { 0%, 40% { transform: translateY(100%); } 46%, 90% { transform: none; } 96%, 100% { transform: translateY(100%); } }
+.labs-foot { color: rgba(255,255,255,.6); margin: 18px 0 0; font-size: 13px; }
 
 /* ---------- AI 2020s ---------- */
 body[data-era="ai"] { background: radial-gradient(ellipse at 50% 0, #1e1440, #0e0e14 60%); color: #e8e8f0; font: 15px Inter, system-ui, sans-serif; min-height: 100vh; }

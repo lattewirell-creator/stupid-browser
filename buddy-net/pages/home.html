@@ -69,11 +69,14 @@
   </div>
 </section>
 
-<!-- 2010s Labs: a colorful tile start screen -->
+<!-- 2010s Labs: a Windows 8-style start screen with live tiles -->
 <section data-era="labs">
-  <h1 class="start">Start</h1>
-  <div class="tiles" data-links="labs"></div>
-  <p class="labs-foot">Buddy Net Labs &middot; experimental build &middot; Tap the green <b>Labs</b> flask to try new features.</p>
+  <header class="w8-head">
+    <h1>Start</h1>
+    <div class="w8-user"><span class="w8-name">Buddy<small>Buddy Net Labs</small></span><span class="w8-avatar">B</span></div>
+  </header>
+  <div class="w8-groups" data-links="labs"></div>
+  <p class="labs-foot">Experimental build &middot; Open the green <b>Labs</b> flask in the toolbar to try new features.</p>
 </section>
 
 <!-- AI 2020s: just ask -->
@@ -92,6 +95,7 @@
   </div>
 </section>
 
+<script src="labs.js"></script>
 <script src="home.js"></script>
 </body>
 </html>

@@ -29,11 +29,6 @@ const SITES = {
     ['Digg', 'http://digg.com/'], ['Wikipedia', 'http://www.wikipedia.org/'], ['Flickr', 'http://www.flickr.com/'],
     ['Google', 'http://www.google.com/'], ['Twitter', 'http://twitter.com/'], ['Apple', 'http://www.apple.com/']
   ],
-  labs: [
-    ['Twitter', 'http://twitter.com/', '#55acee'], ['Instagram', 'http://instagram.com/', '#c13584'], ['Pinterest', 'http://pinterest.com/', '#cb2027'],
-    ['Tumblr', 'http://www.tumblr.com/', '#35465c'], ['YouTube', 'http://www.youtube.com/', '#e52d27'], ['Reddit', 'http://www.reddit.com/', '#ff4500'],
-    ['Facebook', 'http://www.facebook.com/', '#3b5998'], ['Google+', 'http://plus.google.com/', '#dd4b39'], ['Kickstarter', 'http://www.kickstarter.com/', '#2bde73']
-  ],
   ai: [
     ['Wikipedia', 'https://www.wikipedia.org/'], ['YouTube', 'https://www.youtube.com/'], ['GitHub', 'https://github.com/'],
     ['Reddit', 'https://www.reddit.com/'], ['Hacker News', 'https://news.ycombinator.com/'], ['Claude', 'https://claude.ai/']
@@ -66,6 +61,7 @@ if (fail) {
 }
 
 const box = document.querySelector(`[data-links="${era}"]`);
+if (box && era === 'labs') renderLabsStart(box, href);
 for (const [name, url, extra] of box ? SITES[era] || [] : []) {
   if (era === 'nineties') {
     const tr = el('tr');
@@ -78,9 +74,6 @@ for (const [name, url, extra] of box ? SITES[era] || [] : []) {
   } else if (era === 'chrome') {
     const a = el('a', { href: href(url), class: 'thumb' });
     a.append(el('span', { class: 'shot' }, name.slice(0, 1)), el('span', { class: 'cap' }, name));
-    box.appendChild(a);
-  } else if (era === 'labs') {
-    const a = el('a', { href: href(url), class: 'tile', style: `background:${extra}` }, name);
     box.appendChild(a);
   } else {
     const a = el('a', { href: url, class: 'sc' });
