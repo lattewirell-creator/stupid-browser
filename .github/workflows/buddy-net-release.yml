@@ -1,0 +1,58 @@
+# Release Buddy Net: builds Windows (installer), Mac (Apple chip + Intel zips) and Linux (.deb) and puts them in the
+# GitHub release tagged "buddy-net", which installed copies update from (buddy-net/updater.js).
+# That release is a pre-release on purpose: The Stupid Browser's updater only looks at the latest full release.
+# Bump "version" in buddy-net/package.json on main first, then run this by hand from Actions.
+name: Release Buddy Net
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: What's new in this version
+        required: true
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: windows-latest, cmd: "npx electron-builder --win nsis --x64 --publish never" }
+          - { os: macos-latest, cmd: "npx electron-builder --mac --publish never" }
+          - { os: ubuntu-24.04, cmd: "npx electron-builder --linux deb --x64 --publish never" }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: buddy-net
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci && node node_modules/electron/install.js
+      - run: ${{ matrix.cmd }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buddynet-${{ matrix.os }}
+          path: |
+            buddy-net/release/BuddyNet-*
+            buddy-net/release/buddynet*.yml
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - name: Publish to the buddy-net release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          VERSION=$(node -p "require('./buddy-net/package.json').version")
+          ls -la out
+          gh release view buddy-net >/dev/null 2>&1 || \
+            gh release create buddy-net --prerelease --target "$GITHUB_SHA" --title "Buddy Net" --notes "Buddy Net downloads and updates."
+          gh release upload buddy-net out/* --clobber
+          gh release edit buddy-net --prerelease --title "Buddy Net $VERSION" --notes "$(printf 'Buddy Net %s\n\n%s\n\nDownloads: BuddyNet-Setup.exe (Windows), BuddyNet-mac-arm64.zip (Apple chip Mac), BuddyNet-mac-x64.zip (Intel Mac), BuddyNet-linux-amd64.deb (Ubuntu/Debian).' "$VERSION" "$NOTES")"

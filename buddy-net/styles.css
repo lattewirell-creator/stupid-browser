@@ -434,3 +434,101 @@ body[data-era="ai"] #warp { background: radial-gradient(circle, rgba(124,58,237,
 body[data-era="ai"] #warp-year { background: linear-gradient(90deg, #c4b5fd, #67e8f9, #f9a8d4); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
 
 body.maximized[data-era="explorer"] #titlebar { border-radius: 0; }
+
+/* =====================================================================
+   Updates: one prompt, styled the way each era delivered updates
+   ===================================================================== */
+#update { position: fixed; z-index: 45; }
+.upd-head { display: flex; align-items: center; gap: 8px; }
+.upd-title { flex: 1; font-weight: 700; }
+.upd-text, .upd-eta { margin: 6px 0; }
+.upd-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.upd-bar { position: relative; height: 16px; overflow: hidden; }
+.upd-bar i { position: absolute; left: 0; top: 0; bottom: 0; transition: width .25s; }
+.upd-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(128,128,128,.3); }
+.upd-row button { padding: 4px 10px; border-radius: 4px; border: 1px solid #aaa; background: #f4f4f4; color: #222; font: inherit; white-space: nowrap; }
+
+/* 90s: a Windows 95 dialog with the flying-paper file copy */
+body[data-era="nineties"] #update { left: 50%; top: 26%; transform: translateX(-50%); width: 420px; padding: 3px; background: #c0c0c0;
+  box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #dfdfdf, inset -2px -2px #808080, inset 2px 2px #fff, 4px 4px 0 rgba(0,0,0,.35); }
+body[data-era="nineties"] .upd-head { height: 20px; padding: 0 3px; background: linear-gradient(90deg, #000080, #1084d0); color: #fff; }
+body[data-era="nineties"] .upd-icon { width: 14px; height: 14px; background: #c0c0c0; box-shadow: inset -1px -1px #000, inset 1px 1px #fff; }
+body[data-era="nineties"] .upd-x, body[data-era="nineties"] .upd-btns button { background: #c0c0c0; border: 0;
+  box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf; }
+body[data-era="nineties"] .upd-x { width: 16px; height: 14px; padding: 0; font: 700 11px/10px Arial, sans-serif; color: #000; }
+body[data-era="nineties"] .upd-body { padding: 12px 14px 10px; }
+body[data-era="nineties"] .upd-available .upd-body, body[data-era="nineties"] .upd-ready .upd-body { padding-left: 62px; position: relative; }
+body[data-era="nineties"] .upd-available .upd-body::before, body[data-era="nineties"] .upd-ready .upd-body::before { content: "i"; position: absolute; left: 16px; top: 14px; width: 32px; height: 32px;
+  border-radius: 50%; background: #fff; border: 2px solid #000080; color: #000080; font: italic 900 22px/30px Georgia, serif; text-align: center; }
+body[data-era="nineties"] .upd-btns button { min-width: 84px; height: 24px; color: #000; }
+body[data-era="nineties"] .upd-btns button:first-child { outline: 1px dotted #000; outline-offset: -5px; }
+body[data-era="nineties"] .upd-bar { height: 18px; padding: 2px; background: #fff; box-shadow: inset -1px -1px #fff, inset 1px 1px #808080; }
+body[data-era="nineties"] .upd-bar i { left: 2px; top: 2px; bottom: 2px; background: repeating-linear-gradient(90deg, #000080 0 9px, transparent 9px 11px); }
+.upd-copy-anim { position: relative; height: 46px; margin-bottom: 6px; }
+.upd-copy-anim .folder { position: absolute; top: 12px; width: 34px; height: 26px; background: linear-gradient(#ffe680, #e6b800); border: 1px solid #806000; border-radius: 1px 4px 2px 2px; }
+.upd-copy-anim .folder::before { content: ""; position: absolute; left: -1px; top: -6px; width: 14px; height: 6px; background: #ffe680; border: 1px solid #806000; border-bottom: 0; }
+.upd-copy-anim .a { left: 20px; } .upd-copy-anim .b { right: 20px; }
+.upd-copy-anim .paper { position: absolute; left: 34px; top: 14px; width: 14px; height: 18px; background: #fff; border: 1px solid #000; animation: paperFly 1.4s linear infinite; }
+@keyframes paperFly { 0% { left: 40px; top: 14px; transform: rotate(0); } 50% { top: -2px; transform: rotate(160deg); } 100% { left: calc(100% - 56px); top: 14px; transform: rotate(360deg); } }
+
+/* 2000s: an XP balloon from the taskbar, and Windows Update while downloading */
+body[data-era="explorer"] #update { right: 12px; bottom: 44px; width: 330px; padding: 10px 12px; background: #ffffe1; color: #000; border: 1px solid #000;
+  border-radius: 7px; box-shadow: 2px 3px 6px rgba(0,0,0,.35); font: 11px Tahoma, sans-serif; cursor: pointer; }
+body[data-era="explorer"] #update::after { content: ""; position: absolute; right: 60px; bottom: -11px; border: 10px solid transparent; border-top-color: #ffffe1; border-bottom: 0;
+  filter: drop-shadow(0 1px 0 #000); }
+body[data-era="explorer"] .upd-icon { width: 18px; height: 20px; background: linear-gradient(135deg, #ffe066, #e3a600); clip-path: polygon(50% 0, 100% 18%, 92% 70%, 50% 100%, 8% 70%, 0 18%); }
+body[data-era="explorer"] .upd-x { border: 1px solid #b0b0a0; background: #fff; border-radius: 3px; width: 16px; height: 16px; padding: 0; line-height: 12px; }
+body[data-era="explorer"] .upd-btns { display: none; }
+body[data-era="explorer"] .upd-downloading, body[data-era="explorer"] .upd-installing { cursor: default !important; }
+body[data-era="explorer"] .upd-downloading .upd-btns, body[data-era="explorer"] .upd-installing .upd-btns { display: flex; }
+body[data-era="explorer"] #update.upd-downloading, body[data-era="explorer"] #update.upd-installing { width: 360px; padding: 0; background: #ece9d8; border: 1px solid #0831d9; border-radius: 8px 8px 0 0; }
+body[data-era="explorer"] #update.upd-downloading::after, body[data-era="explorer"] #update.upd-installing::after { display: none; }
+body[data-era="explorer"] .upd-downloading .upd-head, body[data-era="explorer"] .upd-installing .upd-head { height: 26px; padding: 0 8px; border-radius: 7px 7px 0 0; color: #fff;
+  font: 700 12px "Trebuchet MS", sans-serif; background: linear-gradient(#0997ff, #0053ee 8%, #0050ee 40%, #06f 88%, #003dd7); }
+body[data-era="explorer"] .upd-downloading .upd-body, body[data-era="explorer"] .upd-installing .upd-body { padding: 10px 14px 12px; }
+body[data-era="explorer"] .upd-bar { height: 16px; padding: 2px; background: #fff; border: 1px solid #7f9db9; border-radius: 3px; }
+body[data-era="explorer"] .upd-bar i { left: 2px; top: 2px; bottom: 2px; background: repeating-linear-gradient(90deg, #36d936 0 7px, #1fa61f 7px 8px, transparent 8px 10px); }
+body[data-era="explorer"] .upd-btns button { border: 1px solid #003c74; border-radius: 3px; background: linear-gradient(#fff, #ece9d8); padding: 2px 14px; }
+
+/* Late 2000s: Chrome's wrench gets a green arrow, with a bubble beneath it */
+body.update-badge[data-era="chrome"] #btn-menu, body.update-badge[data-era="labs"] #btn-menu { position: relative; }
+body.update-badge[data-era="chrome"] #btn-menu::after, body.update-badge[data-era="labs"] #btn-menu::after { content: "\2191"; position: absolute; right: 0; bottom: 1px; width: 13px; height: 13px;
+  border-radius: 50%; background: #2fa52f; color: #fff; font: 700 10px/13px Arial, sans-serif; text-align: center; }
+body[data-era="chrome"] #update { right: 8px; top: 78px; width: 300px; padding: 12px 14px; background: #fff; color: #222; border: 1px solid #8ca5cf; border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.25); font: 12px "Segoe UI", Arial, sans-serif; }
+body[data-era="chrome"] #update::before { content: ""; position: absolute; right: 12px; top: -8px; width: 14px; height: 14px; background: #fff; border-left: 1px solid #8ca5cf; border-top: 1px solid #8ca5cf; transform: rotate(45deg); }
+body[data-era="chrome"] .upd-icon { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #e6efff, #5d8fdc); }
+body[data-era="chrome"] .upd-title { color: #3f72c8; font-size: 13px; }
+body[data-era="chrome"] .upd-bar { height: 6px; border-radius: 3px; background: #dde8f7; }
+body[data-era="chrome"] .upd-bar i { background: linear-gradient(#7aa3e6, #3f72c8); border-radius: 3px; }
+body[data-era="chrome"] .upd-btns button { padding: 4px 12px; border: 1px solid #8ca5cf; border-radius: 3px; background: linear-gradient(#fff, #dde8f7); }
+body[data-era="chrome"] .upd-yes { background: linear-gradient(#7aa3e6, #4a79c9) !important; color: #fff; border-color: #3c63a8 !important; font-weight: 600; }
+
+/* 2010s: a Windows 8 toast sliding in from the right */
+body[data-era="labs"] #update { right: 0; top: 92px; width: 380px; padding: 14px 16px 14px 76px; background: #1f1f1f; color: #fff; border: 2px solid #00a300; border-right: 0;
+  font: 13px "Segoe UI", sans-serif; animation: toastIn .35s cubic-bezier(.1,.9,.2,1); box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+@keyframes toastIn { from { transform: translateX(100%); } to { transform: none; } }
+body[data-era="labs"] .upd-icon { position: absolute; left: 14px; top: 14px; width: 48px; height: 48px; background: #00a300; }
+body[data-era="labs"] .upd-icon::after { content: "B"; display: block; text-align: center; font: 300 30px/48px "Segoe UI", sans-serif; }
+body[data-era="labs"] .upd-title { font-weight: 600; }
+body[data-era="labs"] .upd-text { color: #ccc; margin: 2px 0 6px; }
+body[data-era="labs"] .upd-bar { height: 4px; background: #444; }
+body[data-era="labs"] .upd-bar i { background: #00c300; }
+body[data-era="labs"] .upd-btns { justify-content: flex-start; }
+body[data-era="labs"] .upd-btns button { padding: 5px 16px; border: 2px solid #fff; background: transparent; color: #fff; }
+body[data-era="labs"] .upd-yes { background: #fff !important; color: #1f1f1f !important; font-weight: 600; }
+
+/* AI 2020s: Buddy asks to update itself */
+body[data-era="ai"] #update { right: 20px; bottom: 56px; width: 330px; padding: 16px 18px; border-radius: 18px; color: #e8e8f0; font: 13px/1.45 Inter, system-ui, sans-serif;
+  border: 1px solid transparent; background: linear-gradient(#16161f, #16161f) padding-box, linear-gradient(120deg, #8b5cf6, #22d3ee, #f472b6) border-box;
+  box-shadow: 0 0 40px rgba(139,92,246,.3), 0 10px 30px rgba(0,0,0,.5); animation: aiIn .4s ease-out; }
+@keyframes aiIn { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+body[data-era="ai"] .upd-icon { width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(#8b5cf6, #22d3ee, #f472b6, #8b5cf6); animation: spin 4s linear infinite; }
+body[data-era="ai"] .upd-title { font-weight: 600; font-size: 14px; }
+body[data-era="ai"] .upd-text { color: #a1a1b5; }
+body[data-era="ai"] .upd-bar { height: 6px; border-radius: 999px; background: #262634; }
+body[data-era="ai"] .upd-bar i { border-radius: 999px; background: linear-gradient(90deg, #8b5cf6, #22d3ee, #f472b6); }
+body[data-era="ai"] .upd-btns button { padding: 7px 14px; border-radius: 999px; border: 1px solid #33334a; background: #1d1d29; color: #d4d4e4; }
+body[data-era="ai"] .upd-yes { border: 0 !important; color: #fff !important; background: linear-gradient(90deg, #7c3aed, #0891b2) !important; font-weight: 600; }
+body[data-era="ai"] .upd-row button { background: #23232f; color: #e8e8f0; border-color: #33334a; }
+body:has(#settings-pop:not([hidden])) #update { display: none !important; }

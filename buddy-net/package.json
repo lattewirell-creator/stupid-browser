@@ -1,28 +1,97 @@
 {
   "name": "buddy-net",
   "productName": "Buddy Net",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Buddy Net - a time-travelling web browser: 90s, Internet Explorer, early Chrome, the experimental 2010s and the AI-filled 2020s",
   "author": "lattewirell-creator",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
     "dist:mac": "electron-builder --mac --publish never",
     "dist:linux": "electron-builder --linux deb --x64 --publish never"
   },
   "build": {
     "appId": "com.emil.buddynet",
     "productName": "Buddy Net",
-    "directories": { "output": "release" },
-    "files": ["*.js", "*.html", "*.css", "pages/**/*", "package.json"],
-    "mac": { "identity": null, "category": "public.app-category.entertainment" },
-    "linux": { "target": ["deb"], "category": "Network;WebBrowser", "executableName": "buddy-net" },
-    "deb": { "packageName": "buddy-net", "maintainer": "lattewirell-creator <noreply@github.com>" }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "*.js",
+      "*.html",
+      "*.css",
+      "pages/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.entertainment",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "BuddyNet-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Network;WebBrowser",
+      "executableName": "buddy-net",
+      "artifactName": "BuddyNet-linux-amd64.${ext}"
+    },
+    "deb": {
+      "packageName": "buddy-net",
+      "maintainer": "lattewirell-creator <noreply@github.com>"
+    },
+    "afterPack": "scripts/adhoc-sign.js",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/lattewirell-creator/stupid-browser/releases/download/buddy-net",
+        "channel": "buddynet"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "BuddyNet-Setup.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Buddy Net",
+      "artifactName": "BuddyNet-Setup.exe",
+      "deleteAppDataOnUninstall": false
+    }
   },
   "devDependencies": {
     "electron": "^44.8.0",
     "electron-builder": "^26.15.3"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "homepage": "https://github.com/lattewirell-creator/stupid-browser/tree/main/buddy-net",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lattewirell-creator/stupid-browser.git"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
 }

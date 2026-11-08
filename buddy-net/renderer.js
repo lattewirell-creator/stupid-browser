@@ -281,6 +281,7 @@ function setEra(id, { animate = true } = {}) {
   if (era.id !== 'labs') $('labs-panel').hidden = true;
   $('infobar').hidden = true;
   applyLabs();
+  if (typeof renderUpdate === 'function') renderUpdate();
   window.buddy.setSettings({ era: era.id });
   if (changed && animate) warp(era.live ? 'NOW' : state.years[era.id]);
   if (changed || animate === 'year') reloadInEra();

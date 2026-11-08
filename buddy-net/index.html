@@ -120,12 +120,15 @@
       <label><input type="checkbox" id="set-sounds"> Era sounds (dial-up modem and friends)</label>
       <label class="key">Anthropic API key for Buddy AI <input type="password" id="set-key" placeholder="sk-ant-&hellip; (optional)"></label>
       <p class="muted" id="key-state"></p>
+      <div class="upd-row"><span id="upd-line"></span><button id="upd-check">Check for updates</button></div>
     </div>
   </div>
 
+  <div id="update" hidden></div>
   <div id="toast" hidden></div>
   <div id="warp" hidden><div id="warp-year"></div></div>
 
   <script src="renderer.js"></script>
+  <script src="update-ui.js"></script>
 </body>
 </html>

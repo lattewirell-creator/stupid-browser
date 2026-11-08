@@ -4,6 +4,7 @@
 const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const startUpdater = require('./updater');
 
 app.setName('Buddy Net');
 
@@ -21,6 +22,7 @@ function saveSettings(s) {
   } catch (err) { console.error('settings save failed', err); }
 }
 let settings;
+let updater;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -102,10 +104,17 @@ ipcMain.handle('ai:ask', async (_e, { question, page }) => {
   }
 });
 
+ipcMain.handle('update:state', () => updater.state());
+ipcMain.handle('update:check', () => updater.check());
+ipcMain.on('update:download', () => updater.download());
+ipcMain.on('update:install', () => updater.install());
+
 app.whenReady().then(() => {
   settings = loadSettings();
+  updater = startUpdater((st) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:status', st); });
   Menu.setApplicationMenu(null);
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+app.on('before-quit', () => updater && updater.onQuit());
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
