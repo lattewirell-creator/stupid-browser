@@ -1268,10 +1268,16 @@ function initUpdater() {
   autoUpdater.on('update-available', (i) => setUpdate({ status: 'downloading', version: i.version, progress: 0 }));
   autoUpdater.on('update-not-available', () => setUpdate({ status: 'none', lastCheck: Date.now() }));
   autoUpdater.on('download-progress', (p) => setUpdate({ status: 'downloading', progress: Math.round(p.percent || 0) }));
-  autoUpdater.on('update-downloaded', (i) => setUpdate({ status: 'ready', version: i.version, progress: 100, lastCheck: Date.now() }));
+  autoUpdater.on('update-downloaded', (i) => setUpdate({ status: 'ready', version: i.version, progress: 100, lastCheck: Date.now(), notes: notesFrom(i.releaseNotes) }));
   autoUpdater.on('error', (err) => setUpdate({ status: 'error', error: String((err && err.message) || err).split('\n')[0].slice(0, 200), lastCheck: Date.now() }));
   setTimeout(checkForUpdates, 10000);
   setInterval(checkForUpdates, UPDATE_EVERY);
+}
+// What's new, from the release notes: a few short plain lines (no HTML, no Markdown) for the update card.
+function notesFrom(raw) {
+  let text = Array.isArray(raw) ? raw.map((r) => (r && r.note) || '').join('\n') : String(raw || '');
+  text = text.replace(/<\/(li|p|div|h\d)>|<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  return text.split('\n').map((l) => l.replace(/^\s*[-*•]\s*/, '').replace(/\*\*|__|`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim()).filter((l) => l.length > 3).slice(0, 4).map((l) => (l.length > 160 ? l.slice(0, 157).trimEnd() + '…' : l));
 }
 function checkForUpdates() {
   if (!autoUpdater) return Object.assign({}, updateState);
@@ -1281,11 +1287,22 @@ function checkForUpdates() {
 }
 handle('update:status', ANY, () => Object.assign({}, updateState));
 handle('update:check', ANY, () => { if (!autoUpdater) return Object.assign({}, updateState); setUpdate({ status: 'checking' }); return checkForUpdates(); });
+// Restart to update: every window fades to a calm "Updating…" screen, the installer then runs silently (no Windows
+// setup wizard), and the browser comes back with the same tabs and a "You're on <version>" card saying what's new.
 handle('update:install', ANY, () => {
   if (!autoUpdater || updateState.status !== 'ready') return false;
+  setSettings({ justUpdated: { version: updateState.version, notes: updateState.notes || [] }, restoreOnce: true });
+  broadcast('update:installing', { version: updateState.version });
   quitting = true; saveSessions(); store.flushAll();
-  setImmediate(() => autoUpdater.quitAndInstall(false, true));   // show installer progress, relaunch after
+  setTimeout(() => autoUpdater.quitAndInstall(true, true), 1600);   // silent install, relaunch after
   return true;
+});
+// Shown once, by the first window after an update.
+handle('update:justUpdated', ['shell'], () => {
+  const j = getSettings().justUpdated;
+  if (!j) return null;
+  setSettings({ justUpdated: null });
+  return j.version === app.getVersion() ? { version: j.version, notes: Array.isArray(j.notes) ? j.notes.map(String).slice(0, 4) : [] } : null;
 });
 
 /* =========================================================================
@@ -1793,7 +1810,8 @@ ipcMain.handle('picker:choose', (e, id) => {
 function openStartupWindows(extraUrls) {
   const s = getSettings();
   const saved = store.read('session.json', []);
-  if (s.startup === 'continue' && saved.length) {
+  const restoreOnce = s.restoreOnce; if (restoreOnce) setSettings({ restoreOnce: false });   // right after an update: always the same tabs back
+  if ((s.startup === 'continue' || restoreOnce) && saved.length) {
     saved.forEach((sess, i) => createWindow({ restore: sess, urls: i === 0 && extraUrls.length ? extraUrls : null }));
   } else if (s.startup === 'pages' && s.startupPages && s.startupPages.length) {
     createWindow({ urls: [...s.startupPages, ...extraUrls] });
