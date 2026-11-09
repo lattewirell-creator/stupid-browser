@@ -1,7 +1,7 @@
 {
   "name": "the-stupid-browser",
   "productName": "The Stupid Browser",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "The Stupid Browser - a calm personal web browser",
   "author": "lattewirell-creator",
   "main": "src/main.js",
@@ -148,10 +148,9 @@
       "artifactName": "StupidBrowser-portable.exe"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
       "allowElevation": false,
-      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "The Stupid Browser",
@@ -160,7 +159,9 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
-      "include": "build/installer.nsh"
+      "include": "build/installer.nsh",
+      "runAfterFinish": true,
+      "installerHeaderIcon": "build/icon.ico"
     },
     "compression": "normal",
     "extraMetadata": {
