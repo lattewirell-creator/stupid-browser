@@ -11,7 +11,7 @@ const INVOKE = [
 const EVENTS = [
   'shortcut', 'open-url', 'update:installing', 'ext:createTab', 'ext:selectTab', 'ext:closeTab', 'reopen-plain', 'paste-go', 'settings:changed', 'bookmarks:changed', 'bots:changed', 'sidebar:changed',
   'downloads:started', 'downloads:update', 'downloads:removed', 'downloads:cleared', 'perm:prompt', 'perms:changed',
-  'adblock:count', 'consent:declined', 'gesture', 'buddy:delta', 'launcher:changed', 'pw:offer', 'card:offer', 'fullscreen', 'update:status', 'win:focus', 'tab:audio'
+  'adblock:count', 'consent:declined', 'gesture', 'buddy:delta', 'launcher:changed', 'pw:offer', 'card:offer', 'fullscreen', 'update:status', 'win:focus', 'win:minimized', 'tab:audio'
 ];
 contextBridge.exposeInMainWorld('stupid', {
   platform: process.platform,

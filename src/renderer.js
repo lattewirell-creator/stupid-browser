@@ -1661,9 +1661,10 @@ function rewindSoon(tab) {
 /* ---------------- tab sleeping (Memory saver) ----------------
    Background tabs that haven't been looked at for a while are unloaded (their webview is removed) and
    reload instantly when clicked, like Chrome's Memory Saver. Settings → Performance sets the delay. */
-function sleepable(t) { return t.wv && t.id !== activeId && !(split && split.includes(t.id)) && !t.audible && !t.loading; }
-async function sleepTab(t, now = false) {
-  if (!sleepable(t)) return false;
+function sleepable(t, evenActive = false) { return t.wv && (evenActive || t.id !== activeId) && !(split && split.includes(t.id)) && !t.audible && !t.loading; }
+async function sleepTab(t, now = false, evenActive = false) {
+  const sleepable_ = sleepable; const sleepable2 = (x) => sleepable_(x, evenActive);
+  if (!sleepable2(t)) return false;
   // Don't throw away half-typed text.
   if (!now || t.ready) {
     let typing = false;
@@ -1671,10 +1672,10 @@ async function sleepTab(t, now = false) {
     // the tab awake forever: a slider, a hidden field, or one the page filled in itself (like the New Tab page's).
     try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("[data-sb-typed]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 : String(e.value || "").trim() && e.value !== e.defaultValue)'); } catch {}
     if (!typing && t.wcId) { try { typing = await call('tab:typedInFrame', t.wcId); } catch {} }   // an editor inside a frame
-    if (typing || !sleepable(t)) return false;
+    if (typing || !sleepable2(t)) return false;
   }
   // Keep its Back/Forward history (and where you were on each page), put back when it wakes.
-  if (t.wcId && /^https?:/.test(t.url)) { try { t.hist = await call('tab:history', t.wcId); } catch { t.hist = null; } if (!sleepable(t)) return false; }
+  if (t.wcId && /^https?:/.test(t.url)) { try { t.hist = await call('tab:history', t.wcId); } catch { t.hist = null; } if (!sleepable2(t)) return false; }
   try { const u = t.wv.getURL(); if (u) t.url = u; const ti = t.wv.getTitle(); if (ti) t.title = ti; } catch {}
   t.wv.remove(); t.wv = null; t.wcId = null; t.ready = false; t.loading = false; t.asleep = true;
   renderTab(t);
@@ -1698,6 +1699,21 @@ setInterval(() => {
     if (sleepable(t) && (t.lastActive || 0) < now - wait) sleepTab(t);
   }
 }, 60000);
+
+// Minimized for a minute (Memory saver on): the tab you were on goes to sleep too, so a browser waiting in the taskbar
+// costs almost nothing. It wakes, with its history, the moment the window comes back. Not while it plays sound.
+let minimizedT = 0, sleptOnMinimize = null;
+api.on('win:minimized', (on) => {
+  clearTimeout(minimizedT);
+  if (on) {
+    if (settings.tabSleep === 0) return;
+    minimizedT = setTimeout(async () => { const t = activeTab(); if (t && await sleepTab(t, false, true)) sleptOnMinimize = t.id; }, 60000);
+  } else if (sleptOnMinimize) {
+    const t = tabById(sleptOnMinimize); sleptOnMinimize = null;
+    if (t && !t.wv && t.id === activeId) { t.asleep = false; createWebview(t); renderAll(); }
+  }
+});
+api.on('win:focus', (on) => { if (on && sleptOnMinimize) { const t = tabById(sleptOnMinimize); sleptOnMinimize = null; if (t && !t.wv && t.id === activeId) { t.asleep = false; createWebview(t); renderAll(); } } });
 
 /* ---------------- session save ---------------- */
 let saveTimer;

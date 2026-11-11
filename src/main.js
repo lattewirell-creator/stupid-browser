@@ -21,6 +21,12 @@ app.setName('The Stupid Browser');
 
 const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
 if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
+// Low memory (on unless turned off in Settings; read at start, applies after a restart): the network service runs
+// inside the browser process instead of its own (~55 MB less), as Chrome does on low-memory phones.
+try {
+  const raw = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8'));
+  if (raw.lowMemory !== false) app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2');
+} catch { app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2'); }
 
 // Plain Chrome user agent so sites (Google, AI chats) treat us like a normal browser.
 const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; Win64; x64';
@@ -80,7 +86,7 @@ const DEFAULT_SETTINGS = () => ({
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
-  adblock: true, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
+  adblock: true, lowMemory: true, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
   pinned: []
@@ -322,6 +328,9 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
+  win.on('minimize', () => win.webContents.send('win:minimized', true));
+  win.on('restore', () => win.webContents.send('win:minimized', false));
+  win.on('show', () => win.webContents.send('win:minimized', false));
   win.on('focus', () => win.webContents.send('win:focus', true));   // the window lets go of its spare new tab while you're away
   win.on('blur', () => win.webContents.send('win:focus', false));
   win.on('closed', () => {
