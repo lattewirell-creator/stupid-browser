@@ -7,6 +7,18 @@ const { ipcRenderer } = require('electron');
 // You typed in a field (a real key press, not a value the page set): it's marked, so a tab with your half-written
 // text is never put to sleep (renderer.js sleepTab). Every page, internal ones too.
 addEventListener('input', (e) => { if (e.isTrusted && e.target && e.target.dataset) e.target.dataset.sbTyped = '1'; }, true);
+// Peek: Shift-click a link and it opens in a floating preview over the page instead of a new window (Arc / Zen style).
+// Only real clicks on plain web links; pages that use Shift-click themselves (editors, selections in lists) keep it
+// as long as they handle it first (we listen on the window, after the page's own handlers on the element).
+addEventListener('click', (e) => {
+  if (!e.isTrusted || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.button !== 0 || e.defaultPrevented) return;
+  const a = e.target && e.target.closest && e.target.closest('a[href]');
+  if (!a || a.isContentEditable || a.closest('[contenteditable="true"]') || a.hasAttribute('download')) return;
+  let url; try { url = new URL(a.href, location.href); } catch { return; }
+  if (!/^https?:$/.test(url.protocol)) return;
+  e.preventDefault(); e.stopPropagation();
+  ipcRenderer.send('peek:open', url.href);
+}, false);
 if (/^(https?|file):$/.test(location.protocol)) {
   const srcOf = (img) => img.currentSrc || img.src || '';
   const ours = (img) => img && img.tagName === 'IMG' && srcOf(img) && img.draggable !== false && !img.closest('[draggable="true"]');

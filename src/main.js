@@ -955,7 +955,8 @@ handle('vpn:open', ['shell'], async () => {
 handle('session:save', ['shell'], (e, data) => {
   const w = entryFor(e.sender);
   if (!w || w.incognito || !data) return;
-  sessions.set(w.win.id, { tabs: (data.tabs || []).slice(0, 200), groups: (data.groups || []).slice(0, 50), active: data.active | 0 });
+  const spaces = (Array.isArray(data.spaces) ? data.spaces : []).slice(0, 20).map((x) => ({ id: String(x.id).slice(0, 24), name: String(x.name || '').slice(0, 40), color: String(x.color || 'clay').slice(0, 12) }));
+  sessions.set(w.win.id, { tabs: (data.tabs || []).slice(0, 200), groups: (data.groups || []).slice(0, 50), active: data.active | 0, spaces, space: String(data.space || '').slice(0, 24) });
   saveSessions();
 });
 
@@ -1130,6 +1131,13 @@ ipcMain.on('consent:declined', (e) => {
   if (seen.has(host)) return; seen.add(host);
   shell.send('consent:declined', { host, wcId: e.sender.id });
 });
+// Peek (drag-preload.js): Shift-click on a link in a tab shows it in a floating preview in that window.
+const peekWcs = new Set();   // the preview's own page: Escape inside it closes it
+ipcMain.on('peek:open', (e, url) => {
+  if (e.sender.getType() !== 'webview' || typeof url !== 'string' || url.length > 8000 || !/^https?:\/\//i.test(url)) return;
+  const shell = shellFor(e.sender); if (shell && !shell.isDestroyed()) shell.send('open-url', { url, where: 'peek' });
+});
+handle('peek:mark', ['shell'], (_e, id) => { const wc = webContents.fromId(+id); if (wc && wc.getType() === 'webview') { peekWcs.add(wc.id); wc.once('destroyed', () => peekWcs.delete(wc.id)); } });
 /* ---------- drag a picture out of a page as a file (drag-preload.js) ---------- */
 // The picture is saved in a temporary folder (emptied when the browser quits) and dragged as that file. It's
 // fetched with the tab's own session (its cookies), as you press on it, so the drag doesn't wait.
@@ -1428,6 +1436,7 @@ function konami(target, input) {
 function hookShortcuts(wc) {
   wc.on('before-input-event', (event, input) => {
     { const t = shellFor(wc); if (t) konami(t, input); }
+    if (input.type === 'keyDown' && input.key === 'Escape' && peekWcs.has(wc.id)) { const t = shellFor(wc); if (t) { event.preventDefault(); t.send('shortcut', 'close-peek'); } return; }
     const cmd = shortcutFor(input);
     if (!cmd) return;
     const target = shellFor(wc);
@@ -1470,6 +1479,7 @@ function pageContextMenu(wc, p) {
   const sep = () => { if (T.length && T[T.length - 1].type !== 'separator') T.push({ type: 'separator' }); };
   if (p.linkURL && /^(https?|stupid):/.test(p.linkURL)) {
     T.push({ label: 'Open link in new tab', click: () => openUrl(p.linkURL, 'background') });
+    if (/^https?:/.test(p.linkURL)) T.push({ label: 'Peek at link (Shift+click)', click: () => openUrl(p.linkURL, 'peek') });
     T.push({ label: 'Open link in new window', click: () => createWindow({ urls: [p.linkURL] }) });
     T.push({ label: 'Open link in private window', click: () => createWindow({ incognito: true, urls: [p.linkURL] }) });
     T.push({ label: 'Save link as…', click: () => wc.downloadURL(p.linkURL) });

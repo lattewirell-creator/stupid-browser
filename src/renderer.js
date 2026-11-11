@@ -19,6 +19,10 @@ let bots = [];
 let sideItems = [];
 let tabs = [];              // ordered; pinned first, group members kept together
 let groups = new Map();     // id -> { id, name, color, collapsed }
+// Spaces: named sets of tabs (Work, Private, School…). Every tab belongs to one; pinned tabs show in all of them.
+let spaces = [{ id: 'home', name: 'Home', color: 'clay' }];
+let curSpace = 'home';
+const inSpace = (t) => t.pinned || (t.space || 'home') === curSpace;
 let activeId = null;
 let split = null;
 let nextId = 1;
@@ -206,10 +210,10 @@ function newTab(url, opts = {}) {
   // right away, so a second new tab straight after the first is just as quick.
   if (!lazy && (url || NEWTAB) === NEWTAB && spareTab && !spareTab.crashed && spareTab.url === NEWTAB) {
     tab = spareTab; spareTab = null; tab.wv.classList.remove('spare');
-    Object.assign(tab, { pinned, groupId, muted, lastActive: Date.now(), title: title || tab.title });
+    Object.assign(tab, { pinned, groupId, muted, space: opts.space || curSpace, lastActive: Date.now(), title: title || tab.title });
     if (muted) try { tab.wv.setAudioMuted(true); } catch {}
     queueSpare(150, 500);
-  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
+  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, space: opts.space || curSpace, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
   if (index != null) tabs.splice(Math.min(index, tabs.length), 0, tab);
   else if (afterId != null) {
     // Chrome-like: links open right after the opener (and its other children)
@@ -290,12 +294,13 @@ function activate_(id) {
   const tab = tabById(id);
   if (!tab) return;
   if (split && !split.includes(id)) split = null;
+  if (!tab.pinned && (tab.space || 'home') !== curSpace) { curSpace = tab.space || 'home'; if (window.renderSpaceBtn) window.renderSpaceBtn(); }
   if (tab.groupId && groups.get(tab.groupId) && groups.get(tab.groupId).collapsed) groups.get(tab.groupId).collapsed = false;
   const changed = activeId !== id;
   const prev = changed && tabById(activeId); if (prev) prev.lastActive = Date.now();   // "last seen", for tab sleeping
   activeId = id;
   tab.lastActive = Date.now();
-  if (changed) rewindSoon(tab);
+  if (changed) { rewindSoon(tab); closePeek(); }
   // Memory saver set to "as soon as you leave it": the tab you just left goes to sleep (after a short moment, so the
   // new one has painted and a quick switch back doesn't reload). Playing, split-view and half-typed tabs stay awake.
   if (changed && prev && instantSleep()) { const p = prev; setTimeout(() => { if (p.id !== activeId && tabs.includes(p)) sleepTab(p); }, 1500); }
@@ -332,7 +337,11 @@ function closeTab(id, { record = true, quiet = false } = {}) {
   if (activeId === id) {
     // Chrome picks the tab to the right, else the left one (opener first if it opened this one)
     const opener = tab.openerId && tabById(tab.openerId);
-    const next = opener && opener !== tabs[i] ? opener : tabs[Math.min(i, tabs.length - 1)];
+    // Stay in this space: the next tab to the right in it, else the left one; an empty space gets a new tab.
+    const here = tabs.filter(inSpace);
+    if (!here.length) { newTab(); return; }
+    const right = tabs.slice(i).find(inSpace), left = [...tabs.slice(0, i)].reverse().find(inSpace);
+    const next = opener && opener !== tabs[i] && inSpace(opener) ? opener : (right || left);
     activate_(next.id);
   } else renderAll();
   scheduleSave();
@@ -342,8 +351,8 @@ function reopenClosed() {
   if (!c) { toast('No recently closed tabs'); return; }
   newTab(c.url, { title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
 }
-function closeOthers(tab) { for (const t of tabs.filter((x) => x.id !== tab.id && !x.pinned)) closeTab(t.id); activate_(tab.id); }
-function closeRight(tab) { const i = tabs.indexOf(tab); for (const t of tabs.slice(i + 1)) closeTab(t.id); }
+function closeOthers(tab) { for (const t of tabs.filter((x) => x.id !== tab.id && !x.pinned && inSpace(x))) closeTab(t.id); activate_(tab.id); }
+function closeRight(tab) { const i = tabs.indexOf(tab); for (const t of tabs.slice(i + 1).filter(inSpace)) closeTab(t.id); }
 function togglePin(tab) { tab.pinned = !tab.pinned; tab.groupId = null; normalizeOrder(); renderAll(); scheduleSave(); }
 function toggleMute(tab) {
   tab.muted = !tab.muted;
@@ -505,7 +514,9 @@ function renderStrip() {
   let lastGroup = null;
   const want = [], wantPinned = [];
   for (const t of tabs) {
+    t.el.classList.toggle('other-space', !inSpace(t));
     if (t.pinned) { wantPinned.push(t.el); t.el.classList.remove('collapsed-hide'); continue; }
+    if (!inSpace(t)) { want.push(t.el); continue; }
     if (t.groupId && t.groupId !== lastGroup) want.push(groupChip(groups.get(t.groupId)));
     lastGroup = t.groupId;
     const g = t.groupId && groups.get(t.groupId);
@@ -526,7 +537,7 @@ function renderStrip() {
   sync(box, want); sync(pinBox, wantPinned);
   void pinFrag;
   // stretch: tabs shrink like Chrome
-  const n = tabs.filter((t) => !t.pinned && !(t.groupId && groups.get(t.groupId).collapsed)).length;
+  const n = tabs.filter((t) => !t.pinned && inSpace(t) && !(t.groupId && groups.get(t.groupId).collapsed)).length;
   box.style.setProperty('--n', n);
 }
 function groupChip(g) {
@@ -613,7 +624,41 @@ function navigate(text, tab = activeTab()) {
   renderAll();
   setTimeout(() => { try { if (!isNewtab(url)) tab.wv.focus(); } catch {} }, 0);
 }
+/* ---------------- Peek: a link in a floating preview (Shift+click, or right-click → Peek) ----------------
+   Read it, then close it (Esc, ×, or a click beside it) or keep it as a tab. Nothing stays behind in memory. */
+let peek = null;
+function openPeek(url) {
+  if (peek) { try { peek.wv.loadURL(url); } catch { peek.wv.src = url; } peek.url = url; peekTitle(url); return; }
+  const back = el('div', 'peek'); back.id = 'peek';
+  const card = el('div', 'peek-card');
+  const bar = el('div', 'peek-bar');
+  const host = el('span', 'peek-host');
+  const keep = el('button', 'pill solid', 'Open as tab'); keep.title = 'Keep it as a tab';
+  const x = el('button', 'icon-btn small peek-x'); x.title = 'Close (Esc)'; x.appendChild(svg('<path d="M6 6l12 12M18 6L6 18"/>'));
+  bar.append(host, keep, x);
+  const wv = document.createElement('webview');
+  wv.setAttribute('partition', info.partition); wv.setAttribute('allowpopups', ''); wv.setAttribute('src', url);
+  card.append(bar, wv); back.appendChild(card); $('views').appendChild(back);
+  peek = { el: back, wv, url, host };
+  peekTitle(url);
+  wv.addEventListener('did-attach', () => { try { call('peek:mark', wv.getWebContentsId()).catch(() => {}); } catch {} });
+  const follow = (e) => { if (e.url && /^https?:/.test(e.url)) { peek.url = e.url; peekTitle(e.url); } };
+  wv.addEventListener('did-navigate', follow); wv.addEventListener('did-navigate-in-page', (e) => { if (e.isMainFrame) follow(e); });
+  wv.addEventListener('page-title-updated', (e) => { if (peek) peek.host.textContent = e.title || peek.host.textContent; });
+  keep.addEventListener('click', () => { const u = peek.url; closePeek(); newTab(u); });
+  x.addEventListener('click', closePeek);
+  back.addEventListener('mousedown', (e) => { if (e.target === back) closePeek(); });
+  requestAnimationFrame(() => back.classList.add('in'));
+}
+function peekTitle(url) { if (peek) { try { peek.host.textContent = new URL(url).hostname.replace(/^www\./, ''); } catch { peek.host.textContent = url; } } }
+function closePeek() {
+  if (!peek) return;
+  const p = peek; peek = null;
+  p.el.classList.remove('in'); p.el.classList.add('out');
+  setTimeout(() => p.el.remove(), 180);
+}
 function openUrl(url, where = 'foreground', opener = null) {
+  if (where === 'peek') return openPeek(url);
   const cur = activeTab();
   if (where === 'current' && cur) return navigate(url, cur);
   const openerTab = opener ? tabs.find((t) => t.wcId === opener) : null;
@@ -769,7 +814,7 @@ function duplicateTabs() {
   const keep = new Map(), extra = [];
   const order = [...tabs].sort((a, b) => (b.id === activeId) - (a.id === activeId) || (b.pinned - a.pinned) || (!!b.groupId - !!a.groupId));
   for (const t of order) {
-    if (!t.url || isNewtab(t.url) || isInternal(t.url)) continue;
+    if (!t.url || isNewtab(t.url) || isInternal(t.url) || !inSpace(t)) continue;
     const k = sameUrl(t.url);
     if (!keep.has(k)) keep.set(k, t);
     else if (!t.pinned && !t.groupId && !(split && split.includes(t.id)) && t.id !== activeId) extra.push(t);
@@ -805,6 +850,7 @@ function tabMenu(tab, x, y) {
       : { label: 'Add tab to new group', fn: () => newGroup([tab]) }
   ];
   for (const g of otherGroups.slice(0, 6)) items.push({ label: `Add to group “${g.name || 'Unnamed'}”`, fn: () => addToGroup(tab, g.id) });
+  if (!tab.pinned && window.moveTabToSpace) for (const sp of spaces.filter((x) => x.id !== (tab.space || 'home')).slice(0, 8)) items.push({ label: `Move to space “${sp.name || 'Space'}”`, fn: () => window.moveTabToSpace(tab, sp.id) });
   items.push('-',
     { label: 'Reload', key: 'Ctrl+R', fn: () => { if (tab.wv) tab.wv.reload(); else activate_(tab.id); } },
     { label: 'Duplicate', fn: () => newTab(tab.url, { index: i + 1, groupId: tab.groupId }) },
@@ -1406,7 +1452,7 @@ function renderCmd() {
   if (q) cmdItems.push({ kind: 'go', label: toUrl(raw) === searchUrl(raw) ? `Search ${engineName()} for “${raw}”` : toUrl(raw), url: toUrl(raw), k: 'New tab' });
   const m = (s) => !q || (s || '').toLowerCase().includes(q);
   for (const t of tabs) if (t.id !== activeId && !isNewtab(t.url) && (m(t.title) || m(t.url))) cmdItems.push({ kind: 'tab', label: prettyTitle(t), fav: t.favicon, id: t.id, k: 'Switch to tab' });
-  const actions = [['Settings', () => openInternal('settings')], ['History', () => openInternal('history')], ['Downloads', () => openInternal('downloads')], ['Bookmarks', () => openInternal('bookmarks')], ['New private window', () => call('win:new', { incognito: true })], ['Reopen closed tab', reopenClosed], ['Toggle split view', () => toggleSplit()], ['Toggle AI sidebar', toggleAI], ['Close duplicate tabs', closeDuplicates], ['Copy link', () => copyLink(activeTab())]];
+  const actions = [['Settings', () => openInternal('settings')], ['History', () => openInternal('history')], ['Downloads', () => openInternal('downloads')], ['Bookmarks', () => openInternal('bookmarks')], ['New private window', () => call('win:new', { incognito: true })], ['Reopen closed tab', reopenClosed], ['Toggle split view', () => toggleSplit()], ['Toggle AI sidebar', toggleAI], ['Close duplicate tabs', closeDuplicates], ['Copy link', () => copyLink(activeTab())], ...spaces.map((sp) => [`Space: ${sp.name || 'Space'}`, () => window.switchSpace && window.switchSpace(sp.id)])];
   for (const [label, fn] of actions) if (q && label.toLowerCase().includes(q)) cmdItems.push({ kind: 'act', label, fn, k: 'Action' });
   for (const b of bookmarks) if (q && b.type === 'bookmark' && (m(b.title) || m(b.url))) cmdItems.push({ kind: 'url', label: b.title, fav: faviconFor(b.url), url: b.url, k: 'Bookmark' });
   for (const b of bots) if (q && m(b.name)) cmdItems.push({ kind: 'bot', label: 'Ask ' + b.name, url: b.url, k: 'AI sidebar' });
@@ -1481,7 +1527,7 @@ $('pipBtn').addEventListener('click', async () => {
 
 /* ---------------- shortcuts ---------------- */
 function cycle(dir) {
-  const vis = tabs.filter((t) => t.pinned || !(t.groupId && groups.get(t.groupId).collapsed));
+  const vis = tabs.filter((t) => t.pinned || (inSpace(t) && !(t.groupId && groups.get(t.groupId).collapsed)));
   const i = vis.findIndex((t) => t.id === activeId);
   if (vis.length) activate_(vis[(i + dir + vis.length) % vis.length].id);
 }
@@ -1526,6 +1572,7 @@ function runCmd(cmd) {
     // Buddy reads the page you're on and sums it up (his panel opens if it isn't).
     case 'buddy-summarize': if (window.buddySummarize) window.buddySummarize(); else toggleAI(); break;
     case 'reader': window.reader && window.reader.toggle(); break;
+    case 'close-peek': closePeek(); break;
     case 'next-tab': cycle(1); break;
     case 'prev-tab': cycle(-1); break;
     case 'find': openFind(); break;
@@ -1538,13 +1585,14 @@ function runCmd(cmd) {
     case 'zoom-out': zoom(-1); break;
     case 'zoom-reset': zoom(0); break;
     default:
-      if (cmd.startsWith('tab-')) { const n = +cmd.slice(4); const tt = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1]; if (tt) activate_(tt.id); }
+      if (cmd.startsWith('tab-')) { const vis = tabs.filter(inSpace); const n = +cmd.slice(4); const tt = n === 9 ? vis[vis.length - 1] : vis[n - 1]; if (tt) activate_(tt.id); }
   }
 }
 api.on('shortcut', runCmd);
 api.on('open-url', ({ url, where, opener }) => openUrl(url, where, opener));
 api.on('fullscreen', (on) => document.body.classList.toggle('fullscreen', on));
 addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && peek) { closePeek(); return; }
   if (e.key === 'Escape') { hideAllPops(); hideHoverCard(); if (!$('cmdbar').classList.contains('hidden')) closeCmd(); }
 });
 
@@ -1628,7 +1676,8 @@ function scheduleSave() {
   saveTimer = setTimeout(() => {
     const list = tabs.filter((t) => !isInternal(t.url) || !isNewtab(t.url) || tabs.length === 1);
     const data = {
-      tabs: list.map((t) => ({ url: t.url, title: t.title, favicon: t.favicon, pinned: t.pinned, groupId: t.groupId, muted: t.muted })),
+      tabs: list.map((t) => ({ url: t.url, title: t.title, favicon: t.favicon, pinned: t.pinned, groupId: t.groupId, muted: t.muted, space: t.space || 'home' })),
+      spaces, space: curSpace,
       groups: [...groups.values()],
       active: Math.max(0, list.findIndex((t) => t.id === activeId))
     };
@@ -1728,13 +1777,16 @@ async function showJustUpdated() {
   if (restore && restore.tabs && restore.tabs.length) {
     restoring = true;
     for (const g of restore.groups || []) groups.set(g.id, Object.assign({}, g));
+    if (Array.isArray(restore.spaces) && restore.spaces.length) { spaces = restore.spaces; curSpace = spaces.some((x) => x.id === restore.space) ? restore.space : spaces[0].id; }
     const act = Math.min(restore.active || 0, restore.tabs.length - 1);
-    restore.tabs.forEach((t, i) => newTab(t.url, { activate: false, lazy: i !== act, pinned: !!t.pinned, title: t.title, favicon: t.favicon, groupId: t.groupId || null, muted: !!t.muted }));
+    restore.tabs.forEach((t, i) => newTab(t.url, { activate: false, lazy: i !== act, pinned: !!t.pinned, title: t.title, favicon: t.favicon, groupId: t.groupId || null, muted: !!t.muted, space: spaces.some((x) => x.id === t.space) ? t.space : spaces[0].id }));
     restoring = false; normalizeOrder();
     activate_(tabs[Math.min(act, tabs.length - 1)].id);
+    if (!inSpace(activeTab())) curSpace = activeTab().space || spaces[0].id;
   } else if (!info.incognito) {
     for (const p of settings.pinned || []) newTab(p.url, { activate: false, pinned: true, title: p.title, favicon: p.favicon, lazy: true });
   }
+  if (window.renderSpaceBtn) window.renderSpaceBtn();
   if (info.urls && info.urls.length) info.urls.forEach((u, i) => newTab(u, { activate: i === 0 }));
   else if (!restore || !restore.tabs || !restore.tabs.length) newTab();
   queueSpare(2500);   // the first new tab you open is instant too, not only the ones after it
