@@ -21,6 +21,12 @@ app.setName('The Stupid Browser');
 
 const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
 if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
+// Low memory (on unless turned off in Settings; read at start, applies after a restart): the network service runs
+// inside the browser process instead of its own (~55 MB less), as Chrome does on low-memory phones.
+try {
+  const raw = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8'));
+  if (raw.lowMemory !== false) app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2');
+} catch { app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2'); }   // no settings yet (first start) or unreadable: the default, on
 
 // Plain Chrome user agent so sites (Google, AI chats) treat us like a normal browser.
 const UA_OS = IS_MAC ? 'Macintosh; Intel Mac OS X 10_15_7' : 'Windows NT 10.0; Win64; x64';
@@ -80,7 +86,7 @@ const DEFAULT_SETTINGS = () => ({
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
-  adblock: true, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
+  adblock: true, lowMemory: true, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
   pinned: []
@@ -322,6 +328,9 @@ function createWindow({ incognito = false, restore = null, urls = null } = {}) {
   hookShortcuts(win.webContents);
   win.on('enter-full-screen', () => win.webContents.send('fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen', false));
+  win.on('minimize', () => win.webContents.send('win:minimized', true));
+  win.on('restore', () => win.webContents.send('win:minimized', false));
+  win.on('show', () => win.webContents.send('win:minimized', false));
   win.on('focus', () => win.webContents.send('win:focus', true));   // the window lets go of its spare new tab while you're away
   win.on('blur', () => win.webContents.send('win:focus', false));
   win.on('closed', () => {
@@ -447,7 +456,25 @@ function permKinds(permission, details = {}) {
   }
   return null;
 }
-function handlePermission(wc, permission, callback, details, incognito) {
+// Tabs that were let use the camera, microphone or screen (a call, screen sharing): never put to sleep, even when
+// quiet, until they go to another page.
+const capturingWcs = new Set();
+// A call that has ended in a page that stays open (Meet, a Slack huddle) stops counting once the tab has been quiet
+// for 15 minutes.
+const lastHeard = new Map();
+function markCapturing(wc) {
+  if (!wc || wc.isDestroyed()) return;
+  lastHeard.set(wc.id, Date.now());
+  if (capturingWcs.has(wc.id)) return;
+  capturingWcs.add(wc.id);
+  const id = wc.id, done = () => { capturingWcs.delete(id); lastHeard.delete(id); };
+  const heard = () => { if (wc.isCurrentlyAudible()) lastHeard.set(id, Date.now()); };
+  wc.on('audio-state-changed', heard);
+  wc.once('did-navigate', () => { done(); wc.removeListener('audio-state-changed', heard); }); wc.once('destroyed', done);
+}
+handle('tab:capturing', ['shell'], (_e, id) => capturingWcs.has(+id) && Date.now() - (lastHeard.get(+id) || 0) < 15 * 60000);
+function handlePermission(wc, permission, callback0, details, incognito) {
+  const callback = (ok) => { if (ok && permission === 'media') markCapturing(wc); callback0(ok); };
   if (permission === 'openExternal') {
     const ext = details.externalURL || '';
     if (/^(mailto|tel|ms-settings|steam|discord|spotify|zoommtg|msteams):/i.test(ext)) return callback(true);
@@ -683,6 +710,7 @@ handle('brand:apply', ['internal'], async (_e, reset) => {
 // Values that end up in pages or audio graphs get checked here.
 function cleanPatch(patch) {
   const p = Object.assign({}, patch);
+  if ('lowMemory' in p) p.lowMemory = !!p.lowMemory;
   if ('logo' in p && !['ring', 'buddy', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
   if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
   if ('quoteMode' in p && !['browser', 'mine', 'mix'].includes(p.quoteMode)) delete p.quoteMode;
