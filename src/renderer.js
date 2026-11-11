@@ -218,10 +218,10 @@ function newTab(url, opts = {}) {
   // right away, so a second new tab straight after the first is just as quick.
   if (!lazy && !opts.container && (url || NEWTAB) === NEWTAB && spareTab && !spareTab.crashed && spareTab.url === NEWTAB) {
     tab = spareTab; spareTab = null; tab.wv.classList.remove('spare');
-    Object.assign(tab, { pinned, groupId, muted, space: opts.space || curSpace, lastActive: Date.now(), title: title || tab.title });
+    Object.assign(tab, { pinned, groupId, muted, space: spaces.some((x) => x.id === opts.space) ? opts.space : curSpace, lastActive: Date.now(), title: title || tab.title });
     if (muted) try { tab.wv.setAudioMuted(true); } catch {}
     queueSpare(150, 500);
-  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, space: opts.space || curSpace, container: CONTAINERS[opts.container] ? opts.container : null, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
+  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, space: spaces.some((x) => x.id === opts.space) ? opts.space : curSpace, container: CONTAINERS[opts.container] ? opts.container : null, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
   if (index != null) tabs.splice(Math.min(index, tabs.length), 0, tab);
   else if (afterId != null) {
     // Chrome-like: links open right after the opener (and its other children)
@@ -492,7 +492,10 @@ function renderTab(tab) {
   e.classList.toggle('loading', !!tab.loading);
   e.classList.toggle('sleeping', !tab.wv);
   e.classList.toggle('in-container', !!tab.container);
-  if (tab.container) { e.style.setProperty('--cc', GROUP_COLORS[CONTAINERS[tab.container].color]); e.dataset.container = CONTAINERS[tab.container].name; }
+  // Its own little bar (the tab's ::before/::after already draw the group and active lines).
+  let stripe = e.querySelector(':scope > .cstripe');
+  if (tab.container) { if (!stripe) { stripe = el('i', 'cstripe'); e.appendChild(stripe); } e.style.setProperty('--cc', GROUP_COLORS[CONTAINERS[tab.container].color]); e.dataset.container = CONTAINERS[tab.container].name; }
+  else if (stripe) stripe.remove();
   e.classList.toggle('crashed', !!tab.crashed);
   e.classList.toggle('split', !!(split && split.includes(tab.id)));
   e.classList.toggle('asleep', !!tab.asleep && !tab.wv);
@@ -651,7 +654,8 @@ function openPeek(url) {
   card.append(bar, wv); back.appendChild(card); $('views').appendChild(back);
   peek = { el: back, wv, url, host, container: (activeTab() || {}).container || null };
   peekTitle(url);
-  wv.addEventListener('did-attach', () => { try { call('peek:mark', wv.getWebContentsId()).catch(() => {}); } catch {} });
+  const mark = () => { try { call('peek:mark', wv.getWebContentsId()).catch(() => {}); } catch {} };
+  wv.addEventListener('did-attach', mark); wv.addEventListener('dom-ready', mark, { once: true });
   const follow = (e) => { if (e.url && /^https?:/.test(e.url)) { peek.url = e.url; peekTitle(e.url); } };
   wv.addEventListener('did-navigate', follow); wv.addEventListener('did-navigate-in-page', (e) => { if (e.isMainFrame) follow(e); });
   wv.addEventListener('page-title-updated', (e) => { if (peek) peek.host.textContent = e.title || peek.host.textContent; });

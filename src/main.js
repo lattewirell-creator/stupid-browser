@@ -1165,8 +1165,7 @@ const typedInFrame = new Set();
 ipcMain.on('tab:typed', (e) => {
   const wc = e.sender; if (wc.getType() !== 'webview' || typedInFrame.has(wc.id)) return;
   typedInFrame.add(wc.id);
-  wc.once('destroyed', () => typedInFrame.delete(wc.id));
-  wc.once('did-navigate', () => typedInFrame.delete(wc.id));
+  if (!wc.__typedHooked) { wc.__typedHooked = true; wc.on('did-navigate', () => typedInFrame.delete(wc.id)); wc.once('destroyed', () => typedInFrame.delete(wc.id)); }
 });
 handle('tab:typedInFrame', ['shell'], (_e, id) => typedInFrame.has(+id));
 // Mouse gestures (drag-preload.js): only the listed commands, and only from a tab.
@@ -1182,7 +1181,7 @@ ipcMain.on('peek:open', (e, url) => {
   if (e.sender.getType() !== 'webview' || typeof url !== 'string' || url.length > 8000 || !/^https?:\/\//i.test(url)) return;
   const shell = shellFor(e.sender); if (shell && !shell.isDestroyed()) shell.send('open-url', { url, where: 'peek' });
 });
-handle('peek:mark', ['shell'], (_e, id) => { const wc = webContents.fromId(+id); if (wc && wc.getType() === 'webview') { peekWcs.add(wc.id); wc.once('destroyed', () => peekWcs.delete(wc.id)); } });
+handle('peek:mark', ['shell'], (_e, id) => { const wc = webContents.fromId(+id); if (wc && wc.getType() === 'webview' && !peekWcs.has(wc.id)) { peekWcs.add(wc.id); wc.once('destroyed', () => peekWcs.delete(wc.id)); } });
 /* ---------- drag a picture out of a page as a file (drag-preload.js) ---------- */
 // The picture is saved in a temporary folder (emptied when the browser quits) and dragged as that file. It's
 // fetched with the tab's own session (its cookies), as you press on it, so the drag doesn't wait.
@@ -1706,8 +1705,9 @@ function hookSignInPopup(child, opener, openedEmpty) {
 
 app.on('web-contents-created', (_e, contents) => {
   contents.on('did-attach-webview', (_ev, guest) => {
-    const r = contents.__restoreNext; contents.__restoreNext = null;
-    if (r) guest.navigationHistory.restore(r.hist).catch(() => { if (!guest.isDestroyed() && !guest.getURL()) guest.loadURL(r.url); }); const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
+    const q = contents.__restoreQueue || [];
+    const i = q.findIndex((x) => session.fromPartition(x.partition) === guest.session);
+    if (i >= 0 && !guest.getURL()) { const r = q.splice(i, 1)[0]; guest.navigationHistory.restore(r.hist).catch(() => { if (!guest.isDestroyed() && !guest.getURL()) guest.loadURL(r.url); }); } const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
     webPreferences.nodeIntegration = false;
@@ -1719,7 +1719,8 @@ app.on('web-contents-created', (_e, contents) => {
     if (!/^(https?:|stupid:|about:|file:|chrome-extension:)/.test(src)) params.src = 'about:blank';
     // A tab waking from sleep with its history: no first load here, the history restore loads it (did-attach-webview).
     const pend = contents.__pendingHistory, k = pend ? pend.findIndex((x) => x.key === String(params.partition) + '\n' + src) : -1;
-    if (k >= 0) { contents.__restoreNext = { hist: pend[k].hist, url: src }; pend.splice(k, 1); params.src = ''; }
+    const restore = k >= 0 ? { hist: pend[k].hist, url: src, partition: String(params.partition) } : null;
+    if (restore) pend.splice(k, 1);
     if (src.startsWith('stupid://')) webPreferences.preload = path.join(__dirname, 'internal-preload.js');
     // Container tabs: their own cookie jar, named after this window's own one (and only from a fixed list), set up
     // like the window's tabs (blocker, preloads, permissions) but never sharing sign-ins with the rest.
@@ -1727,10 +1728,12 @@ app.on('web-contents-created', (_e, contents) => {
     const m = /^(.+)-c-([a-z]{3,10})$/.exec(part);
     if (m) {
       const w = entryFor(contents);
-      if (!w || m[1] !== w.partition || !CONTAINERS.includes(m[2])) { _ev.preventDefault(); return; }
+      if (!w || m[1] !== w.partition || !CONTAINERS.includes(m[2])) { _ev.preventDefault(); return; }   // nothing queued for it
       const cs = session.fromPartition(part); if (!w.incognito) containerSessions.add(cs);
       prepareSession(cs, { tabs: true, incognito: w.incognito });
     }
+    // Accepted: this view skips its first load and gets its history once attached (matched by its cookie jar, in order).
+    if (restore) { params.src = ''; (contents.__restoreQueue || (contents.__restoreQueue = [])).push(restore); }
   });
 
   if (contents.getType() !== 'webview') return;
