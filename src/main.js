@@ -1706,6 +1706,7 @@ function hookSignInPopup(child, opener, openedEmpty) {
 app.on('web-contents-created', (_e, contents) => {
   contents.on('did-attach-webview', (_ev, guest) => {
     const q = contents.__restoreQueue || [];
+    while (q.length && Date.now() - q[0].t > 30000) q.shift();   // a tab closed before it attached: forget it
     const i = q.findIndex((x) => session.fromPartition(x.partition) === guest.session);
     if (i >= 0 && !guest.getURL()) { const r = q.splice(i, 1)[0]; guest.navigationHistory.restore(r.hist).catch(() => { if (!guest.isDestroyed() && !guest.getURL()) guest.loadURL(r.url); }); } const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
@@ -1733,7 +1734,7 @@ app.on('web-contents-created', (_e, contents) => {
       prepareSession(cs, { tabs: true, incognito: w.incognito });
     }
     // Accepted: this view skips its first load and gets its history once attached (matched by its cookie jar, in order).
-    if (restore) { params.src = ''; (contents.__restoreQueue || (contents.__restoreQueue = [])).push(restore); }
+    if (restore) { params.src = ''; (contents.__restoreQueue || (contents.__restoreQueue = [])).push(Object.assign(restore, { t: Date.now() })); }
   });
 
   if (contents.getType() !== 'webview') return;
@@ -1807,6 +1808,7 @@ function selfTest(win) {
       const top = ms.filter((p) => p.type === 'Tab' || p.type === 'Renderer').sort((a, b) => b.memory.workingSetSize - a.memory.workingSetSize)
         .map((p) => `${Math.round(p.memory.workingSetSize / 1024)}MB ${pages.get(p.pid) || '?'}`).join(' | ');
       fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] renderers-${pm[1]} ${top}\n`);
+      { const mu = process.memoryUsage(); fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] main-${pm[1]} rss=${mu.rss >> 20} heapUsed=${mu.heapUsed >> 20} heapTotal=${mu.heapTotal >> 20} external=${mu.external >> 20} arrayBuffers=${mu.arrayBuffers >> 20}\n`); }
       fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] metrics-${pm[1]} memMB=${Math.round(mem)} cpu%=${cpu.toFixed(1)} procs=${ms.length} ${parts} mainLagMaxMs=${lag.max} mainLagP95Ms=${lag.p95()}\n`);
       lag.reset();
     }
