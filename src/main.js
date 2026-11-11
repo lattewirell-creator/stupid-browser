@@ -76,7 +76,7 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], toolbar: { order: [], custom: [] }, brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: -1, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], toolbar: { order: [], custom: [] }, brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
@@ -731,7 +731,7 @@ function cleanPatch(patch) {
   if ('rewindExclude' in p) p.rewindExclude = (Array.isArray(p.rewindExclude) ? p.rewindExclude : []).map((d) => String(d).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '')).filter((d) => /^[a-z0-9.-]{3,253}$/.test(d)).slice(0, 200);
   if ('appIcon' in p) p.appIcon = !!p.appIcon;
   if ('appIconImage' in p && !(p.appIconImage === '' || (typeof p.appIconImage === 'string' && p.appIconImage.length < 1500000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.appIconImage)))) delete p.appIconImage;
-  if ('tabSleep' in p && ![0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
+  if ('tabSleep' in p && ![-1, 0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
   if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
   if ('buddy' in p) {
     const b = p.buddy && typeof p.buddy === 'object' ? p.buddy : {};
@@ -1727,7 +1727,7 @@ function selfTest(win) {
     if (pm && process.env.STUPID_PERF_LOG) {
       const ms = app.getAppMetrics(); const by = {};
       let mem = 0, cpu = 0;
-      for (const p of ms) { const mb = (p.memory.workingSetSize || 0) / 1024; mem += mb; cpu += p.cpu.percentCPUUsage || 0; const k = p.type === 'Tab' ? 'renderer' : p.type; by[k] = (by[k] || 0) + mb; }
+      for (const p of ms) { const mb = (p.memory.workingSetSize || 0) / 1024; mem += mb; cpu += p.cpu.percentCPUUsage || 0; const k = p.type === 'Tab' ? 'renderer' : p.type === 'Utility' ? 'U:' + (p.serviceName || p.name || '?').replace(/^.*\./, '') : p.type; by[k] = (by[k] || 0) + mb; }
       const parts = Object.entries(by).map(([k, v]) => `${k}=${Math.round(v)}`).join(' ');
       // Which page each renderer is, biggest first (to see what uses the memory).
       const pages = new Map(); for (const wc of webContents.getAllWebContents()) { try { pages.set(wc.getOSProcessId(), (wc.getType() === 'window' ? 'window ' : '') + (wc.getURL() || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 50)); } catch {} }
@@ -1906,6 +1906,8 @@ if (!app.requestSingleInstanceLock()) {
 
   perfMark('main-loaded');
   app.whenReady().then(() => {
+    // 2.0: tabs sleep as soon as you leave them (least memory). Moved over once for everyone still on the old default.
+    { const s0 = getSettings(); if (!s0.sleepInstantMoved) setSettings(s0.tabSleep === 15 ? { tabSleep: -1, sleepInstantMoved: true } : { sleepInstantMoved: true }); }
     perfMark('app-ready');
     sync.start();
     // When the computer runs low on memory, idle background tabs fall asleep right away (instead of after the

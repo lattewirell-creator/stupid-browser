@@ -179,9 +179,11 @@ function normalizeOrder() {
 
 // A blank new tab is kept ready (hidden) so opening one is instant, like Chrome's prerendered new tab page.
 let spareTab = null, spareT = null;
+// With tabs sleeping the moment you leave them, memory comes first: no hidden spare (a whole page process).
+const instantSleep = () => settings.tabSleep === -1;
 function makeSpare() {
   clearTimeout(spareT);
-  if (spareTab || restoring) return;
+  if (spareTab || restoring || instantSleep()) return;
   spareTab = { id: nextId++, url: NEWTAB, title: '', favicon: null, pinned: false, groupId: null, wv: null, loading: false, muted: false, audible: false, zoom: 1, lastActive: Date.now() };
   createWebview(spareTab);
   spareTab.wv.classList.add('spare');   // rendered invisibly (not display:none) so it's already painted when shown
@@ -294,6 +296,9 @@ function activate_(id) {
   activeId = id;
   tab.lastActive = Date.now();
   if (changed) rewindSoon(tab);
+  // Memory saver set to "as soon as you leave it": the tab you just left goes to sleep (after a short moment, so the
+  // new one has painted and a quick switch back doesn't reload). Playing, split-view and half-typed tabs stay awake.
+  if (changed && prev && instantSleep()) { const p = prev; setTimeout(() => { if (p.id !== activeId && tabs.includes(p)) sleepTab(p); }, 1500); }
   if (!tab.wv) { tab.asleep = false; createWebview(tab); }
   if (changed && tab.wcId) call('ext:active', tab.wcId).catch(() => {});
   if (changed) { holdUntilPainted(tab, prev); if (window.reader) { window.reader.close(); window.reader.check(tab); } }
@@ -1550,7 +1555,7 @@ function unloadUnseen(views, isShowing, now) {
   for (const [id, wv] of views) {
     const playing = wvAudible(wv);
     if (isShowing(id) || playing || !appSeen.has(id)) { appSeen.set(id, now); continue; }
-    if (now - appSeen.get(id) > 10 * 60000) { wv.remove(); views.delete(id); appSeen.delete(id); }
+    if (now - appSeen.get(id) > (instantSleep() ? 60000 : 10 * 60000)) { wv.remove(); views.delete(id); appSeen.delete(id); }
   }
 }
 setInterval(() => {
@@ -1609,9 +1614,9 @@ setInterval(() => {
   for (const t of tabs) if (isNewtab(t.url) && sleepable(t) && (t.lastActive || 0) < cutoff) sleepTab(t);
 }, 10000);
 setInterval(() => {
-  const mins = settings.tabSleep == null ? 15 : +settings.tabSleep;
+  const mins = settings.tabSleep == null ? -1 : +settings.tabSleep;
   if (!mins) return;
-  const cutoff = Date.now() - mins * 60000;
+  const cutoff = Date.now() - (mins < 0 ? 3000 : mins * 60000);
   for (const t of tabs) if (sleepable(t) && (t.lastActive || 0) < cutoff) sleepTab(t);
 }, 60000);
 
@@ -1646,7 +1651,7 @@ function applySettings() {
   renderShield({ on: settings.adblock, count: +$('blockedCount').textContent || 0 });
   renderRail();
 }
-api.on('settings:changed', (s) => { settings = s; applySettings(); renderBookmarks(); updateNav(); });
+api.on('settings:changed', (s) => { settings = s; if (instantSleep()) dropSpare(); applySettings(); renderBookmarks(); updateNav(); });
 api.on('bookmarks:changed', (b) => { bookmarks = b; renderBookmarks(); updateNav(); });
 api.on('bots:changed', (b) => { bots = b; renderBots(); });
 api.on('sidebar:changed', (s) => { sideItems = s; renderRail(); });
