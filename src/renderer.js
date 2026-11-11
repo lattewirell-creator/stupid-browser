@@ -23,6 +23,9 @@ let groups = new Map();     // id -> { id, name, color, collapsed }
 let spaces = [{ id: 'home', name: 'Home', color: 'clay' }];
 let curSpace = 'home';
 const inSpace = (t) => t.pinned || (t.space || 'home') === curSpace;
+// Container tabs: their own cookie jar, so you can be signed in to the same site twice in one window (Firefox-style).
+const CONTAINERS = { personal: { name: 'Personal', color: 'sky' }, work: { name: 'Work', color: 'sage' }, shopping: { name: 'Shopping', color: 'sand' }, banking: { name: 'Banking', color: 'teal' }, social: { name: 'Social', color: 'rose' } };
+const partitionFor = (c) => (c && CONTAINERS[c] ? `${info.partition}-c-${c}` : info.partition);
 let activeId = null;
 let split = null;
 let nextId = 1;
@@ -105,7 +108,7 @@ function prettyTitle(tab) {
 /* ---------------- webviews ---------------- */
 function createWebview(tab) {
   const wv = document.createElement('webview');
-  wv.setAttribute('partition', info.partition);
+  wv.setAttribute('partition', partitionFor(tab.container));
   wv.setAttribute('allowpopups', '');
   wv.setAttribute('src', tab.url);
   wv.dataset.tab = tab.id;
@@ -208,12 +211,12 @@ function newTab(url, opts = {}) {
   let tab;
   // The spare is used even while it's still loading: it got a head start on a brand-new one. The next spare is made
   // right away, so a second new tab straight after the first is just as quick.
-  if (!lazy && (url || NEWTAB) === NEWTAB && spareTab && !spareTab.crashed && spareTab.url === NEWTAB) {
+  if (!lazy && !opts.container && (url || NEWTAB) === NEWTAB && spareTab && !spareTab.crashed && spareTab.url === NEWTAB) {
     tab = spareTab; spareTab = null; tab.wv.classList.remove('spare');
     Object.assign(tab, { pinned, groupId, muted, space: opts.space || curSpace, lastActive: Date.now(), title: title || tab.title });
     if (muted) try { tab.wv.setAudioMuted(true); } catch {}
     queueSpare(150, 500);
-  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, space: opts.space || curSpace, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
+  } else tab = { id: nextId++, url: url || NEWTAB, title: title || '', favicon: favicon || null, pinned, groupId, space: opts.space || curSpace, container: CONTAINERS[opts.container] ? opts.container : null, wv: null, loading: false, muted, audible: false, zoom: 1, lastActive: Date.now() };
   if (index != null) tabs.splice(Math.min(index, tabs.length), 0, tab);
   else if (afterId != null) {
     // Chrome-like: links open right after the opener (and its other children)
@@ -319,7 +322,7 @@ function closeTab(id, { record = true, quiet = false } = {}) {
   if (i < 0) return;
   const tab = tabs[i];
   if (record && !isNewtab(tab.url)) {
-    closedStack.push({ url: tab.url, title: tab.title, favicon: tab.favicon, index: i, groupId: tab.groupId, pinned: tab.pinned });
+    closedStack.push({ url: tab.url, title: tab.title, favicon: tab.favicon, index: i, groupId: tab.groupId, pinned: tab.pinned, container: tab.container || null });
     if (closedStack.length > 25) closedStack.shift();
     // Closed by mistake? One click brings it back (Ctrl+Shift+T does too).
     const name = (tab.title || tab.url.replace(/^https?:\/\//, '')).slice(0, 40);
@@ -349,7 +352,7 @@ function closeTab(id, { record = true, quiet = false } = {}) {
 function reopenClosed() {
   const c = closedStack.pop();
   if (!c) { toast('No recently closed tabs'); return; }
-  newTab(c.url, { title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
+  newTab(c.url, { title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, container: c.container, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
 }
 function closeOthers(tab) { for (const t of tabs.filter((x) => x.id !== tab.id && !x.pinned && inSpace(x))) closeTab(t.id); activate_(tab.id); }
 function closeRight(tab) { const i = tabs.indexOf(tab); for (const t of tabs.slice(i + 1).filter(inSpace)) closeTab(t.id); }
@@ -483,6 +486,8 @@ function renderTab(tab) {
   e.classList.toggle('pinned', tab.pinned);
   e.classList.toggle('loading', !!tab.loading);
   e.classList.toggle('sleeping', !tab.wv);
+  e.classList.toggle('in-container', !!tab.container);
+  if (tab.container) { e.style.setProperty('--cc', GROUP_COLORS[CONTAINERS[tab.container].color]); e.dataset.container = CONTAINERS[tab.container].name; }
   e.classList.toggle('crashed', !!tab.crashed);
   e.classList.toggle('split', !!(split && split.includes(tab.id)));
   e.classList.toggle('asleep', !!tab.asleep && !tab.wv);
@@ -637,7 +642,7 @@ function openPeek(url) {
   const x = el('button', 'icon-btn small peek-x'); x.title = 'Close (Esc)'; x.appendChild(svg('<path d="M6 6l12 12M18 6L6 18"/>'));
   bar.append(host, keep, x);
   const wv = document.createElement('webview');
-  wv.setAttribute('partition', info.partition); wv.setAttribute('allowpopups', ''); wv.setAttribute('src', url);
+  wv.setAttribute('partition', partitionFor((activeTab() || {}).container)); wv.setAttribute('allowpopups', ''); wv.setAttribute('src', url);
   card.append(bar, wv); back.appendChild(card); $('views').appendChild(back);
   peek = { el: back, wv, url, host };
   peekTitle(url);
@@ -662,8 +667,10 @@ function openUrl(url, where = 'foreground', opener = null) {
   const cur = activeTab();
   if (where === 'current' && cur) return navigate(url, cur);
   const openerTab = opener ? tabs.find((t) => t.wcId === opener) : null;
-  if (where === 'foreground' && cur && isNewtab(cur.url) && !cur.loading && !openerTab) return navigate(url, cur);
-  newTab(url, { activate: where !== 'background', afterId: openerTab ? openerTab.id : (where === 'background' && cur ? cur.id : null) });
+  if (where === 'foreground' && cur && isNewtab(cur.url) && !cur.loading && !openerTab && !cur.container) return navigate(url, cur);
+  // A link from a container tab stays in that container (same sign-ins).
+  const container = openerTab ? openerTab.container : (where === 'background' && cur ? cur.container : null);
+  newTab(url, { activate: where !== 'background', afterId: openerTab ? openerTab.id : (where === 'background' && cur ? cur.id : null), container });
 }
 function openInternal(name) {
   const url = `stupid://${name}/`;
@@ -833,7 +840,7 @@ function closeDuplicates() {
   toast(`Closed ${n} duplicate tab${n === 1 ? '' : 's'} · click to undo`, () => {
     for (const c of closed.reverse()) {
       const at = closedStack.lastIndexOf(c); if (at >= 0) closedStack.splice(at, 1);
-      newTab(c.url, { activate: false, lazy: true, title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
+      newTab(c.url, { activate: false, lazy: true, title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, container: c.container, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
     }
   });
 }
@@ -850,10 +857,12 @@ function tabMenu(tab, x, y) {
       : { label: 'Add tab to new group', fn: () => newGroup([tab]) }
   ];
   for (const g of otherGroups.slice(0, 6)) items.push({ label: `Add to group “${g.name || 'Unnamed'}”`, fn: () => addToGroup(tab, g.id) });
+  if (/^https?:/.test(tab.url)) for (const [k, c] of Object.entries(CONTAINERS)) if (k !== tab.container) items.push({ label: `Open in container: ${c.name}`, fn: () => newTab(tab.url, { index: i + 1, container: k }) });
+  if (tab.container) items.push({ label: 'Open outside the container', fn: () => newTab(tab.url, { index: i + 1 }) });
   if (!tab.pinned && window.moveTabToSpace) for (const sp of spaces.filter((x) => x.id !== (tab.space || 'home')).slice(0, 8)) items.push({ label: `Move to space “${sp.name || 'Space'}”`, fn: () => window.moveTabToSpace(tab, sp.id) });
   items.push('-',
     { label: 'Reload', key: 'Ctrl+R', fn: () => { if (tab.wv) tab.wv.reload(); else activate_(tab.id); } },
-    { label: 'Duplicate', fn: () => newTab(tab.url, { index: i + 1, groupId: tab.groupId }) },
+    { label: 'Duplicate', fn: () => newTab(tab.url, { index: i + 1, groupId: tab.groupId, container: tab.container }) },
     { label: 'Copy link', disabled: !tab.url || isNewtab(tab.url), fn: () => copyLink(tab) },
     { label: tab.pinned ? 'Unpin' : 'Pin', fn: () => togglePin(tab) },
     { label: tab.muted ? 'Unmute site' : 'Mute site', fn: () => toggleMute(tab) },
@@ -1452,7 +1461,7 @@ function renderCmd() {
   if (q) cmdItems.push({ kind: 'go', label: toUrl(raw) === searchUrl(raw) ? `Search ${engineName()} for “${raw}”` : toUrl(raw), url: toUrl(raw), k: 'New tab' });
   const m = (s) => !q || (s || '').toLowerCase().includes(q);
   for (const t of tabs) if (t.id !== activeId && !isNewtab(t.url) && (m(t.title) || m(t.url))) cmdItems.push({ kind: 'tab', label: prettyTitle(t), fav: t.favicon, id: t.id, k: 'Switch to tab' });
-  const actions = [['Settings', () => openInternal('settings')], ['History', () => openInternal('history')], ['Downloads', () => openInternal('downloads')], ['Bookmarks', () => openInternal('bookmarks')], ['New private window', () => call('win:new', { incognito: true })], ['Reopen closed tab', reopenClosed], ['Toggle split view', () => toggleSplit()], ['Toggle AI sidebar', toggleAI], ['Close duplicate tabs', closeDuplicates], ['Copy link', () => copyLink(activeTab())], ...spaces.map((sp) => [`Space: ${sp.name || 'Space'}`, () => window.switchSpace && window.switchSpace(sp.id)])];
+  const actions = [['Settings', () => openInternal('settings')], ['History', () => openInternal('history')], ['Downloads', () => openInternal('downloads')], ['Bookmarks', () => openInternal('bookmarks')], ['New private window', () => call('win:new', { incognito: true })], ['Reopen closed tab', reopenClosed], ['Toggle split view', () => toggleSplit()], ['Toggle AI sidebar', toggleAI], ['Close duplicate tabs', closeDuplicates], ['Copy link', () => copyLink(activeTab())], ...spaces.map((sp) => [`Space: ${sp.name || 'Space'}`, () => window.switchSpace && window.switchSpace(sp.id)]), ...Object.entries(CONTAINERS).map(([k, c]) => [`New ${c.name} container tab`, () => newTab(null, { container: k })])];
   for (const [label, fn] of actions) if (q && label.toLowerCase().includes(q)) cmdItems.push({ kind: 'act', label, fn, k: 'Action' });
   for (const b of bookmarks) if (q && b.type === 'bookmark' && (m(b.title) || m(b.url))) cmdItems.push({ kind: 'url', label: b.title, fav: faviconFor(b.url), url: b.url, k: 'Bookmark' });
   for (const b of bots) if (q && m(b.name)) cmdItems.push({ kind: 'bot', label: 'Ask ' + b.name, url: b.url, k: 'AI sidebar' });
@@ -1485,6 +1494,7 @@ $('cmdbar').addEventListener('mousedown', (e) => { if (e.target.id === 'cmdbar')
 
 /* ---------------- toolbar buttons ---------------- */
 $('newTabBtn').addEventListener('click', () => newTab());
+$('newTabBtn').addEventListener('contextmenu', (e) => { e.preventDefault(); if (info.incognito) return; showMenu('ctxMenu', [{ label: 'New tab', key: 'Ctrl+T', fn: () => newTab() }, '-', ...Object.entries(CONTAINERS).map(([k, c]) => ({ label: `New ${c.name} container tab`, fn: () => newTab(null, { container: k }) }))], e.clientX, e.clientY); });
 $('titlebar').addEventListener('dblclick', (e) => { if (e.target.id === 'tabs') newTab(); });
 $('tabs').addEventListener('auxclick', (e) => { if (e.button === 1 && e.target.id === 'tabs') newTab(); });
 $('backBtn').addEventListener('click', () => { const t = activeTab(); if (t && t.wv && t.wv.canGoBack()) t.wv.goBack(); });
@@ -1573,6 +1583,7 @@ function runCmd(cmd) {
     case 'buddy-summarize': if (window.buddySummarize) window.buddySummarize(); else toggleAI(); break;
     case 'reader': window.reader && window.reader.toggle(); break;
     case 'close-peek': closePeek(); break;
+    case 'space-next': case 'space-prev': { if (spaces.length > 1 && window.switchSpace) { const k = spaces.findIndex((x) => x.id === curSpace); window.switchSpace(spaces[(k + (cmd === 'space-next' ? 1 : -1) + spaces.length) % spaces.length].id); } break; }
     case 'next-tab': cycle(1); break;
     case 'prev-tab': cycle(-1); break;
     case 'find': openFind(); break;
@@ -1676,7 +1687,7 @@ function scheduleSave() {
   saveTimer = setTimeout(() => {
     const list = tabs.filter((t) => !isInternal(t.url) || !isNewtab(t.url) || tabs.length === 1);
     const data = {
-      tabs: list.map((t) => ({ url: t.url, title: t.title, favicon: t.favicon, pinned: t.pinned, groupId: t.groupId, muted: t.muted, space: t.space || 'home' })),
+      tabs: list.map((t) => ({ url: t.url, title: t.title, favicon: t.favicon, pinned: t.pinned, groupId: t.groupId, muted: t.muted, space: t.space || 'home', container: t.container || null })),
       spaces, space: curSpace,
       groups: [...groups.values()],
       active: Math.max(0, list.findIndex((t) => t.id === activeId))
@@ -1779,7 +1790,7 @@ async function showJustUpdated() {
     for (const g of restore.groups || []) groups.set(g.id, Object.assign({}, g));
     if (Array.isArray(restore.spaces) && restore.spaces.length) { spaces = restore.spaces; curSpace = spaces.some((x) => x.id === restore.space) ? restore.space : spaces[0].id; }
     const act = Math.min(restore.active || 0, restore.tabs.length - 1);
-    restore.tabs.forEach((t, i) => newTab(t.url, { activate: false, lazy: i !== act, pinned: !!t.pinned, title: t.title, favicon: t.favicon, groupId: t.groupId || null, muted: !!t.muted, space: spaces.some((x) => x.id === t.space) ? t.space : spaces[0].id }));
+    restore.tabs.forEach((t, i) => newTab(t.url, { activate: false, lazy: i !== act, pinned: !!t.pinned, title: t.title, favicon: t.favicon, groupId: t.groupId || null, muted: !!t.muted, space: spaces.some((x) => x.id === t.space) ? t.space : spaces[0].id, container: t.container || null }));
     restoring = false; normalizeOrder();
     activate_(tabs[Math.min(act, tabs.length - 1)].id);
     if (!inSpace(activeTab())) curSpace = activeTab().space || spaces[0].id;

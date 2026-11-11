@@ -80,7 +80,7 @@ const DEFAULT_SETTINGS = () => ({
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
-  adblock: true, cookieBanners: true, dnt: false, savePasswords: true, saveCards: true,
+  adblock: true, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
   pinned: []
@@ -157,6 +157,8 @@ const sessions = new Map();    // BrowserWindow.id -> { tabs, active }  (persist
 let quitting = false;
 let incognitoCounter = 0;
 const preparedSessions = new WeakSet();
+const CONTAINERS = ['personal', 'work', 'shopping', 'banking', 'social'];
+const containerSessions = new Set();   // so Clear data, Shield on/off and the like reach container tabs too
 
 function themeColors(incognito) {
   if (incognito) return { bg: '#08070D', bar: '#0E0C16', fg: '#DCD6EE' };   // private: near-black with a violet hush
@@ -579,7 +581,7 @@ function loadBlocker() {
 }
 let countTimer = null;
 function broadcastCount() { if (countTimer) return; countTimer = setTimeout(() => { countTimer = null; broadcast('adblock:count', blockedCount); }, 500); }
-function tabSessions() { const out = new Set([session.fromPartition(PERSIST)]); for (const w of windows.values()) out.add(session.fromPartition(w.partition)); return [...out]; }
+function tabSessions() { const out = new Set([session.fromPartition(PERSIST)]); for (const w of windows.values()) out.add(session.fromPartition(w.partition)); for (const c of containerSessions) out.add(c); return [...out]; }
 // Ghostery runs its scriptlets with event.sender.executeJavaScript, i.e. in the tab's *main* frame,
 // whenever *any* frame asks. On YouTube (lots of ad iframes) that re-ran the scriptlets ~30 times per
 // page, re-wrapping JSON/fetch each time, and videos stalled for up to 20 s. Run them in the frame that
@@ -1131,6 +1133,13 @@ ipcMain.on('consent:declined', (e) => {
   if (seen.has(host)) return; seen.add(host);
   shell.send('consent:declined', { host, wcId: e.sender.id });
 });
+// Mouse gestures (drag-preload.js): only the listed commands, and only from a tab.
+const GESTURE_CMDS = new Set(['back', 'forward', 'new-tab', 'close-tab', 'reload', 'space-next', 'space-prev']);
+ipcMain.handle('gesture:on', (e) => e.sender.getType() === 'webview' && getSettings().mouseGestures !== false);
+ipcMain.on('gesture', (e, cmd) => {
+  if (e.sender.getType() !== 'webview' || !GESTURE_CMDS.has(cmd) || getSettings().mouseGestures === false) return;
+  const shell = shellFor(e.sender); if (shell && !shell.isDestroyed()) shell.send('shortcut', cmd);
+});
 // Peek (drag-preload.js): Shift-click on a link in a tab shows it in a floating preview in that window.
 const peekWcs = new Set();   // the preview's own page: Escape inside it closes it
 ipcMain.on('peek:open', (e, url) => {
@@ -1671,6 +1680,16 @@ app.on('web-contents-created', (_e, contents) => {
     const src = params.src || 'about:blank';
     if (!/^(https?:|stupid:|about:|file:|chrome-extension:)/.test(src)) params.src = 'about:blank';
     if (src.startsWith('stupid://')) webPreferences.preload = path.join(__dirname, 'internal-preload.js');
+    // Container tabs: their own cookie jar, named after this window's own one (and only from a fixed list), set up
+    // like the window's tabs (blocker, preloads, permissions) but never sharing sign-ins with the rest.
+    const part = String(params.partition || '');
+    const m = /^(.+)-c-([a-z]{3,10})$/.exec(part);
+    if (m) {
+      const w = entryFor(contents);
+      if (!w || m[1] !== w.partition || !CONTAINERS.includes(m[2])) { _ev.preventDefault(); return; }
+      const cs = session.fromPartition(part); containerSessions.add(cs);
+      prepareSession(cs, { tabs: true, incognito: w.incognito });
+    }
   });
 
   if (contents.getType() !== 'webview') return;

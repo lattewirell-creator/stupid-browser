@@ -70,6 +70,8 @@ function render() {
   $('customSearch').onchange = () => { const v = $('customSearch').value.trim(); if (v && (!/^https?:\/\//.test(v) || !v.includes('%s'))) { toast('Use a full https:// address with %s in it'); return; } set({ customSearch: v }).then(() => toast('Saved')); };
   // privacy
   $('adblock').checked = !!s.adblock; $('adblock').onchange = (e) => call('adblock:set', e.target.checked);
+  $('mouseGestures').checked = s.mouseGestures !== false; $('mouseGestures').onchange = (e) => set({ mouseGestures: e.target.checked });
+  if (!/Win/.test(navigator.platform)) $('gestureRow').classList.add('hidden');
   $('cookieBanners').checked = s.cookieBanners !== false; $('cookieBanners').onchange = (e) => set({ cookieBanners: e.target.checked });
   $('dnt').checked = !!s.dnt; $('dnt').onchange = (e) => set({ dnt: e.target.checked });
   // passwords / downloads
