@@ -12,7 +12,7 @@ function render() {
   const acc = $('accent'); acc.innerHTML = '';
   for (const [k, c] of Object.entries(ACCENTS)) { const b = el('button', 'swatch' + ((s.accent || 'clay') === k ? ' on' : '')); b.style.background = c; b.title = k; b.onclick = () => set({ accent: k }).then(render); acc.appendChild(b); }
   bindValue('fontSize');
-  $('tabSleep').value = String(s.tabSleep == null ? 15 : s.tabSleep); $('tabSleep').onchange = () => set({ tabSleep: +$('tabSleep').value });
+  $('tabSleep').value = String(s.tabSleep == null ? -1 : s.tabSleep); $('tabSleep').onchange = () => set({ tabSleep: +$('tabSleep').value });
   // Liquid Glass: only the Mac (WebKit) version has it.
   if (S.engine === 'webkit') { $('glassRow').classList.remove('hidden'); $('glass').checked = !!s.glass; $('glass').onchange = () => set({ glass: $('glass').checked }); }
   for (const k of ['modernLook', 'verticalTabs', 'compactMode']) { $(k).checked = k === 'modernLook' ? s[k] !== false : !!s[k]; $(k).onchange = () => set({ [k]: $(k).checked }); }
@@ -70,6 +70,8 @@ function render() {
   $('customSearch').onchange = () => { const v = $('customSearch').value.trim(); if (v && (!/^https?:\/\//.test(v) || !v.includes('%s'))) { toast('Use a full https:// address with %s in it'); return; } set({ customSearch: v }).then(() => toast('Saved')); };
   // privacy
   $('adblock').checked = !!s.adblock; $('adblock').onchange = (e) => call('adblock:set', e.target.checked);
+  $('mouseGestures').checked = s.mouseGestures !== false; $('mouseGestures').onchange = (e) => set({ mouseGestures: e.target.checked });
+  if (!/Win/.test(navigator.platform)) $('gestureRow').classList.add('hidden');
   $('cookieBanners').checked = s.cookieBanners !== false; $('cookieBanners').onchange = (e) => set({ cookieBanners: e.target.checked });
   $('dnt').checked = !!s.dnt; $('dnt').onchange = (e) => set({ dnt: e.target.checked });
   // passwords / downloads

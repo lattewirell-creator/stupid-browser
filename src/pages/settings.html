@@ -96,6 +96,7 @@
       </div>
       <div class="card">
         <div class="row"><div class="lbl">Shield — block ads and trackers</div><input type="checkbox" class="toggle" id="adblock"></div>
+        <div class="row" id="gestureRow"><div class="lbl">Mouse gestures<small>Hold the right button and draw: ← back, → forward, ↓ new tab, ↓→ close tab, ↑↓ reload, ↑→ / ↑← switch space.</small></div><input type="checkbox" class="toggle" id="mouseGestures"></div>
         <div class="row"><div class="lbl">Say no to cookie pop-ups<small>Clicks “Reject all” or “Only necessary” for you. Never “Accept”.</small></div><input type="checkbox" class="toggle" id="cookieBanners"></div>
         <div class="row"><div class="lbl">Send a “Do Not Track” request<small>Also sends Global Privacy Control. Sites may ignore it.</small></div><input type="checkbox" class="toggle" id="dnt"></div>
       </div>
@@ -159,7 +160,7 @@
     <section id="performance"><h2>Performance</h2>
       <div class="card">
         <div class="row"><div class="lbl">Memory saver<small>Tabs you haven’t looked at for a while go to sleep to free memory, and wake up when you click them. Tabs playing sound or with unsent text stay awake.</small></div>
-          <select id="tabSleep" class="input"><option value="5">After 5 minutes</option><option value="15">After 15 minutes</option><option value="30">After 30 minutes</option><option value="60">After 1 hour</option><option value="120">After 2 hours</option><option value="0">Never</option></select></div>
+          <select id="tabSleep" class="input"><option value="-1">As soon as you leave it (least memory)</option><option value="5">After 5 minutes</option><option value="15">After 15 minutes</option><option value="30">After 30 minutes</option><option value="60">After 1 hour</option><option value="120">After 2 hours</option><option value="0">Never</option></select></div>
       </div>
     </section>
 

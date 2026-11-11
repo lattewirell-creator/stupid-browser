@@ -16,7 +16,7 @@
   const topZone = el('div', 'edge-zone top'), leftZone = el('div', 'edge-zone left');
   body.append(topZone, leftZone);
 
-  const strip = [$('pinnedTabs'), $('tabs'), $('newTabBtn')];
+  const strip = [$('spaceBtn'), $('pinnedTabs'), $('tabs'), $('newTabBtn')].filter(Boolean);   // spaces switcher first
   const anchor = document.querySelector('#titlebar .drag-fill');
   function placeStrip(vertical) {
     if (vertical) { if (strip[0].parentElement !== vtabs) vtabs.append(...strip); }

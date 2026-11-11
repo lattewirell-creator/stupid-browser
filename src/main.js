@@ -76,11 +76,11 @@ const DEFAULT_SETTINGS = () => ({
   logo: 'ring', logoEmoji: '🦆', logoImage: '', wordmark: '', showQuotes: true, quoteMode: 'browser', myQuotes: [],
   eq: { on: false, preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0] },
   aiButton: 'buddy', buddy: { enabled: true, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' }, bases: {}, look: true },
-  bg: 'none', bgDim: 25, tabSleep: 15, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], toolbar: { order: [], custom: [] }, brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
+  bg: 'none', bgDim: 25, tabSleep: -1, uiFont: 'inter', density: 'comfortable', corners: 'rounded', tabStyle: 'classic', frameTint: 'soft', hideButtons: [], toolbar: { order: [], custom: [] }, brandBundle: false, rewind: false, rewindExclude: [], modernLook: true, verticalTabs: false, compactMode: false, appIcon: false, appIconImage: '', buddyLook: { name: 'Buddy', color: 'cream', glow: 'cyan', extra: 'none', image: '' },
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
-  adblock: true, cookieBanners: true, dnt: false, savePasswords: true, saveCards: true,
+  adblock: true, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
   pinned: []
@@ -157,6 +157,8 @@ const sessions = new Map();    // BrowserWindow.id -> { tabs, active }  (persist
 let quitting = false;
 let incognitoCounter = 0;
 const preparedSessions = new WeakSet();
+const CONTAINERS = ['personal', 'work', 'shopping', 'banking', 'social'];
+const containerSessions = new Set();   // so Clear data, Shield on/off and the like reach container tabs too
 
 function themeColors(incognito) {
   if (incognito) return { bg: '#08070D', bar: '#0E0C16', fg: '#DCD6EE' };   // private: near-black with a violet hush
@@ -579,7 +581,7 @@ function loadBlocker() {
 }
 let countTimer = null;
 function broadcastCount() { if (countTimer) return; countTimer = setTimeout(() => { countTimer = null; broadcast('adblock:count', blockedCount); }, 500); }
-function tabSessions() { const out = new Set([session.fromPartition(PERSIST)]); for (const w of windows.values()) out.add(session.fromPartition(w.partition)); return [...out]; }
+function tabSessions() { const out = new Set([session.fromPartition(PERSIST)]); for (const w of windows.values()) out.add(session.fromPartition(w.partition)); for (const c of containerSessions) out.add(c); return [...out]; }
 // Ghostery runs its scriptlets with event.sender.executeJavaScript, i.e. in the tab's *main* frame,
 // whenever *any* frame asks. On YouTube (lots of ad iframes) that re-ran the scriptlets ~30 times per
 // page, re-wrapping JSON/fetch each time, and videos stalled for up to 20 s. Run them in the frame that
@@ -731,7 +733,7 @@ function cleanPatch(patch) {
   if ('rewindExclude' in p) p.rewindExclude = (Array.isArray(p.rewindExclude) ? p.rewindExclude : []).map((d) => String(d).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '')).filter((d) => /^[a-z0-9.-]{3,253}$/.test(d)).slice(0, 200);
   if ('appIcon' in p) p.appIcon = !!p.appIcon;
   if ('appIconImage' in p && !(p.appIconImage === '' || (typeof p.appIconImage === 'string' && p.appIconImage.length < 1500000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.appIconImage)))) delete p.appIconImage;
-  if ('tabSleep' in p && ![0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
+  if ('tabSleep' in p && ![-1, 0, 5, 15, 30, 60, 120].includes(+p.tabSleep)) delete p.tabSleep; else if ('tabSleep' in p) p.tabSleep = +p.tabSleep;
   if ('bgDim' in p) p.bgDim = Math.max(0, Math.min(70, Math.round(+p.bgDim || 0)));
   if ('buddy' in p) {
     const b = p.buddy && typeof p.buddy === 'object' ? p.buddy : {};
@@ -908,7 +910,7 @@ handle('perms:set', ANY, (_e, origin, kind, value) => {
 });
 handle('site:clearData', ['shell'], async (e, origin) => {
   const w = entryFor(e.sender);
-  await session.fromPartition(w.partition).clearStorageData({ origin });
+  for (const p of [w.partition, ...CONTAINERS.map((c) => `${w.partition}-c-${c}`)]) await session.fromPartition(p).clearStorageData({ origin });
   return true;
 });
 
@@ -916,7 +918,7 @@ handle('privacy:clear', ['internal'], async (_e, { range, history, cookies, cach
   const since = range > 0 ? Date.now() - range : 0;
   if (history) store.write('history.json', getHistory().filter((x) => x.ts < since));
   if (downloads) store.write('downloads.json', getDownloads().filter((x) => x.state === 'progressing' || x.ts < since));
-  for (const p of [PERSIST, PERSIST_AI]) {   // the sidebar apps keep theirs; a Google/Microsoft sign-out still reaches them (linkSignIns)
+  for (const p of [PERSIST, PERSIST_AI, ...CONTAINERS.map((c) => `${PERSIST}-c-${c}`)]) {   // container tabs too; the sidebar apps keep theirs; a Google/Microsoft sign-out still reaches them (linkSignIns)
     const s = session.fromPartition(p);
     if (cookies) await s.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage', 'filesystem', 'shadercache'] });
     if (cache) { await s.clearCache(); await s.clearCodeCaches({}); }
@@ -955,7 +957,10 @@ handle('vpn:open', ['shell'], async () => {
 handle('session:save', ['shell'], (e, data) => {
   const w = entryFor(e.sender);
   if (!w || w.incognito || !data) return;
-  sessions.set(w.win.id, { tabs: (data.tabs || []).slice(0, 200), groups: (data.groups || []).slice(0, 50), active: data.active | 0 });
+  const seenIds = new Set();
+  const spaces = (Array.isArray(data.spaces) ? data.spaces : []).filter((x) => x && typeof x === 'object' && x.id && !seenIds.has(String(x.id)) && seenIds.add(String(x.id))).slice(0, 20)
+    .map((x) => ({ id: String(x.id).slice(0, 24), name: String(x.name || '').slice(0, 40), color: String(x.color || 'clay').slice(0, 12) }));
+  sessions.set(w.win.id, { tabs: (data.tabs || []).slice(0, 200), groups: (data.groups || []).slice(0, 50), active: data.active | 0, spaces, space: String(data.space || '').slice(0, 24) });
   saveSessions();
 });
 
@@ -1130,6 +1135,53 @@ ipcMain.on('consent:declined', (e) => {
   if (seen.has(host)) return; seen.add(host);
   shell.send('consent:declined', { host, wcId: e.sender.id });
 });
+// A sleeping tab keeps its Back/Forward history: read as it falls asleep, put back as it wakes (renderer.js sleepTab).
+const historyUrl = (u) => typeof u === 'string' && /^(https?:|stupid:)/.test(u) && u.length < 8000;
+handle('tab:history', ['shell'], (_e, id) => {
+  const wc = webContents.fromId(+id); if (!wc || wc.isDestroyed() || wc.getType() !== 'webview') return null;
+  try {
+    const h = wc.navigationHistory; const all = h.getAllEntries(); let index = h.getActiveIndex();
+    const from = Math.max(0, all.length - 50); const entries = all.slice(from); index -= from;
+    if (!entries.length || index < 0 || entries.some((x) => !historyUrl(x.url))) return null;
+    return { entries, index };
+  } catch { return null; }
+});
+// The shell is about to wake a tab: its next view with this address skips its own first load and gets the history.
+const cleanHistory = (h) => {
+  if (!h || !Array.isArray(h.entries)) return null;
+  const entries = h.entries.slice(0, 50).filter((x) => x && historyUrl(x.url)).map((x) => ({ url: x.url, title: String(x.title || '').slice(0, 300), ...(typeof x.pageState === 'string' && x.pageState.length < 2000000 ? { pageState: x.pageState } : {}) }));
+  return entries.length ? { entries, index: Math.min(Math.max(0, h.index | 0), entries.length - 1) } : null;
+};
+handle('tab:history:pending', ['shell'], (e, partition, url, h) => {
+  const hist = cleanHistory(h); if (!hist || typeof url !== 'string') return false;
+  const list = e.sender.__pendingHistory || (e.sender.__pendingHistory = []);
+  list.push({ key: partition + '\n' + url, hist, t: Date.now() });
+  while (list.length > 20 || (list[0] && Date.now() - list[0].t > 30000)) list.shift();
+  return true;
+});
+// Text typed into a frame inside a page (an editor, a comment box) keeps that tab awake too; the page itself is
+// checked directly. Forgotten when the page goes somewhere else.
+const typedInFrame = new Set();
+ipcMain.on('tab:typed', (e) => {
+  const wc = e.sender; if (wc.getType() !== 'webview' || typedInFrame.has(wc.id)) return;
+  typedInFrame.add(wc.id);
+  if (!wc.__typedHooked) { wc.__typedHooked = true; wc.on('did-navigate', () => typedInFrame.delete(wc.id)); wc.once('destroyed', () => typedInFrame.delete(wc.id)); }
+});
+handle('tab:typedInFrame', ['shell'], (_e, id) => typedInFrame.has(+id));
+// Mouse gestures (drag-preload.js): only the listed commands, and only from a tab.
+const GESTURE_CMDS = new Set(['back', 'forward', 'new-tab', 'close-tab', 'reload', 'space-next', 'space-prev']);
+ipcMain.handle('gesture:on', (e) => e.sender.getType() === 'webview' && getSettings().mouseGestures !== false);
+ipcMain.on('gesture', (e, cmd) => {
+  if (e.sender.getType() !== 'webview' || !GESTURE_CMDS.has(cmd) || getSettings().mouseGestures === false) return;
+  const shell = shellFor(e.sender); if (shell && !shell.isDestroyed()) shell.send('gesture', { cmd, wcId: e.sender.id });
+});
+// Peek (drag-preload.js): Shift-click on a link in a tab shows it in a floating preview in that window.
+const peekWcs = new Set();   // the preview's own page: Escape inside it closes it
+ipcMain.on('peek:open', (e, url) => {
+  if (e.sender.getType() !== 'webview' || typeof url !== 'string' || url.length > 8000 || !/^https?:\/\//i.test(url)) return;
+  const shell = shellFor(e.sender); if (shell && !shell.isDestroyed()) shell.send('open-url', { url, where: 'peek' });
+});
+handle('peek:mark', ['shell'], (_e, id) => { const wc = webContents.fromId(+id); if (wc && wc.getType() === 'webview' && !peekWcs.has(wc.id)) { peekWcs.add(wc.id); wc.once('destroyed', () => peekWcs.delete(wc.id)); } });
 /* ---------- drag a picture out of a page as a file (drag-preload.js) ---------- */
 // The picture is saved in a temporary folder (emptied when the browser quits) and dragged as that file. It's
 // fetched with the tab's own session (its cookies), as you press on it, so the drag doesn't wait.
@@ -1428,6 +1480,7 @@ function konami(target, input) {
 function hookShortcuts(wc) {
   wc.on('before-input-event', (event, input) => {
     { const t = shellFor(wc); if (t) konami(t, input); }
+    if (input.type === 'keyDown' && input.key === 'Escape' && peekWcs.has(wc.id)) { const t = shellFor(wc); if (t) { event.preventDefault(); t.send('shortcut', 'close-peek'); } return; }
     const cmd = shortcutFor(input);
     if (!cmd) return;
     const target = shellFor(wc);
@@ -1470,6 +1523,7 @@ function pageContextMenu(wc, p) {
   const sep = () => { if (T.length && T[T.length - 1].type !== 'separator') T.push({ type: 'separator' }); };
   if (p.linkURL && /^(https?|stupid):/.test(p.linkURL)) {
     T.push({ label: 'Open link in new tab', click: () => openUrl(p.linkURL, 'background') });
+    if (/^https?:/.test(p.linkURL)) T.push({ label: 'Peek at link (Shift+click)', click: () => openUrl(p.linkURL, 'peek') });
     T.push({ label: 'Open link in new window', click: () => createWindow({ urls: [p.linkURL] }) });
     T.push({ label: 'Open link in private window', click: () => createWindow({ incognito: true, urls: [p.linkURL] }) });
     T.push({ label: 'Save link as…', click: () => wc.downloadURL(p.linkURL) });
@@ -1650,7 +1704,11 @@ function hookSignInPopup(child, opener, openedEmpty) {
 }
 
 app.on('web-contents-created', (_e, contents) => {
-  contents.on('did-attach-webview', (_ev, guest) => { const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
+  contents.on('did-attach-webview', (_ev, guest) => {
+    const q = contents.__restoreQueue || [];
+    while (q.length && Date.now() - q[0].t > 30000) q.shift();   // a tab closed before it attached: forget it
+    const i = q.findIndex((x) => session.fromPartition(x.partition) === guest.session);
+    if (i >= 0 && !guest.getURL()) { const r = q.splice(i, 1)[0]; guest.navigationHistory.restore(r.hist).catch(() => { if (!guest.isDestroyed() && !guest.getURL()) guest.loadURL(r.url); }); } const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
     webPreferences.nodeIntegration = false;
@@ -1660,7 +1718,23 @@ app.on('web-contents-created', (_e, contents) => {
     webPreferences.defaultFontSize = FONT_SIZES[getSettings().fontSize] || 16;
     const src = params.src || 'about:blank';
     if (!/^(https?:|stupid:|about:|file:|chrome-extension:)/.test(src)) params.src = 'about:blank';
+    // A tab waking from sleep with its history: no first load here, the history restore loads it (did-attach-webview).
+    const pend = contents.__pendingHistory, k = pend ? pend.findIndex((x) => x.key === String(params.partition) + '\n' + src) : -1;
+    const restore = k >= 0 ? { hist: pend[k].hist, url: src, partition: String(params.partition) } : null;
+    if (restore) pend.splice(k, 1);
     if (src.startsWith('stupid://')) webPreferences.preload = path.join(__dirname, 'internal-preload.js');
+    // Container tabs: their own cookie jar, named after this window's own one (and only from a fixed list), set up
+    // like the window's tabs (blocker, preloads, permissions) but never sharing sign-ins with the rest.
+    const part = String(params.partition || '');
+    const m = /^(.+)-c-([a-z]{3,10})$/.exec(part);
+    if (m) {
+      const w = entryFor(contents);
+      if (!w || m[1] !== w.partition || !CONTAINERS.includes(m[2])) { _ev.preventDefault(); return; }   // nothing queued for it
+      const cs = session.fromPartition(part); if (!w.incognito) containerSessions.add(cs);
+      prepareSession(cs, { tabs: true, incognito: w.incognito });
+    }
+    // Accepted: this view skips its first load and gets its history once attached (matched by its cookie jar, in order).
+    if (restore) { params.src = ''; (contents.__restoreQueue || (contents.__restoreQueue = [])).push(Object.assign(restore, { t: Date.now() })); }
   });
 
   if (contents.getType() !== 'webview') return;
@@ -1727,13 +1801,14 @@ function selfTest(win) {
     if (pm && process.env.STUPID_PERF_LOG) {
       const ms = app.getAppMetrics(); const by = {};
       let mem = 0, cpu = 0;
-      for (const p of ms) { const mb = (p.memory.workingSetSize || 0) / 1024; mem += mb; cpu += p.cpu.percentCPUUsage || 0; const k = p.type === 'Tab' ? 'renderer' : p.type; by[k] = (by[k] || 0) + mb; }
+      for (const p of ms) { const mb = (p.memory.workingSetSize || 0) / 1024; mem += mb; cpu += p.cpu.percentCPUUsage || 0; const k = p.type === 'Tab' ? 'renderer' : p.type === 'Utility' ? 'U:' + (p.serviceName || p.name || '?').replace(/^.*\./, '') : p.type; by[k] = (by[k] || 0) + mb; }
       const parts = Object.entries(by).map(([k, v]) => `${k}=${Math.round(v)}`).join(' ');
       // Which page each renderer is, biggest first (to see what uses the memory).
       const pages = new Map(); for (const wc of webContents.getAllWebContents()) { try { pages.set(wc.getOSProcessId(), (wc.getType() === 'window' ? 'window ' : '') + (wc.getURL() || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 50)); } catch {} }
       const top = ms.filter((p) => p.type === 'Tab' || p.type === 'Renderer').sort((a, b) => b.memory.workingSetSize - a.memory.workingSetSize)
         .map((p) => `${Math.round(p.memory.workingSetSize / 1024)}MB ${pages.get(p.pid) || '?'}`).join(' | ');
       fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] renderers-${pm[1]} ${top}\n`);
+      { const mu = process.memoryUsage(); fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] main-${pm[1]} rss=${mu.rss >> 20} heapUsed=${mu.heapUsed >> 20} heapTotal=${mu.heapTotal >> 20} external=${mu.external >> 20} arrayBuffers=${mu.arrayBuffers >> 20}\n`); }
       fs.appendFileSync(process.env.STUPID_PERF_LOG, `[perf] metrics-${pm[1]} memMB=${Math.round(mem)} cpu%=${cpu.toFixed(1)} procs=${ms.length} ${parts} mainLagMaxMs=${lag.max} mainLagP95Ms=${lag.p95()}\n`);
       lag.reset();
     }
@@ -1906,6 +1981,8 @@ if (!app.requestSingleInstanceLock()) {
 
   perfMark('main-loaded');
   app.whenReady().then(() => {
+    // 2.0: tabs sleep as soon as you leave them (least memory). Moved over once for everyone still on the old default.
+    { const s0 = getSettings(); if (!s0.sleepInstantMoved) setSettings(s0.tabSleep === 15 ? { tabSleep: -1, sleepInstantMoved: true } : { sleepInstantMoved: true }); }
     perfMark('app-ready');
     sync.start();
     // When the computer runs low on memory, idle background tabs fall asleep right away (instead of after the
