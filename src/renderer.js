@@ -110,7 +110,12 @@ function createWebview(tab) {
   const wv = document.createElement('webview');
   wv.setAttribute('partition', partitionFor(tab.container));
   wv.setAttribute('allowpopups', '');
+  // Waking from sleep with its history: start blank and let main put the history (and the page) back.
+  const hist = tab.hist; tab.hist = null;
   wv.setAttribute('src', tab.url);
+  // Electron only puts history back into a page that has never loaded anything, so main skips this view's first load
+  // and restores the history (which loads the page) instead.
+  if (hist) call('tab:history:pending', partitionFor(tab.container), tab.url, hist).catch(() => {});
   wv.dataset.tab = tab.id;
   tab.internal = isInternal(tab.url);
   tab.wv = wv; tab.ready = false;
@@ -302,11 +307,11 @@ function activate_(id) {
   const changed = activeId !== id;
   const prev = changed && tabById(activeId); if (prev) prev.lastActive = Date.now();   // "last seen", for tab sleeping
   activeId = id;
-  tab.lastActive = Date.now();
+  tab.lastActive = Date.now(); tab.seen = true;
   if (changed) { rewindSoon(tab); closePeek(); }
   // Memory saver set to "as soon as you leave it": the tab you just left goes to sleep (after a short moment, so the
   // new one has painted and a quick switch back doesn't reload). Playing, split-view and half-typed tabs stay awake.
-  if (changed && prev && instantSleep()) { const p = prev; setTimeout(() => { if (p.id !== activeId && tabs.includes(p)) sleepTab(p); }, 1500); }
+  if (changed && prev && !prev.pinned && instantSleep()) { const p = prev; setTimeout(() => { if (p.id !== activeId && tabs.includes(p)) sleepTab(p); }, 1500); }
   if (!tab.wv) { tab.asleep = false; createWebview(tab); }
   if (changed && tab.wcId) call('ext:active', tab.wcId).catch(() => {});
   if (changed) { holdUntilPainted(tab, prev); if (window.reader) { window.reader.close(); window.reader.check(tab); } }
@@ -322,7 +327,7 @@ function closeTab(id, { record = true, quiet = false } = {}) {
   if (i < 0) return;
   const tab = tabs[i];
   if (record && !isNewtab(tab.url)) {
-    closedStack.push({ url: tab.url, title: tab.title, favicon: tab.favicon, index: i, groupId: tab.groupId, pinned: tab.pinned, container: tab.container || null });
+    closedStack.push({ url: tab.url, title: tab.title, favicon: tab.favicon, index: i, groupId: tab.groupId, pinned: tab.pinned, container: tab.container || null, space: tab.space || 'home' });
     if (closedStack.length > 25) closedStack.shift();
     // Closed by mistake? One click brings it back (Ctrl+Shift+T does too).
     const name = (tab.title || tab.url.replace(/^https?:\/\//, '')).slice(0, 40);
@@ -352,7 +357,7 @@ function closeTab(id, { record = true, quiet = false } = {}) {
 function reopenClosed() {
   const c = closedStack.pop();
   if (!c) { toast('No recently closed tabs'); return; }
-  newTab(c.url, { title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, container: c.container, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
+  newTab(c.url, { title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, container: c.container, space: spaces.some((x) => x.id === c.space) ? c.space : curSpace, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
 }
 function closeOthers(tab) { for (const t of tabs.filter((x) => x.id !== tab.id && !x.pinned && inSpace(x))) closeTab(t.id); activate_(tab.id); }
 function closeRight(tab) { const i = tabs.indexOf(tab); for (const t of tabs.slice(i + 1).filter(inSpace)) closeTab(t.id); }
@@ -644,13 +649,13 @@ function openPeek(url) {
   const wv = document.createElement('webview');
   wv.setAttribute('partition', partitionFor((activeTab() || {}).container)); wv.setAttribute('allowpopups', ''); wv.setAttribute('src', url);
   card.append(bar, wv); back.appendChild(card); $('views').appendChild(back);
-  peek = { el: back, wv, url, host };
+  peek = { el: back, wv, url, host, container: (activeTab() || {}).container || null };
   peekTitle(url);
   wv.addEventListener('did-attach', () => { try { call('peek:mark', wv.getWebContentsId()).catch(() => {}); } catch {} });
   const follow = (e) => { if (e.url && /^https?:/.test(e.url)) { peek.url = e.url; peekTitle(e.url); } };
   wv.addEventListener('did-navigate', follow); wv.addEventListener('did-navigate-in-page', (e) => { if (e.isMainFrame) follow(e); });
   wv.addEventListener('page-title-updated', (e) => { if (peek) peek.host.textContent = e.title || peek.host.textContent; });
-  keep.addEventListener('click', () => { const u = peek.url; closePeek(); newTab(u); });
+  keep.addEventListener('click', () => { const u = peek.url, c = peek.container; closePeek(); newTab(u, { container: c }); });
   x.addEventListener('click', closePeek);
   back.addEventListener('mousedown', (e) => { if (e.target === back) closePeek(); });
   requestAnimationFrame(() => back.classList.add('in'));
@@ -840,7 +845,7 @@ function closeDuplicates() {
   toast(`Closed ${n} duplicate tab${n === 1 ? '' : 's'} · click to undo`, () => {
     for (const c of closed.reverse()) {
       const at = closedStack.lastIndexOf(c); if (at >= 0) closedStack.splice(at, 1);
-      newTab(c.url, { activate: false, lazy: true, title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, container: c.container, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
+      newTab(c.url, { activate: false, lazy: true, title: c.title, favicon: c.favicon, index: c.index, pinned: c.pinned, container: c.container, space: c.space, groupId: c.groupId && groups.has(c.groupId) ? c.groupId : null });
     }
   });
 }
@@ -1600,6 +1605,8 @@ function runCmd(cmd) {
   }
 }
 api.on('shortcut', runCmd);
+// A gesture acts on the tab it was drawn on (in split view that may not be the focused one); not in Peek or panels.
+api.on('gesture', ({ cmd, wcId }) => { const t = tabs.find((x) => x.wcId === wcId); if (!t) return; if (t.id !== activeId) activate_(t.id); runCmd(cmd); });
 api.on('open-url', ({ url, where, opener }) => openUrl(url, where, opener));
 api.on('fullscreen', (on) => document.body.classList.toggle('fullscreen', on));
 addEventListener('keydown', (e) => {
@@ -1659,8 +1666,11 @@ async function sleepTab(t, now = false) {
     // Only text you typed yourself counts (drag-preload.js marks those fields). Before, any field holding a value kept
     // the tab awake forever: a slider, a hidden field, or one the page filled in itself (like the New Tab page's).
     try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("[data-sb-typed]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 : String(e.value || "").trim() && e.value !== e.defaultValue)'); } catch {}
+    if (!typing && t.wcId) { try { typing = await call('tab:typedInFrame', t.wcId); } catch {} }   // an editor inside a frame
     if (typing || !sleepable(t)) return false;
   }
+  // Keep its Back/Forward history (and where you were on each page), put back when it wakes.
+  if (t.wcId && /^https?:/.test(t.url)) { try { t.hist = await call('tab:history', t.wcId); } catch { t.hist = null; } if (!sleepable(t)) return false; }
   try { const u = t.wv.getURL(); if (u) t.url = u; const ti = t.wv.getTitle(); if (ti) t.title = ti; } catch {}
   t.wv.remove(); t.wv = null; t.wcId = null; t.ready = false; t.loading = false; t.asleep = true;
   renderTab(t);
@@ -1675,8 +1685,14 @@ setInterval(() => {
 setInterval(() => {
   const mins = settings.tabSleep == null ? -1 : +settings.tabSleep;
   if (!mins) return;
-  const cutoff = Date.now() - (mins < 0 ? 3000 : mins * 60000);
-  for (const t of tabs) if (sleepable(t) && (t.lastActive || 0) < cutoff) sleepTab(t);
+  // "As soon as you leave it": tabs you've looked at and left. Pinned tabs (often mail and chat) and tabs opened in
+  // the background you haven't looked at yet wait the usual 15 minutes.
+  const now = Date.now();
+  for (const t of tabs) {
+    const quick = mins < 0 && t.seen && !t.pinned;
+    const wait = mins < 0 ? (quick ? 3000 : 15 * 60000) : mins * 60000;
+    if (sleepable(t) && (t.lastActive || 0) < now - wait) sleepTab(t);
+  }
 }, 60000);
 
 /* ---------------- session save ---------------- */

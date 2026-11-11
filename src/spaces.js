@@ -88,6 +88,9 @@
     if (!tab || tab.pinned || !spaces.some((x) => x.id === id)) return;
     const wasActive = tab.id === activeId;
     tab.space = id;
+    // A group or split view stays in one space: the moved tab leaves them.
+    if (tab.groupId) { tab.groupId = null; normalizeOrder(); }
+    if (split && split.includes(tab.id)) split = null;
     if (wasActive) {
       const here = tabs.filter((t) => inSpace(t) && t !== tab).sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0));
       if (here.length) activate_(here[0].id); else newTab();

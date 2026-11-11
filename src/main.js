@@ -910,7 +910,7 @@ handle('perms:set', ANY, (_e, origin, kind, value) => {
 });
 handle('site:clearData', ['shell'], async (e, origin) => {
   const w = entryFor(e.sender);
-  await session.fromPartition(w.partition).clearStorageData({ origin });
+  for (const p of [w.partition, ...CONTAINERS.map((c) => `${w.partition}-c-${c}`)]) await session.fromPartition(p).clearStorageData({ origin });
   return true;
 });
 
@@ -918,7 +918,7 @@ handle('privacy:clear', ['internal'], async (_e, { range, history, cookies, cach
   const since = range > 0 ? Date.now() - range : 0;
   if (history) store.write('history.json', getHistory().filter((x) => x.ts < since));
   if (downloads) store.write('downloads.json', getDownloads().filter((x) => x.state === 'progressing' || x.ts < since));
-  for (const p of [PERSIST, PERSIST_AI]) {   // the sidebar apps keep theirs; a Google/Microsoft sign-out still reaches them (linkSignIns)
+  for (const p of [PERSIST, PERSIST_AI, ...CONTAINERS.map((c) => `${PERSIST}-c-${c}`)]) {   // container tabs too; the sidebar apps keep theirs; a Google/Microsoft sign-out still reaches them (linkSignIns)
     const s = session.fromPartition(p);
     if (cookies) await s.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage', 'filesystem', 'shadercache'] });
     if (cache) { await s.clearCache(); await s.clearCodeCaches({}); }
@@ -957,7 +957,9 @@ handle('vpn:open', ['shell'], async () => {
 handle('session:save', ['shell'], (e, data) => {
   const w = entryFor(e.sender);
   if (!w || w.incognito || !data) return;
-  const spaces = (Array.isArray(data.spaces) ? data.spaces : []).slice(0, 20).map((x) => ({ id: String(x.id).slice(0, 24), name: String(x.name || '').slice(0, 40), color: String(x.color || 'clay').slice(0, 12) }));
+  const seenIds = new Set();
+  const spaces = (Array.isArray(data.spaces) ? data.spaces : []).filter((x) => x && typeof x === 'object' && x.id && !seenIds.has(String(x.id)) && seenIds.add(String(x.id))).slice(0, 20)
+    .map((x) => ({ id: String(x.id).slice(0, 24), name: String(x.name || '').slice(0, 40), color: String(x.color || 'clay').slice(0, 12) }));
   sessions.set(w.win.id, { tabs: (data.tabs || []).slice(0, 200), groups: (data.groups || []).slice(0, 50), active: data.active | 0, spaces, space: String(data.space || '').slice(0, 24) });
   saveSessions();
 });
@@ -1133,12 +1135,46 @@ ipcMain.on('consent:declined', (e) => {
   if (seen.has(host)) return; seen.add(host);
   shell.send('consent:declined', { host, wcId: e.sender.id });
 });
+// A sleeping tab keeps its Back/Forward history: read as it falls asleep, put back as it wakes (renderer.js sleepTab).
+const historyUrl = (u) => typeof u === 'string' && /^(https?:|stupid:)/.test(u) && u.length < 8000;
+handle('tab:history', ['shell'], (_e, id) => {
+  const wc = webContents.fromId(+id); if (!wc || wc.isDestroyed() || wc.getType() !== 'webview') return null;
+  try {
+    const h = wc.navigationHistory; const all = h.getAllEntries(); let index = h.getActiveIndex();
+    const from = Math.max(0, all.length - 50); const entries = all.slice(from); index -= from;
+    if (!entries.length || index < 0 || entries.some((x) => !historyUrl(x.url))) return null;
+    return { entries, index };
+  } catch { return null; }
+});
+// The shell is about to wake a tab: its next view with this address skips its own first load and gets the history.
+const cleanHistory = (h) => {
+  if (!h || !Array.isArray(h.entries)) return null;
+  const entries = h.entries.slice(0, 50).filter((x) => x && historyUrl(x.url)).map((x) => ({ url: x.url, title: String(x.title || '').slice(0, 300), ...(typeof x.pageState === 'string' && x.pageState.length < 2000000 ? { pageState: x.pageState } : {}) }));
+  return entries.length ? { entries, index: Math.min(Math.max(0, h.index | 0), entries.length - 1) } : null;
+};
+handle('tab:history:pending', ['shell'], (e, partition, url, h) => {
+  const hist = cleanHistory(h); if (!hist || typeof url !== 'string') return false;
+  const list = e.sender.__pendingHistory || (e.sender.__pendingHistory = []);
+  list.push({ key: partition + '\n' + url, hist, t: Date.now() });
+  while (list.length > 20 || (list[0] && Date.now() - list[0].t > 30000)) list.shift();
+  return true;
+});
+// Text typed into a frame inside a page (an editor, a comment box) keeps that tab awake too; the page itself is
+// checked directly. Forgotten when the page goes somewhere else.
+const typedInFrame = new Set();
+ipcMain.on('tab:typed', (e) => {
+  const wc = e.sender; if (wc.getType() !== 'webview' || typedInFrame.has(wc.id)) return;
+  typedInFrame.add(wc.id);
+  wc.once('destroyed', () => typedInFrame.delete(wc.id));
+  wc.once('did-navigate', () => typedInFrame.delete(wc.id));
+});
+handle('tab:typedInFrame', ['shell'], (_e, id) => typedInFrame.has(+id));
 // Mouse gestures (drag-preload.js): only the listed commands, and only from a tab.
 const GESTURE_CMDS = new Set(['back', 'forward', 'new-tab', 'close-tab', 'reload', 'space-next', 'space-prev']);
 ipcMain.handle('gesture:on', (e) => e.sender.getType() === 'webview' && getSettings().mouseGestures !== false);
 ipcMain.on('gesture', (e, cmd) => {
   if (e.sender.getType() !== 'webview' || !GESTURE_CMDS.has(cmd) || getSettings().mouseGestures === false) return;
-  const shell = shellFor(e.sender); if (shell && !shell.isDestroyed()) shell.send('shortcut', cmd);
+  const shell = shellFor(e.sender); if (shell && !shell.isDestroyed()) shell.send('gesture', { cmd, wcId: e.sender.id });
 });
 // Peek (drag-preload.js): Shift-click on a link in a tab shows it in a floating preview in that window.
 const peekWcs = new Set();   // the preview's own page: Escape inside it closes it
@@ -1669,7 +1705,9 @@ function hookSignInPopup(child, opener, openedEmpty) {
 }
 
 app.on('web-contents-created', (_e, contents) => {
-  contents.on('did-attach-webview', (_ev, guest) => { const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
+  contents.on('did-attach-webview', (_ev, guest) => {
+    const r = contents.__restoreNext; contents.__restoreNext = null;
+    if (r) guest.navigationHistory.restore(r.hist).catch(() => { if (!guest.isDestroyed() && !guest.getURL()) guest.loadURL(r.url); }); const w = BrowserWindow.fromWebContents(contents); if (w) extensions.addTab(guest, w); });
   contents.on('will-attach-webview', (_ev, webPreferences, params) => {
     delete webPreferences.preload;
     webPreferences.nodeIntegration = false;
@@ -1679,6 +1717,9 @@ app.on('web-contents-created', (_e, contents) => {
     webPreferences.defaultFontSize = FONT_SIZES[getSettings().fontSize] || 16;
     const src = params.src || 'about:blank';
     if (!/^(https?:|stupid:|about:|file:|chrome-extension:)/.test(src)) params.src = 'about:blank';
+    // A tab waking from sleep with its history: no first load here, the history restore loads it (did-attach-webview).
+    const pend = contents.__pendingHistory, k = pend ? pend.findIndex((x) => x.key === String(params.partition) + '\n' + src) : -1;
+    if (k >= 0) { contents.__restoreNext = { hist: pend[k].hist, url: src }; pend.splice(k, 1); params.src = ''; }
     if (src.startsWith('stupid://')) webPreferences.preload = path.join(__dirname, 'internal-preload.js');
     // Container tabs: their own cookie jar, named after this window's own one (and only from a fixed list), set up
     // like the window's tabs (blocker, preloads, permissions) but never sharing sign-ins with the rest.
@@ -1687,7 +1728,7 @@ app.on('web-contents-created', (_e, contents) => {
     if (m) {
       const w = entryFor(contents);
       if (!w || m[1] !== w.partition || !CONTAINERS.includes(m[2])) { _ev.preventDefault(); return; }
-      const cs = session.fromPartition(part); containerSessions.add(cs);
+      const cs = session.fromPartition(part); if (!w.incognito) containerSessions.add(cs);
       prepareSession(cs, { tabs: true, incognito: w.incognito });
     }
   });

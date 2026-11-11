@@ -97,7 +97,7 @@ $('soundBtn').addEventListener('click', () => {
   const p = $('popover');
   if (!p.classList.contains('hidden') && p.classList.contains('sound-pop')) hidePop(); else openSoundPanel();
 });
-api.on('settings:changed', () => setTimeout(renderSoundBtn, 0));
+api.on('settings:changed', () => setTimeout(() => { if (eqState().on) watchOutput(); renderSoundBtn(); }, 0));
 // Asking which speakers/headphones are connected starts Chromium's audio service (~65 MB that then never goes away),
 // so nothing is asked until sound actually matters: the first time a page plays sound, or the EQ is on.
 let watchingOutput = false;

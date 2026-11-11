@@ -7,12 +7,17 @@ const { ipcRenderer } = require('electron');
 // You typed in a field (a real key press, not a value the page set): it's marked, so a tab with your half-written
 // text is never put to sleep (renderer.js sleepTab). Every page, internal ones too.
 addEventListener('input', (e) => { if (e.isTrusted && e.target && e.target.dataset) e.target.dataset.sbTyped = '1'; }, true);
+// In a frame inside the page (an editor, a comment box) the tab can't look, so the frame says so itself, once.
+if (window.top !== window) { let told = false; addEventListener('input', (e) => { if (e.isTrusted && !told) { told = true; ipcRenderer.send('tab:typed'); } }, true); }
 // Mouse gestures (Windows): hold the right button and draw. ← back, → forward, ↓ new tab, ↓→ close tab, ↑↓ reload,
 // ↑→ / ↑← next / previous space. A short right-click is still a right-click; a gesture never opens the menu. On macOS
 // and Linux the menu opens as the button goes down, so gestures can't work there and stay off.
-if (process.platform === 'win32') {
-  let g = null, gestOn = null, swallow = false;
-  ipcRenderer.invoke('gesture:on').then((v) => { gestOn = !!v; }).catch(() => { gestOn = false; });
+if (process.platform === 'win32' && window.top === window) {
+  let g = null, swallow = false, swallowT = 0, gestOn = false;
+  // Asked when the page loads and again each time the button goes down, so turning gestures off in Settings applies
+  // from the next drag on.
+  const ask = () => ipcRenderer.invoke('gesture:on').then((v) => { gestOn = !!v; }).catch(() => {});
+  ask();
   const MOVES = { L: 'back', R: 'forward', D: 'new-tab', DR: 'close-tab', UD: 'reload', UR: 'space-next', UL: 'space-prev' };
   const trail = () => {
     const svgNS = 'http://www.w3.org/2000/svg';
@@ -24,11 +29,14 @@ if (process.platform === 'win32') {
     return { s, p };
   };
   addEventListener('mousedown', (e) => {
-    if (e.button !== 2 || !e.isTrusted || !gestOn) { g = null; return; }
-    g = { x: e.clientX, y: e.clientY, pts: [[e.clientX, e.clientY]], dirs: '', lx: e.clientX, ly: e.clientY, t: null };
+    swallow = false;
+    if (e.button !== 2 || !e.isTrusted) { g = null; return; }
+    ask();
+    if (!gestOn) { g = null; return; }
+    g = { on: true, x: e.clientX, y: e.clientY, pts: [[e.clientX, e.clientY]], dirs: '', lx: e.clientX, ly: e.clientY, t: null };
   }, true);
   addEventListener('mousemove', (e) => {
-    if (!g || !(e.buttons & 2)) return;
+    if (!g || !g.on || !(e.buttons & 2)) return;
     g.pts.push([e.clientX, e.clientY]);
     const dx = e.clientX - g.lx, dy = e.clientY - g.ly;
     if (Math.abs(dx) < 30 && Math.abs(dy) < 30) { if (g.t) g.t.p.setAttribute('points', g.pts.map((p) => p.join(',')).join(' ')); return; }
@@ -42,8 +50,9 @@ if (process.platform === 'win32') {
     if (!g || e.button !== 2) return;
     const done = g; g = null;
     if (done.t) done.t.s.remove();
-    if (!done.dirs) return;          // just a right-click: the menu opens as usual
-    swallow = true;                  // a gesture: no menu
+    if (!done.on || !done.dirs) return;   // just a right-click: the menu opens as usual
+    swallow = true;                       // a gesture: no menu (only the menu this very release would open)
+    clearTimeout(swallowT); swallowT = setTimeout(() => { swallow = false; }, 400);
     const cmd = MOVES[done.dirs];
     if (cmd) ipcRenderer.send('gesture', cmd);
   }, true);
