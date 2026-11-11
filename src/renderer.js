@@ -1670,9 +1670,9 @@ async function sleepTab(t, now = false, evenActive = false) {
     let typing = false;
     // Only text you typed yourself counts (drag-preload.js marks those fields). Before, any field holding a value kept
     // the tab awake forever: a slider, a hidden field, or one the page filled in itself (like the New Tab page's).
-    // Also kept awake: a video playing (even muted) or in picture-in-picture, and a call or screen share (the camera,
-    // microphone or screen was let in) even while it's quiet.
-    try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("[data-sb-typed]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 : String(e.value || "").trim() && e.value !== e.defaultValue) || !!document.pictureInPictureElement || [...document.querySelectorAll("video,audio")].some((m) => !m.paused && !m.ended)'); } catch {}
+    // Also kept awake: a video playing with sound (even in a quiet moment) or in picture-in-picture, and a call (the
+    // camera or microphone was let in) even while it's quiet. Muted looping videos (feeds, banners) don't count.
+    try { typing = await t.wv.executeJavaScript('[...document.querySelectorAll("[data-sb-typed]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 : String(e.value || "").trim() && e.value !== e.defaultValue) || !!document.pictureInPictureElement || [...document.querySelectorAll("video,audio")].some((m) => !m.paused && !m.ended && !m.muted && m.volume > 0)'); } catch {}
     if (!typing && t.wcId) { try { typing = await call('tab:typedInFrame', t.wcId) || await call('tab:capturing', t.wcId); } catch {} }   // an editor inside a frame; a call
     if (typing || !sleepable2(t)) return false;
   }

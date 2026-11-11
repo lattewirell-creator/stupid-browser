@@ -459,15 +459,22 @@ function permKinds(permission, details = {}) {
 // Tabs that were let use the camera, microphone or screen (a call, screen sharing): never put to sleep, even when
 // quiet, until they go to another page.
 const capturingWcs = new Set();
+// A call that has ended in a page that stays open (Meet, a Slack huddle) stops counting once the tab has been quiet
+// for 15 minutes.
+const lastHeard = new Map();
 function markCapturing(wc) {
-  if (!wc || wc.isDestroyed() || capturingWcs.has(wc.id)) return;
+  if (!wc || wc.isDestroyed()) return;
+  lastHeard.set(wc.id, Date.now());
+  if (capturingWcs.has(wc.id)) return;
   capturingWcs.add(wc.id);
-  const id = wc.id, done = () => capturingWcs.delete(id);
-  wc.once('did-navigate', done); wc.once('destroyed', done);
+  const id = wc.id, done = () => { capturingWcs.delete(id); lastHeard.delete(id); };
+  const heard = () => { if (wc.isCurrentlyAudible()) lastHeard.set(id, Date.now()); };
+  wc.on('audio-state-changed', heard);
+  wc.once('did-navigate', () => { done(); wc.removeListener('audio-state-changed', heard); }); wc.once('destroyed', done);
 }
-handle('tab:capturing', ['shell'], (_e, id) => capturingWcs.has(+id));
+handle('tab:capturing', ['shell'], (_e, id) => capturingWcs.has(+id) && Date.now() - (lastHeard.get(+id) || 0) < 15 * 60000);
 function handlePermission(wc, permission, callback0, details, incognito) {
-  const callback = (ok) => { if (ok && (permission === 'media' || permission === 'display-capture')) markCapturing(wc); callback0(ok); };
+  const callback = (ok) => { if (ok && permission === 'media') markCapturing(wc); callback0(ok); };
   if (permission === 'openExternal') {
     const ext = details.externalURL || '';
     if (/^(mailto|tel|ms-settings|steam|discord|spotify|zoommtg|msteams):/i.test(ext)) return callback(true);
