@@ -1219,7 +1219,7 @@ setInterval(async () => {
     const wins = [...windows.values()].filter((w) => !w.win.isDestroyed() && !w.incognito);
     const TIMEOUT = Symbol('timeout');
     const run = (w, js) => Promise.race([w.win.webContents.executeJavaScript(js, true), new Promise((r) => setTimeout(() => r(TIMEOUT), 8000))]).catch(() => null);
-    const asks = await Promise.all(wins.map((w) => run(w, 'typeof memCandidate === "function" ? memCandidate() : null').then((c) => (c ? { w, c } : null))));
+    const asks = await Promise.all(wins.map((w) => run(w, 'typeof memCandidate === "function" ? memCandidate() : null').then((c) => (c && c !== TIMEOUT ? { w, c } : null))));
     // Oldest first; a window that can't free anything right now (its candidate is busy) passes to the next.
     for (const { w } of asks.filter(Boolean).sort((a, b) => a.c.last - b.c.last)) {
       const r = await run(w, `typeof memFree === "function" ? memFree(${limit}, ${!memNoteShown}) : false`);
