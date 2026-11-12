@@ -1,0 +1,42 @@
+# Builds the friendly installer and runs it on a real Windows machine: it must install the browser, and the screenshots
+# taken while it runs are printed (base64) so they can be looked at. Runs on pushes to the installer branch.
+name: Installer test
+on:
+  push:
+    branches: [feat/clean-installer]
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - name: Build the real installer
+        shell: bash
+        run: npx electron-builder --win nsis --x64 --publish never
+      - name: Build the friendly installer
+        shell: pwsh
+        run: ./installer/build.ps1
+      - name: Run it and take screenshots
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          function Shot($name) {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap 520, 360
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen([int]($b.Width/2-260), [int]($b.Height/2-180), 0, 0, $bmp.Size)
+            $ms = New-Object System.IO.MemoryStream; $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+            "SHOT-$name-BEGIN"; [Convert]::ToBase64String($ms.ToArray()); "SHOT-$name-END"
+          }
+          $p = Start-Process -FilePath release\StupidBrowser-Install.exe -ArgumentList "--test" -PassThru
+          Start-Sleep -Milliseconds 1500; Shot "early"
+          Start-Sleep -Seconds 4; Shot "middle"
+          if (-not $p.WaitForExit(180000)) { "TIMEOUT"; Shot "stuck"; $p.Kill(); exit 1 }
+          "EXIT=$($p.ExitCode)"
+          $exe = "$env:LOCALAPPDATA\Programs\the-stupid-browser\StupidBrowser.exe"
+          "INSTALLED=$(Test-Path $exe)"
+          Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { $_.GetValue("DisplayName") + " | " + $_.GetValue("DisplayIcon") }
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $exe)) { exit 1 }
