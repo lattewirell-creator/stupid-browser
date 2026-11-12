@@ -86,7 +86,7 @@ class InstallForm : Form {
   void OnClick(object s, MouseEventArgs e) {
     if (waitingForClose) {
       // "Close it for me": asks the browser to close the normal way (it saves your tabs), like clicking its ×.
-      if (retryBtn.Contains(e.Location)) { foreach (var pr in Process.GetProcessesByName("StupidBrowser")) { try { pr.CloseMainWindow(); } catch { } } }
+      if (retryBtn.Contains(e.Location)) { closeAsked = true; CloseBrowser(); status = "Closing it…"; Invalidate(); }
       else if (closeBtn.Contains(e.Location)) { cancelled = true; Result = 1; Close(); }
       return;
     }
@@ -106,25 +106,31 @@ class InstallForm : Form {
   void Ui(Action a) { try { if (IsHandleCreated && !IsDisposed) BeginInvoke(a); } catch (InvalidOperationException) { } catch (ObjectDisposedException) { } }
   void Set(string st, int ph) { Ui(() => { status = st; if (ph != phase) { phase = ph; phaseStart = DateTime.Now; } Invalidate(); }); }
   volatile bool cancelled = false;
-  static bool BrowserOpen() { var ps = Process.GetProcessesByName("StupidBrowser"); foreach (var p in ps) p.Dispose(); return ps.Length > 0; }
+  volatile string setupPath = null;
+  protected override void OnFormClosed(FormClosedEventArgs e) { base.OnFormClosed(e); try { var f = setupPath; if (f != null && File.Exists(f)) File.Delete(f); } catch { } }
+  // Only this Windows user's copy counts (another signed-in user's browser can't be closed from here, and doesn't block).
+  static Process[] Mine() { int me = Process.GetCurrentProcess().SessionId; var list = new System.Collections.Generic.List<Process>(); foreach (var p in Process.GetProcessesByName("StupidBrowser")) { try { if (p.SessionId == me) list.Add(p); else p.Dispose(); } catch { p.Dispose(); } } return list.ToArray(); }
+  static bool BrowserOpen() { var ps = Mine(); foreach (var p in ps) p.Dispose(); return ps.Length > 0; }
+  volatile bool closeAsked = false;
+  static void CloseBrowser() { foreach (var p in Mine()) { try { p.CloseMainWindow(); } catch { } p.Dispose(); } }
 
   void Work() {
-    string setup = Path.Combine(Path.GetTempPath(), "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
+    string setup = setupPath = Path.Combine(Path.GetTempPath(), "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
     try {
-      // 1. Unpack the real installer (embedded in this file).
+      // 1. The browser can't be replaced while it's open, and closing it for you without asking could lose something:
+      // ask, and carry on by itself the moment it's closed.
+      if (BrowserOpen()) {
+        Ui(() => { waitingForClose = true; title = "Close The Stupid Browser first"; status = "It's open right now. Close it and this carries on by itself; your tabs come back."; Invalidate(); });
+        while (BrowserOpen()) { if (cancelled) return; if (closeAsked) CloseBrowser(); Thread.Sleep(700); }   // every window, one by one
+        Ui(() => { waitingForClose = false; title = "Installing The Stupid Browser"; Invalidate(); });
+      }
+      // 2. Unpack the real installer (embedded in this file).
       using (var src = Assembly.GetExecutingAssembly().GetManifestResourceStream("setup.exe")) {
         if (src == null) throw new Exception("The installer is incomplete. Download it again.");
         using (var dst = File.Create(setup)) {
           var buf = new byte[1 << 20]; long total = src.Length, done_ = 0; int n;
           while ((n = src.Read(buf, 0, buf.Length)) > 0) { dst.Write(buf, 0, n); done_ += n; double p = 0.12 * done_ / Math.Max(1, total); Ui(() => { target = p; }); }
         }
-      }
-      // 2. The browser can't be replaced while it's open, and closing it for you without asking could lose something:
-      // ask, and carry on by itself the moment it's closed.
-      if (BrowserOpen()) {
-        Ui(() => { waitingForClose = true; title = "Close The Stupid Browser first"; status = "It's open right now. Close it and this carries on by itself; your tabs come back."; Invalidate(); });
-        while (BrowserOpen()) { if (cancelled) return; Thread.Sleep(500); }
-        Ui(() => { waitingForClose = false; title = "Installing The Stupid Browser"; Invalidate(); });
       }
       // 3. Run the real installer silently.
       Set("Putting everything in place…", 1);
