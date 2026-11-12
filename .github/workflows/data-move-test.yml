@@ -1,0 +1,36 @@
+# Moves the browser's data folder to another disk on a real Windows machine (Settings → Where your data is → D:) and
+# checks the result: the note in the usual folder, the copy on D: with only this user/SYSTEM/Administrators on it, the
+# settings intact and the old copy cleared. Runs on pushes to the branch.
+name: Data move test
+on:
+  push:
+    branches: [feat/data-move]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - name: Move and check
+        shell: pwsh
+        run: |
+          $home2 = "$env:RUNNER_TEMP\sbhome"; New-Item -ItemType Directory -Path $home2 -Force | Out-Null
+          Set-Content "$home2\settings.json" '{"onboarded":true,"name":"Nils","tabSleep":0}'
+          $env:STUPID_DATA_HOME = $home2; $env:STUPID_SELFTEST = "$env:RUNNER_TEMP\s.png"; $env:STUPID_SELFTEST_SCRIPT = "$PWD\test\data-move.js"
+          $p = Start-Process -FilePath node_modules\electron\dist\electron.exe -ArgumentList "." -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\o1.txt"
+          Start-Sleep -Seconds 60
+          Get-Content "$env:RUNNER_TEMP\o1.txt" | Select-String "MOVE-"
+          "--- pointer:"; Get-Content "$home2\data-location.json" -ErrorAction SilentlyContinue
+          "--- usual folder now:"; Get-ChildItem $home2 -Force | ForEach-Object { $_.Name }
+          $dest = Get-ChildItem "D:\" -Directory | Where-Object { $_.Name -like "The Stupid Browser data*" } | Select-Object -First 1
+          "DEST=$($dest.FullName)"
+          if ($dest) {
+            "--- acl:"; (Get-Acl $dest.FullName).Access | ForEach-Object { "  $($_.IdentityReference) $($_.FileSystemRights) inherited=$($_.IsInherited)" }
+            "SETTINGS=" + ((Get-Content "$($dest.FullName)\settings.json" -Raw) -match '"name":"Nils"')
+          }
+          Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $dest -or -not (Test-Path "$home2\data-location.json")) { exit 1 }

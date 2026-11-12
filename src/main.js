@@ -19,7 +19,8 @@ const IS_MAC = process.platform === 'darwin';
 const TOOLBAR_IDS = ['dl', 'shield', 'vpn', 'sound', 'pip', 'ai', 'grid', 'profile'];
 app.setName('The Stupid Browser');
 
-const profiles = require('./profiles');   // picks this profile's data folder; must come before any userData use
+const profiles = require('./profiles');
+const datadir = require('./datadir');   // picks this profile's data folder; must come before any userData use
 if (process.platform === 'win32') app.setAppUserModelId('com.emil.stupidbrowser');
 // Low memory (on unless turned off in Settings; read at start, applies after a restart): the network service runs
 // inside the browser process instead of its own (~55 MB less), as Chrome does on low-memory phones.
@@ -697,7 +698,7 @@ function handle(channel, who, fn) {
 }
 const ANY = ['shell', 'internal'];
 
-handle('win:info', ['shell'], (e) => { const w = entryFor(e.sender); const r = w.restore; w.restore = null; const u = w.pendingUrls; w.pendingUrls = null; return { incognito: w.incognito, partition: w.partition, ai: w.aiPartition, apps: w.appsPartition, restore: r, urls: u, version: app.getVersion() }; });
+handle('win:info', ['shell'], (e) => { const w = entryFor(e.sender); const r = w.restore; w.restore = null; const dataNotice = w.incognito ? null : takeDataNotice(); const u = w.pendingUrls; w.pendingUrls = null; return { incognito: w.incognito, partition: w.partition, ai: w.aiPartition, apps: w.appsPartition, restore: r, urls: u, version: app.getVersion(), dataNotice }; });
 handle('settings:get', ANY, () => publicSettings());
 handle('settings:set', ANY, (_e, patch) => { if (patch && typeof patch === 'object') setSettings(cleanPatch(patch)); return publicSettings(); });
 // macOS: write the browser name + logo into the app itself (Finder / Dock), then restart. reset=true restores the originals.
@@ -1199,6 +1200,42 @@ ipcMain.on('tab:typed', (e) => {
   if (!wc.__typedHooked) { wc.__typedHooked = true; wc.on('did-navigate', () => typedInFrame.delete(wc.id)); wc.once('destroyed', () => typedInFrame.delete(wc.id)); }
 });
 handle('tab:typedInFrame', ['shell'], (_e, id) => typedInFrame.has(+id));
+// Where your data lives (Settings → Performance): its size, room on each disk, and moving it.
+let dataNoticeTaken = false;
+function takeDataNotice() {
+  if (dataNoticeTaken) return null; dataNoticeTaken = true;
+  const n = datadir.takeNotice();
+  if (datadir.state.missing) n.missing = datadir.state.missing;
+  return n.movedTo || n.error || n.missing ? n : null;
+}
+function windowsDrives() {
+  if (process.platform !== 'win32') return [];
+  const out = [];
+  for (const L of 'CDEFGHIJKLMNOPQRSTUVWXYZ') { const root = L + ':\\'; try { if (!fs.existsSync(root)) continue; const st = fs.statfsSync(root); out.push({ root, free: st.bavail * st.bsize, total: st.blocks * st.bsize }); } catch {} }
+  return out;
+}
+// Another profile's browser still open: its files can't be moved safely.
+function otherProfilesOpen() {
+  for (const p of profiles.list()) {
+    if (p.id === profiles.CURRENT) continue;
+    const dir = p.id === 'default' ? profiles.BASE : path.join(profiles.BASE, 'Profiles', p.id);
+    if (process.platform === 'win32') { const lock = path.join(dir, 'lockfile'); if (fs.existsSync(lock)) { try { fs.rmSync(lock); } catch { return true; } } }
+    else { try { const t = fs.readlinkSync(path.join(dir, 'SingletonLock')); const pid = +String(t).split('-').pop(); if (pid) { try { process.kill(pid, 0); return true; } catch {} } } catch {} }
+  }
+  return false;
+}
+handle('data:info', ['internal'], async () => {
+  const dir = datadir.state.dir;
+  return { dir, home: datadir.HOME, atHome: dir === datadir.HOME, size: await datadir.sizeOf(dir), free: datadir.freeOn(dir), drives: windowsDrives(), dirRoot: path.parse(dir).root, platform: process.platform };
+});
+handle('data:pick', ['internal'], async (e) => {
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender) || undefined, { title: 'Where should your data go?', properties: ['openDirectory', 'createDirectory'] });
+  return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+});
+handle('data:move', ['internal'], async (_e, where) => {
+  if (where !== 'home' && (typeof where !== 'string' || !path.isAbsolute(where))) return { error: 'That place can’t be used' };
+  try { await datadir.requestMove(where, { otherProfilesOpen: otherProfilesOpen() }); return { ok: true }; } catch (err) { return { error: err.message }; }
+});
 // Memory limit (Settings → Performance, like Opera GX). Every 10 s the browser's memory is added up. Over the limit,
 // ONE window (the one holding the tab left longest) puts one tab or sidebar app to sleep, then it waits 30 s to see
 // the effect. It eases down to 90% of the limit and stops when there is nothing left it may put to sleep (the limit
@@ -2045,6 +2082,9 @@ if (!app.requestSingleInstanceLock()) {
 
   perfMark('main-loaded');
   app.whenReady().then(() => {
+    // A data move asked for in Settings: copy first (with a progress window), then start again in the new place.
+    if (datadir.state.pending) { datadir.runPendingMove(); return; }
+    setTimeout(() => datadir.clearOld(), 8000);
     // 2.0: tabs sleep as soon as you leave them (least memory). Moved over once for everyone still on the old default.
     { const s0 = getSettings(); if (!s0.sleepInstantMoved) setSettings(s0.tabSleep === 15 ? { tabSleep: -1, sleepInstantMoved: true } : { sleepInstantMoved: true }); }
     perfMark('app-ready');

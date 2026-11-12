@@ -1851,6 +1851,7 @@ async function showJustUpdated() {
 /* ---------------- boot ---------------- */
 (async function boot() {
   [info, settings, bookmarks, bots, sideItems] = await Promise.all([call('win:info'), call('settings:get'), call('bookmarks:get'), call('bots:get'), call('sidebar:get')]);
+  if (info.dataNotice) { const n = info.dataNotice; setTimeout(() => toast(n.error ? n.error : n.missing ? `Your data folder (${n.missing}) can't be found — is that disk plugged in? Started with a fresh one for now.` : `Your data now lives in ${n.movedTo}`), 1200); }
   if (info.incognito) { document.body.classList.add('incognito'); $('privateBadge').classList.remove('hidden'); }
   applySettings();
   renderBookmarks();

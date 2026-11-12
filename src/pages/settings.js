@@ -538,3 +538,29 @@ $('extFind').onclick = async () => {
   row.appendChild(go); box.appendChild(row);
 };
 renderExtensions();
+
+/* Where your data is: size, room, and moving it to another disk. */
+(function dataPlace() {
+  const fmt = (b) => (b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : Math.max(1, Math.round(b / 1048576)) + ' MB');
+  let info = null;
+  async function load() {
+    try { info = await call('data:info'); } catch { return; }
+    const where = info.atHome ? 'the usual app folder' : info.dir;
+    $('dataWhere').textContent = `${fmt(info.size)} in ${where} · ${isFinite(info.free) ? fmt(info.free) + ' free on that disk' : ''}`;
+  }
+  async function move(where) {
+    const btns = [...document.querySelectorAll('#dataTargets button')]; btns.forEach((b) => { b.disabled = true; });
+    toast('Restarting to move your data…');
+    const r = await call('data:move', where).catch((e) => ({ error: e.message }));
+    if (r && r.error) { toast(r.error); btns.forEach((b) => { b.disabled = false; }); }
+  }
+  $('dataMove').onclick = () => {
+    const box = $('dataTargets'); box.innerHTML = '';
+    const add = (label, sub, fn, disabled) => { const b = document.createElement('button'); b.className = 'btn'; b.disabled = !!disabled; const t = document.createElement('span'); t.textContent = label; b.appendChild(t); if (sub) { const s = document.createElement('small'); s.textContent = ' ' + sub; b.appendChild(s); } b.onclick = fn; box.appendChild(b); };
+    if (info) for (const d of info.drives) { if (d.root.toLowerCase() === info.dirRoot.toLowerCase()) continue; add(d.root.replace(/\\$/, ''), fmt(d.free) + ' free', () => move(d.root), d.free < info.size * 1.1 + 104857600); }
+    if (info && !info.atHome) add('Back to the usual folder', '', () => move('home'));
+    add('Choose a folder…', '', async () => { const f = await call('data:pick'); if (f) move(f); });
+    $('dataPicker').classList.remove('hidden');
+  };
+  load();
+})();

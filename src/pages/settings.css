@@ -83,3 +83,6 @@ h3.sub { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; colo
 .ext-ic img { width: 24px; height: 24px; }
 .ext-row .lbl small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 label.ext-row { cursor: pointer; }
+
+.data-targets { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.data-targets small { opacity: .65; font-weight: 400; }

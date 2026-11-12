@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
+require('./datadir');   // the data folder may live on another disk: settles userData first
 const BASE = app.getPath('userData');
 const ARG = process.argv.find((a) => a.startsWith('--profile='));
 const CURRENT = ARG && /^[a-z0-9]{1,24}$/.test(ARG.slice(10)) ? ARG.slice(10) : 'default';
@@ -66,4 +67,4 @@ const prefFile = path.join(BASE, 'profiles-prefs.json');
 function pickerEnabled() { try { return JSON.parse(fs.readFileSync(prefFile, 'utf8')).picker !== false; } catch { return true; } }
 function setPicker(on) { try { fs.writeFileSync(prefFile, JSON.stringify({ picker: !!on })); } catch {} return !!on; }
 
-module.exports = { CURRENT, list, sync, open, create, remove, pickerEnabled, setPicker };
+module.exports = { BASE, CURRENT, list, sync, open, create, remove, pickerEnabled, setPicker };
