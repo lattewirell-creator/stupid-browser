@@ -86,7 +86,7 @@ const DEFAULT_SETTINGS = () => ({
   theme: 'system', accent: 'clay', fontSize: 'medium', showBookmarksBar: true, showHome: true, musicIsland: true,
   startup: 'continue', startupPages: [],
   search: 'duckduckgo', customSearch: '',
-  adblock: true, lowMemory: true, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
+  adblock: true, lowMemory: true, memLimit: 0, cookieBanners: true, mouseGestures: true, dnt: false, savePasswords: true, saveCards: true,
   downloadDir: app.getPath('downloads'), askWhereToSave: false,
   defaultBot: 'https://claude.ai', bot: null, aiWidth: 420,
   pinned: []
@@ -710,6 +710,7 @@ handle('brand:apply', ['internal'], async (_e, reset) => {
 // Values that end up in pages or audio graphs get checked here.
 function cleanPatch(patch) {
   const p = Object.assign({}, patch);
+  if ('memLimit' in p) p.memLimit = [0, 500, 600, 800, 1000, 1500, 2000, 3000].includes(+p.memLimit) ? +p.memLimit : 0;
   if ('lowMemory' in p) p.lowMemory = !!p.lowMemory;
   if ('logo' in p && !['ring', 'buddy', 'emoji', 'image', 'none'].includes(p.logo)) delete p.logo;
   if ('logoEmoji' in p) p.logoEmoji = String(p.logoEmoji || '').slice(0, 16);
@@ -1196,6 +1197,17 @@ ipcMain.on('tab:typed', (e) => {
   if (!wc.__typedHooked) { wc.__typedHooked = true; wc.on('did-navigate', () => typedInFrame.delete(wc.id)); wc.once('destroyed', () => typedInFrame.delete(wc.id)); }
 });
 handle('tab:typedInFrame', ['shell'], (_e, id) => typedInFrame.has(+id));
+// Memory limit (Settings → Performance, like Opera GX): every 10 s the whole browser's memory is added up; over the
+// limit, each window puts its longest-unused tab to sleep (one per round, so it eases down instead of emptying
+// everything). Tabs that must stay awake (sound, calls, typed text, the one you're on) are never touched.
+let memOverNoted = false;
+setInterval(() => {
+  const limit = +getSettings().memLimit || 0; if (!limit || !app.isReady()) return;
+  let mb = 0; try { for (const p of app.getAppMetrics()) mb += (p.memory.workingSetSize || 0) / 1024; } catch { return; }
+  if (mb <= limit) { memOverNoted = false; return; }
+  for (const w of windows.values()) if (!w.win.isDestroyed()) w.win.webContents.send('mem:over', { mb: Math.round(mb), limit, first: !memOverNoted });
+  memOverNoted = true;
+}, 10000).unref();
 // Mouse gestures (drag-preload.js): only the listed commands, and only from a tab.
 const GESTURE_CMDS = new Set(['back', 'forward', 'new-tab', 'close-tab', 'reload', 'space-next', 'space-prev']);
 ipcMain.handle('gesture:on', (e) => e.sender.getType() === 'webview' && getSettings().mouseGestures !== false);

@@ -12,6 +12,7 @@ function render() {
   const acc = $('accent'); acc.innerHTML = '';
   for (const [k, c] of Object.entries(ACCENTS)) { const b = el('button', 'swatch' + ((s.accent || 'clay') === k ? ' on' : '')); b.style.background = c; b.title = k; b.onclick = () => set({ accent: k }).then(render); acc.appendChild(b); }
   bindValue('fontSize');
+  $('memLimit').value = String(s.memLimit || 0); $('memLimit').onchange = () => set({ memLimit: +$('memLimit').value });
   $('lowMemory').checked = s.lowMemory !== false; $('lowMemory').onchange = (e) => set({ lowMemory: e.target.checked }).then(() => toast('Applies the next time you start the browser'));
   $('tabSleep').value = String(s.tabSleep == null ? -1 : s.tabSleep); $('tabSleep').onchange = () => set({ tabSleep: +$('tabSleep').value });
   // Liquid Glass: only the Mac (WebKit) version has it.

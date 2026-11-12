@@ -1722,6 +1722,13 @@ api.on('win:minimized', (on) => {
 });
 api.on('win:focus', (on) => { if (on) { minimized = false; clearTimeout(minimizedT); wakeAfterMinimize(); } });
 
+// Over the memory limit (main checks): the longest-unused tab that may sleep goes to sleep; sidebar apps out of sight go too.
+api.on('mem:over', async ({ mb, limit, first }) => {
+  for (const [id, wv] of appViews) if (!(id === activeApp && !$('appPanel').classList.contains('hidden')) && !wvAudible(wv)) { wv.remove(); appViews.delete(id); appSeen.delete(id); }
+  const order = tabs.filter((t) => sleepable(t)).sort((a, b) => (a.lastActive || 0) - (b.lastActive || 0));
+  for (const t of order) { if (await sleepTab(t)) { if (first) toast(`Over your ${limit} MB limit — putting tabs you're not using to sleep`); return; } }
+});
+
 /* ---------------- session save ---------------- */
 let saveTimer;
 function scheduleSave() {
