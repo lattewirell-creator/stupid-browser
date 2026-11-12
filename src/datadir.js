@@ -14,7 +14,7 @@ const { app, BrowserWindow, dialog } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, execFile } = require('child_process');
 
 if (process.env.STUPID_DATA_HOME && (!app.isPackaged || process.env.STUPID_SELFTEST)) app.setPath('userData', process.env.STUPID_DATA_HOME);   // tests only
 const CUSTOM = process.argv.some((a) => a.startsWith('--user-data-dir='));   // dev/tests: a folder given by hand wins
@@ -23,13 +23,17 @@ const POINTER = path.join(HOME, 'data-location.json');
 const MARK = '.stupid-data';
 // While copying (or waiting for a missing disk) Chromium runs here, so it doesn't open anything in your data. Fixed, so
 // a second start of the browser meanwhile shares its single-instance lock and just stops.
-const SCRATCH = path.join(os.tmpdir(), 'the-stupid-browser-scratch');
+// Next to HOME (inside this user's own app-data folder), so no other account can get at it.
+const SCRATCH = path.join(path.dirname(HOME), path.basename(HOME) + ' (moving)');
 // Caches come back by themselves, so they aren't copied (that's most of the size and time).
-const SKIP = new Set(['Cache', 'Code Cache', 'GPUCache', 'DawnCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'GrShaderCache', 'ShaderCache', 'GraphiteDawnCache', 'GPUPersistentCache', 'Crashpad', 'data-location.json', MARK, 'lockfile', 'SingletonLock', 'SingletonCookie', 'SingletonSocket']);
+const SKIP = new Set(['Cache', 'Code Cache', 'GPUCache', 'DawnCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'GrShaderCache', 'ShaderCache', 'GraphiteDawnCache', 'GPUPersistentCache', 'Crashpad', 'data-location.json', 'move.lock', MARK, 'lockfile', 'SingletonLock', 'SingletonCookie', 'SingletonSocket']);
 const WIN = process.platform === 'win32';
 const same = (a, b) => (WIN ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b));
 const inside = (a, b) => { const r = path.relative(b, a); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };   // a is b or within b
 const overlap = (a, b) => inside(a, b) || inside(b, a);
+// The real place behind a path (a subst drive, junction, link or short name can point at the same folder).
+function real(p) { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } }
+const overlapReal = (a, b) => overlap(a, b) || overlap(real(a), real(b));
 
 const dlog = (...a) => { if (process.env.STUPID_DATA_LOG) try { fs.appendFileSync(process.env.STUPID_DATA_LOG, `[${process.pid}] ${a.join(' ')}\n`); } catch {} };
 function readPointer() { try { const p = JSON.parse(fs.readFileSync(POINTER, 'utf8')); return p && typeof p === 'object' ? p : {}; } catch { return {}; } }
@@ -51,7 +55,7 @@ if (!CUSTOM) {
   }
   if (!state.missing && p.pending && typeof p.pending.to === 'string' && typeof p.pending.from === 'string' && same(p.pending.from, state.dir)) state.pending = p.pending;
   // The old copy goes only when the data really runs from somewhere else, and only if the two don't overlap.
-  if (!state.missing && typeof p.cleanup === 'string' && p.cleanup && !overlap(p.cleanup, state.dir)) state.cleanup = p.cleanup;
+  if (!state.missing && typeof p.cleanup === 'string' && p.cleanup && !overlapReal(p.cleanup, state.dir) && !(fs.existsSync(p.cleanup) && overlapReal(p.cleanup, SCRATCH))) state.cleanup = p.cleanup;
   dlog('start', JSON.stringify(p), JSON.stringify(state));
   if (state.pending || state.missing) { fs.mkdirSync(SCRATCH, { recursive: true }); app.setPath('userData', SCRATCH); }
   else if (!same(state.dir, HOME)) app.setPath('userData', state.dir);
@@ -97,12 +101,17 @@ async function sizeOf(dir) { return (await list(dir, false)).reduce((n, f) => n 
 function freeOn(dir) { try { const s = fs.statfsSync(dir); return s.bavail * s.bsize; } catch { return Infinity; } }
 
 // Local disks on Windows (network, removable and CD drives left out).
+let drivesCache = null, drivesAt = 0;
 function windowsDrives() {
-  if (!WIN) return [];
-  try {
-    const out = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 } | ForEach-Object { $_.DeviceID + "|" + $_.FreeSpace + "|" + $_.Size }'], { windowsHide: true, encoding: 'utf8', timeout: 15000 });
-    return out.split(/\r?\n/).map((l) => l.trim().split('|')).filter((x) => /^[A-Z]:$/i.test(x[0] || '')).map(([id, free, size]) => ({ root: id.toUpperCase() + '\\', free: +free || 0, total: +size || 0 }));
-  } catch { return []; }
+  if (!WIN) return Promise.resolve([]);
+  if (drivesCache && Date.now() - drivesAt < 30000) return Promise.resolve(drivesCache);
+  return new Promise((resolve) => {
+    execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 } | ForEach-Object { $_.DeviceID + "|" + $_.FreeSpace + "|" + $_.Size }'], { windowsHide: true, encoding: 'utf8', timeout: 15000 }, (err, out) => {
+      if (err) return resolve(drivesCache || []);
+      drivesCache = String(out).split(/\r?\n/).map((l) => l.trim().split('|')).filter((x) => /^[A-Z]:$/i.test(x[0] || '')).map(([id, free, size]) => ({ root: id.toUpperCase() + '\\', free: +free || 0, total: +size || 0 }));
+      drivesAt = Date.now(); resolve(drivesCache);
+    });
+  });
 }
 
 // Settings → "Move…": checks, makes the folder, and restarts into the copy step.
@@ -117,15 +126,16 @@ async function requestMove(where, { otherProfilesOpen } = {}) {
     if (WIN) {
       if (/^\\\\/.test(parent)) throw new Error('A network folder can’t hold your data');
       const root = path.parse(parent).root.toUpperCase();
-      if (!windowsDrives().some((d) => d.root === root)) throw new Error('Pick a folder on one of this computer’s own disks');
+      if (!(await windowsDrives()).some((d) => d.root === root)) throw new Error('Pick a folder on one of this computer’s own disks');
     }
-    if (overlap(parent, from) && !same(parent, path.parse(from).root)) throw new Error('Pick a place outside the current data folder');
-    if (inside(parent, HOME)) throw new Error('Pick a place outside the usual data folder');
+    const isRootOfFrom = same(parent, path.parse(from).root) && same(real(parent), path.parse(real(from)).root);
+    if (overlapReal(parent, from) && !isRootOfFrom) throw new Error('Pick a place outside the current data folder');
+    if (inside(parent, HOME) || inside(real(parent), real(HOME)) || overlapReal(parent, SCRATCH)) throw new Error('Pick a place outside the usual data folder');
   } else if (same(from, HOME)) throw new Error('Your data is already in the usual folder');
   const need = (await sizeOf(from)) * 1.1 + 100 * 1024 * 1024;
   if (freeOn(parent) < need) throw new Error(`Not enough room there: it needs about ${Math.ceil(need / 1048576)} MB`);
   const to = backHome ? HOME : makePrivateDir(parent, 'The Stupid Browser data');
-  if (overlap(to, from)) throw new Error('Pick a place outside the current data folder');
+  if (overlapReal(to, from)) { if (!backHome) { try { fs.rmdirSync(to); } catch {} } throw new Error('Pick a place outside the current data folder'); }
   dlog('request ok', from, to);
   writePointer(Object.assign(readPointer(), { pending: { from, to, tries: 0 }, error: null, movedTo: null }));
   app.relaunch(); app.exit(0);
@@ -137,11 +147,16 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
   const { from, to } = state.pending;
   const p0 = readPointer();
   const tries = ((p0.pending && p0.pending.tries) || 0) + 1;
+  // Only one copy at a time (another start of the browser, another profile).
+  const LOCK = path.join(HOME, 'move.lock');
+  try { const st = fs.statSync(LOCK); if (Date.now() - st.mtimeMs < 10 * 60000) { app.exit(0); return; } fs.rmSync(LOCK, { force: true }); } catch {}
+  try { fs.closeSync(fs.openSync(LOCK, 'wx')); } catch { app.exit(0); return; }
+  const unlock = () => { try { fs.rmSync(LOCK, { force: true }); } catch {} };
   const giveUp = (msg) => {
     if (!same(to, HOME)) { try { fs.rmSync(to, { recursive: true, force: true }); } catch {} }
     writePointer(Object.assign(readPointer(), { pending: null, error: `Moving your data didn’t work (${msg}). Everything is still where it was.` }));
   };
-  if (tries > 2) { giveUp('it stopped twice'); app.relaunch(); app.exit(0); return; }   // it crashed mid-copy before: don't loop
+  if (tries > 2) { giveUp('it stopped twice'); unlock(); app.relaunch(); app.exit(0); return; }   // it crashed mid-copy before: don't loop
   writePointer(Object.assign(p0, { pending: Object.assign({}, p0.pending, { tries }) }));
   const win = new BrowserWindow({ width: 420, height: 190, frame: false, resizable: false, show: true, backgroundColor: '#FAF6F0', webPreferences: { sandbox: true, contextIsolation: true } });
   const page = `<!doctype html><meta charset="utf-8"><body style="margin:0;font:14px 'Segoe UI',system-ui,sans-serif;background:#FAF6F0;color:#29251E;display:grid;place-items:center;height:100vh;-webkit-app-region:drag">
@@ -151,10 +166,11 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
   const show = (pct, text) => { if (!win.isDestroyed()) win.webContents.executeJavaScript(`b.style.width='${pct}%';${text ? `s.textContent=${JSON.stringify(text)};` : ''}`).catch(() => {}); };
   try {
     if (otherProfilesOpen) throw new Error('another profile was open');
+    if (overlapReal(from, to) && !(same(to, HOME) && !overlapReal(from, HOME))) throw new Error('the two places overlap');
     if (!fs.existsSync(to)) throw new Error('the new folder is gone');
     // Back to the usual folder: whatever is left there from before (an old copy that couldn't be cleared) goes first,
     // so old files never sit next to the current ones.
-    if (same(to, HOME)) for (const e of await fs.promises.readdir(HOME)) if (e !== 'data-location.json' && e !== 'data-location.json.tmp') await fs.promises.rm(path.join(HOME, e), { recursive: true, force: true, maxRetries: 3 });
+    if (same(to, HOME)) for (const e of await fs.promises.readdir(HOME)) if (!['data-location.json', 'data-location.json.tmp', 'move.lock'].includes(e)) await fs.promises.rm(path.join(HOME, e), { recursive: true, force: true, maxRetries: 3 });
     const files = await list(from, true);
     const total = Math.max(1, files.reduce((n, f) => n + f.size, 0));
     let done = 0, last = -1;
@@ -173,6 +189,7 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
     dlog('copy failed', e.message);
     giveUp(e.message);
   }
+  unlock();
   await new Promise((r) => setTimeout(r, 700));
   app.relaunch(); app.exit(0);
 }
@@ -188,13 +205,15 @@ async function askAboutMissing() {
 // After a move: the old copy goes (in the usual folder, everything but this note).
 async function clearOld() {
   const old = state.cleanup;
-  if (!old || state.missing || overlap(old, state.dir) || !fs.existsSync(path.join(state.dir, MARK)) && !same(state.dir, HOME)) return;
+  if (!old || state.missing || overlapReal(old, state.dir) || !fs.existsSync(path.join(state.dir, MARK)) && !same(state.dir, HOME)) return;
   try {
     if (same(old, HOME)) { for (const e of await fs.promises.readdir(old)) if (e !== 'data-location.json' && e !== 'data-location.json.tmp') await fs.promises.rm(path.join(old, e), { recursive: true, force: true, maxRetries: 3 }); }
     else await fs.promises.rm(old, { recursive: true, force: true, maxRetries: 3 });
   } catch (e) { console.error('old data cleanup', e.message); return; }
   const p = readPointer(); delete p.cleanup; writePointer(p);
 }
+// The scratch folder from a move (or a missing-disk start) isn't needed on a normal start.
+async function removeScratch() { if (state.pending || state.missing || same(app.getPath('userData'), SCRATCH)) return; try { await fs.promises.rm(SCRATCH, { recursive: true, force: true, maxRetries: 3 }); } catch {} }
 function takeNotice() { const p = readPointer(); const n = { movedTo: p.movedTo || null, error: p.error || null }; if (n.movedTo || n.error) { delete p.movedTo; delete p.error; writePointer(p); } return n; }
 
-module.exports = { state, requestMove, runPendingMove, askAboutMissing, clearOld, takeNotice, sizeOf, freeOn, windowsDrives, HOME };
+module.exports = { SCRATCH, removeScratch, state, requestMove, runPendingMove, askAboutMissing, clearOld, takeNotice, sizeOf, freeOn, windowsDrives, HOME };

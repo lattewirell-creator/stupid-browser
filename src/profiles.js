@@ -7,11 +7,13 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-require('./datadir');   // the data folder may live on another disk: settles userData first
+const datadir = require('./datadir');   // the data folder may live on another disk: settles userData first
 const BASE = app.getPath('userData');
 const ARG = process.argv.find((a) => a.startsWith('--profile='));
 const CURRENT = ARG && /^[a-z0-9]{1,24}$/.test(ARG.slice(10)) ? ARG.slice(10) : 'default';
-if (CURRENT !== 'default') app.setPath('userData', path.join(BASE, 'Profiles', CURRENT));   // must run before anything touches userData
+// During a move (or with the data's disk missing) every profile starts in the same scratch folder, so they share one
+// single-instance lock and only one of them runs.
+if (CURRENT !== 'default' && !datadir.state.pending && !datadir.state.missing) app.setPath('userData', path.join(BASE, 'Profiles', CURRENT));   // must run before anything touches userData
 
 const listFile = path.join(BASE, 'profiles.json');
 function list() {

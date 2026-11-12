@@ -1217,6 +1217,8 @@ function otherProfilesOpen() {
   for (const id of new Set(ids)) {
     if (!moving && id === profiles.CURRENT) continue;
     const dir = id === 'default' ? base : path.join(base, 'Profiles', id);
+    // Windows: a running profile holds its lockfile open, so it can't be deleted (a leftover one from a crash can,
+    // and Chromium makes a new one on its next start). Elsewhere: the lock names the process, which is checked.
     if (process.platform === 'win32') { const lock = path.join(dir, 'lockfile'); if (fs.existsSync(lock)) { try { fs.rmSync(lock); } catch { return true; } } }
     else { try { const t = fs.readlinkSync(path.join(dir, 'SingletonLock')); const pid = +String(t).split('-').pop(); if (pid && pid !== process.pid) { try { process.kill(pid, 0); return true; } catch {} } } catch {} }
   }
@@ -1224,7 +1226,7 @@ function otherProfilesOpen() {
 }
 handle('data:info', ['internal'], async () => {
   const dir = datadir.state.dir;
-  return { dir, home: datadir.HOME, atHome: dir === datadir.HOME, size: await datadir.sizeOf(dir), free: datadir.freeOn(dir), drives: datadir.windowsDrives(), dirRoot: path.parse(dir).root, platform: process.platform };
+  return { dir, home: datadir.HOME, atHome: dir === datadir.HOME, size: await datadir.sizeOf(dir), free: datadir.freeOn(dir), drives: await datadir.windowsDrives(), dirRoot: path.parse(dir).root, platform: process.platform };
 });
 handle('data:pick', ['internal'], async (e) => {
   const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender) || undefined, { title: 'Where should your data go?', properties: ['openDirectory', 'createDirectory'] });
@@ -2076,14 +2078,15 @@ if (IS_MAC) {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', (_e, argv) => openFromOutside(normalizeArgUrl(urlFromArgv(argv))));
+  // While data is being moved (or its disk is missing) a second start only brings the progress window or question forward.
+  app.on('second-instance', (_e, argv) => { if (datadir.state.pending || datadir.state.missing) { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.focus(); } return; } openFromOutside(normalizeArgUrl(urlFromArgv(argv))); });
 
   perfMark('main-loaded');
   app.whenReady().then(() => {
     // A data move asked for in Settings: copy first (with a progress window), then start again in the new place.
     if (datadir.state.missing) { datadir.askAboutMissing(); return; }
     if (datadir.state.pending) { datadir.runPendingMove({ otherProfilesOpen: otherProfilesOpen() }); return; }
-    setTimeout(() => datadir.clearOld(), 8000);
+    setTimeout(() => { datadir.clearOld(); datadir.removeScratch(); }, 8000);
     // 2.0: tabs sleep as soon as you leave them (least memory). Moved over once for everyone still on the old default.
     { const s0 = getSettings(); if (!s0.sleepInstantMoved) setSettings(s0.tabSleep === 15 ? { tabSleep: -1, sleepInstantMoved: true } : { sleepInstantMoved: true }); }
     perfMark('app-ready');
