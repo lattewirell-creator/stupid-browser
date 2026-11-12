@@ -418,6 +418,8 @@ function prepareSession(ses, { tabs, incognito }) {
   if (tabs && !incognito) {
     ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'page-preload.js') });
   }
+  // Sidebar apps and AI chats: only the typed-text marker (the memory limit leaves half-written messages alone).
+  if (!tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'typed-preload.js') });
   // Cookie pop-ups: answered with "no" for you (private windows too).
   if (tabs) ses.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'consent-preload.js') });
   // Saved payment cards: offered and filled in private windows too (the cards themselves live in the normal profile).
@@ -1201,22 +1203,27 @@ handle('tab:typedInFrame', ['shell'], (_e, id) => typedInFrame.has(+id));
 // ONE window (the one holding the tab left longest) puts one tab or sidebar app to sleep, then it waits 30 s to see
 // the effect. It eases down to 90% of the limit and stops when there is nothing left it may put to sleep (the limit
 // may be below what the browser itself needs). The note shows once, until it has stayed under for 10 minutes.
-let memNextCheck = 0, memNoteShown = false, memUnderSince = 0, memStuck = false;
+let memNextCheck = 0, memNoteShown = false, memUnderSince = 0, memStuck = false, memBusy = false;
 const memLimitOf = () => { const v = +getSettings().memLimit || 0; return [600, 800, 1000, 1500, 2000, 3000].includes(v) ? v : 0; };
 setInterval(async () => {
-  if (!app.isReady() || Date.now() < memNextCheck) return;
+  if (!app.isReady() || memBusy || Date.now() < memNextCheck) return;
   const limit = memLimitOf(); if (!limit) { memStuck = false; return; }
   let mb = 0; try { for (const p of app.getAppMetrics()) mb += (p.memory.workingSetSize || 0) / 1024; } catch { return; }
   if (mb <= limit * 0.9) { memStuck = false; if (!memUnderSince) memUnderSince = Date.now(); else if (Date.now() - memUnderSince > 10 * 60000) memNoteShown = false; return; }
   memUnderSince = 0;
   if (mb <= limit || memStuck) return;
-  // Ask each normal window what it could free and how long ago that was used; the oldest one goes.
-  const asks = [...windows.values()].filter((w) => !w.win.isDestroyed() && !w.incognito).map((w) => w.win.webContents.executeJavaScript('typeof memCandidate === "function" ? memCandidate() : null', true).then((c) => (c ? { w, c } : null)).catch(() => null));
-  const found = (await Promise.all(asks)).filter(Boolean).sort((a, b) => a.c.last - b.c.last);
-  if (!found.length) { memStuck = true; return; }   // everything that may sleep is asleep: stop until something changes
-  const { w } = found[0];
-  w.win.webContents.send('mem:over', { limit, note: !memNoteShown });
-  memNoteShown = true; memNextCheck = Date.now() + 30000;
+  memBusy = true;
+  try {
+    // Private windows count toward the total but are left alone (their pages can't come back the same way).
+    const wins = [...windows.values()].filter((w) => !w.win.isDestroyed() && !w.incognito);
+    const run = (w, js) => Promise.race([w.win.webContents.executeJavaScript(js, true), new Promise((r) => setTimeout(() => r(null), 8000))]).catch(() => null);
+    const asks = await Promise.all(wins.map((w) => run(w, 'typeof memCandidate === "function" ? memCandidate() : null').then((c) => (c ? { w, c } : null))));
+    // Oldest first; a window that can't free anything right now (its candidate is busy) passes to the next.
+    for (const { w } of asks.filter(Boolean).sort((a, b) => a.c.last - b.c.last)) {
+      if (await run(w, `typeof memFree === "function" ? memFree(${limit}, ${!memNoteShown}) : false`)) { memNoteShown = true; memNextCheck = Date.now() + 30000; return; }
+    }
+    memStuck = true;   // nothing may sleep right now: wait until something changes
+  } finally { memBusy = false; }
 }, 10000).unref();
 // New tabs or apps waking up may give the limit something to do again.
 app.on('web-contents-created', () => { memStuck = false; });

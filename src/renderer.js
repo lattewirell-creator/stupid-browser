@@ -1733,7 +1733,8 @@ function memChoices() {
   return out.sort((a, b) => a.last - b.last);
 }
 function memCandidate() { const c = memChoices()[0]; return c ? { last: c.last } : null; }
-api.on('mem:over', async ({ limit, note }) => {
+// Frees one thing (oldest first, skipping anything busy). Returns whether it did, so main can ask another window.
+async function memFree(limit, note) {
   for (const c of memChoices()) {
     let ok = false;
     if (c.kind === 'tab') ok = await sleepTab(c.t);
@@ -1741,12 +1742,13 @@ api.on('mem:over', async ({ limit, note }) => {
       // A sidebar app gets the same care as a tab: not while you're typing in it, in a call or playing a video.
       let busy = false;
       try { busy = await c.wv.executeJavaScript('[...document.querySelectorAll("[data-sb-typed]")].some((e) => e.isContentEditable ? (e.textContent || "").trim().length > 0 : String(e.value || "").trim() && e.value !== e.defaultValue) || !!document.pictureInPictureElement || [...document.querySelectorAll("video,audio")].some((m) => !m.paused && !m.ended && !m.muted && m.volume > 0)'); } catch {}
-      if (!busy) { try { busy = await call('tab:capturing', c.wv.getWebContentsId()); } catch {} }
+      if (!busy) { try { const id = c.wv.getWebContentsId(); busy = await call('tab:capturing', id) || await call('tab:typedInFrame', id); } catch {} }
       if (!busy && appViews.get(c.id) === c.wv) { c.wv.remove(); appViews.delete(c.id); appSeen.delete(c.id); ok = true; }
     }
-    if (ok) { if (note) toast(`Keeping under your ${limit >= 1000 ? (limit / 1000) + ' GB' : limit + ' MB'} memory limit — tabs you're not using are put to sleep`); return; }
+    if (ok) { if (note) toast(`Keeping under your ${limit >= 1000 ? (limit / 1000) + ' GB' : limit + ' MB'} memory limit — tabs you're not using are put to sleep`); return true; }
   }
-});
+  return false;
+}
 
 /* ---------------- session save ---------------- */
 let saveTimer;
