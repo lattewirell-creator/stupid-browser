@@ -6,8 +6,8 @@
   openInternal('settings'); await w(4000);
   const t = activeTab();
   const info = await t.wv.executeJavaScript("stupid.invoke('data:info')");
-  console.log('MOVE-INFO ' + JSON.stringify({ dir: info.dir, atHome: info.atHome, drives: info.drives.map((d) => d.root) }));
-  if (!info.atHome) { console.log('MOVE-ALREADY'); console.log('QUIT'); return; }
+  console.log('PERF:MOVE-INFO ' + JSON.stringify({ dir: info.dir, atHome: info.atHome, drives: info.drives.map((d) => d.root) }));
+  if (!info.atHome) { console.log('PERF:MOVE-ALREADY'); console.log('QUIT'); return; }
   const r = await t.wv.executeJavaScript("stupid.invoke('data:move', 'D:\\\\')");
-  console.log('MOVE-RESULT ' + JSON.stringify(r));
+  console.log('PERF:MOVE-RESULT ' + JSON.stringify(r));
 })();

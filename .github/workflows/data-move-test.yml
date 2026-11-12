@@ -20,10 +20,11 @@ jobs:
         run: |
           $home2 = "$env:RUNNER_TEMP\sbhome"; New-Item -ItemType Directory -Path $home2 -Force | Out-Null
           Set-Content "$home2\settings.json" '{"onboarded":true,"name":"Nils","tabSleep":0}'
-          $env:STUPID_DATA_HOME = $home2; $env:STUPID_SELFTEST = "$env:RUNNER_TEMP\s.png"; $env:STUPID_SELFTEST_SCRIPT = "$PWD\test\data-move.js"
+          $env:STUPID_DATA_HOME = $home2; $env:STUPID_PERF_LOG = "$env:RUNNER_TEMP\perf.txt"; $env:STUPID_SELFTEST = "$env:RUNNER_TEMP\s.png"; $env:STUPID_SELFTEST_SCRIPT = "$PWD\test\data-move.js"; $env:STUPID_SELFTEST_STEPS = "quit@600000"; $env:STUPID_DATA_LOG = "$env:RUNNER_TEMP\data.txt"
           $p = Start-Process -FilePath node_modules\electron\dist\electron.exe -ArgumentList "." -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\o1.txt"
           Start-Sleep -Seconds 60
-          Get-Content "$env:RUNNER_TEMP\o1.txt" | Select-String "MOVE-"
+          "--- log:"; Get-Content "$env:RUNNER_TEMP\perf.txt" -ErrorAction SilentlyContinue
+          "--- data log:"; Get-Content "$env:RUNNER_TEMP\data.txt" -ErrorAction SilentlyContinue
           "--- pointer:"; Get-Content "$home2\data-location.json" -ErrorAction SilentlyContinue
           "--- usual folder now:"; Get-ChildItem $home2 -Force | ForEach-Object { $_.Name }
           $dest = Get-ChildItem "D:\" -Directory | Where-Object { $_.Name -like "The Stupid Browser data*" } | Select-Object -First 1

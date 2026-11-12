@@ -1208,25 +1208,23 @@ function takeDataNotice() {
   if (datadir.state.missing) n.missing = datadir.state.missing;
   return n.movedTo || n.error || n.missing ? n : null;
 }
-function windowsDrives() {
-  if (process.platform !== 'win32') return [];
-  const out = [];
-  for (const L of 'CDEFGHIJKLMNOPQRSTUVWXYZ') { const root = L + ':\\'; try { if (!fs.existsSync(root)) continue; const st = fs.statfsSync(root); out.push({ root, free: st.bavail * st.bsize, total: st.blocks * st.bsize }); } catch {} }
-  return out;
-}
 // Another profile's browser still open: its files can't be moved safely.
 function otherProfilesOpen() {
-  for (const p of profiles.list()) {
-    if (p.id === profiles.CURRENT) continue;
-    const dir = p.id === 'default' ? profiles.BASE : path.join(profiles.BASE, 'Profiles', p.id);
+  const base = datadir.state.dir;   // the real data folder (during a move this browser itself runs elsewhere)
+  let ids = ['default'];
+  try { const l = JSON.parse(fs.readFileSync(path.join(base, 'profiles.json'), 'utf8')); if (Array.isArray(l)) ids = ids.concat(l.map((p) => p && p.id).filter((id) => /^[a-z0-9]{1,24}$/.test(id || ''))); } catch {}
+  const moving = !!datadir.state.pending;   // this start runs in a scratch folder: every profile counts
+  for (const id of new Set(ids)) {
+    if (!moving && id === profiles.CURRENT) continue;
+    const dir = id === 'default' ? base : path.join(base, 'Profiles', id);
     if (process.platform === 'win32') { const lock = path.join(dir, 'lockfile'); if (fs.existsSync(lock)) { try { fs.rmSync(lock); } catch { return true; } } }
-    else { try { const t = fs.readlinkSync(path.join(dir, 'SingletonLock')); const pid = +String(t).split('-').pop(); if (pid) { try { process.kill(pid, 0); return true; } catch {} } } catch {} }
+    else { try { const t = fs.readlinkSync(path.join(dir, 'SingletonLock')); const pid = +String(t).split('-').pop(); if (pid && pid !== process.pid) { try { process.kill(pid, 0); return true; } catch {} } } catch {} }
   }
   return false;
 }
 handle('data:info', ['internal'], async () => {
   const dir = datadir.state.dir;
-  return { dir, home: datadir.HOME, atHome: dir === datadir.HOME, size: await datadir.sizeOf(dir), free: datadir.freeOn(dir), drives: windowsDrives(), dirRoot: path.parse(dir).root, platform: process.platform };
+  return { dir, home: datadir.HOME, atHome: dir === datadir.HOME, size: await datadir.sizeOf(dir), free: datadir.freeOn(dir), drives: datadir.windowsDrives(), dirRoot: path.parse(dir).root, platform: process.platform };
 });
 handle('data:pick', ['internal'], async (e) => {
   const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender) || undefined, { title: 'Where should your data go?', properties: ['openDirectory', 'createDirectory'] });
@@ -2083,7 +2081,8 @@ if (!app.requestSingleInstanceLock()) {
   perfMark('main-loaded');
   app.whenReady().then(() => {
     // A data move asked for in Settings: copy first (with a progress window), then start again in the new place.
-    if (datadir.state.pending) { datadir.runPendingMove(); return; }
+    if (datadir.state.missing) { datadir.askAboutMissing(); return; }
+    if (datadir.state.pending) { datadir.runPendingMove({ otherProfilesOpen: otherProfilesOpen() }); return; }
     setTimeout(() => datadir.clearOld(), 8000);
     // 2.0: tabs sleep as soon as you leave them (least memory). Moved over once for everyone still on the old default.
     { const s0 = getSettings(); if (!s0.sleepInstantMoved) setSettings(s0.tabSleep === 15 ? { tabSleep: -1, sleepInstantMoved: true } : { sleepInstantMoved: true }); }
