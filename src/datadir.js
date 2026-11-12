@@ -128,14 +128,17 @@ async function requestMove(where, { otherProfilesOpen } = {}) {
       const root = path.parse(parent).root.toUpperCase();
       if (!(await windowsDrives()).some((d) => d.root === root)) throw new Error('Pick a folder on one of this computer’s own disks');
     }
-    const isRootOfFrom = same(parent, path.parse(from).root) && same(real(parent), path.parse(real(from)).root);
-    if (overlapReal(parent, from) && !isRootOfFrom) throw new Error('Pick a place outside the current data folder');
-    if (inside(parent, HOME) || inside(real(parent), real(HOME)) || overlapReal(parent, SCRATCH)) throw new Error('Pick a place outside the usual data folder');
+    // The place itself may hold the data folder further down (a whole disk, a parent folder): the new folder made in it
+    // is checked against everything below. It may not be inside the current, usual or scratch folder.
+    const within = (a, b) => inside(a, b) || inside(real(a), real(b));
+    if (within(parent, from)) throw new Error('Pick a place outside the current data folder');
+    if (within(parent, HOME) || within(parent, SCRATCH)) throw new Error('Pick a place outside the usual data folder');
   } else if (same(from, HOME)) throw new Error('Your data is already in the usual folder');
   const need = (await sizeOf(from)) * 1.1 + 100 * 1024 * 1024;
   if (freeOn(parent) < need) throw new Error(`Not enough room there: it needs about ${Math.ceil(need / 1048576)} MB`);
   const to = backHome ? HOME : makePrivateDir(parent, 'The Stupid Browser data');
-  if (overlapReal(to, from)) { if (!backHome) { try { fs.rmdirSync(to); } catch {} } throw new Error('Pick a place outside the current data folder'); }
+  // The new folder itself may not sit in or around the current data, the usual folder or the scratch folder.
+  if (overlapReal(to, from) || (!backHome && (overlapReal(to, HOME) || overlapReal(to, SCRATCH)))) { if (!backHome) { try { fs.rmdirSync(to); } catch {} } throw new Error('Pick a place outside the current data folder'); }
   dlog('request ok', from, to);
   writePointer(Object.assign(readPointer(), { pending: { from, to, tries: 0 }, error: null, movedTo: null }));
   app.relaunch(); app.exit(0);
@@ -149,12 +152,11 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
   const tries = ((p0.pending && p0.pending.tries) || 0) + 1;
   // Only one copy runs at a time: during a move every start (any profile) shares the scratch folder's single-instance
   // lock, so a second one just quits. No lock file of our own that a crash could leave behind.
-  const unlock = () => {};
   const giveUp = (msg) => {
     if (!same(to, HOME)) { try { fs.rmSync(to, { recursive: true, force: true }); } catch {} }
     writePointer(Object.assign(readPointer(), { pending: null, error: `Moving your data didn’t work (${msg}). Everything is still where it was.` }));
   };
-  if (tries > 2) { giveUp('it stopped twice'); unlock(); app.relaunch(); app.exit(0); return; }   // it crashed mid-copy before: don't loop
+  if (tries > 2) { giveUp('it stopped twice'); app.relaunch(); app.exit(0); return; }   // it crashed mid-copy before: don't loop
   writePointer(Object.assign(p0, { pending: Object.assign({}, p0.pending, { tries }) }));
   const win = new BrowserWindow({ width: 420, height: 190, frame: false, resizable: false, show: true, backgroundColor: '#FAF6F0', webPreferences: { sandbox: true, contextIsolation: true } });
   const page = `<!doctype html><meta charset="utf-8"><body style="margin:0;font:14px 'Segoe UI',system-ui,sans-serif;background:#FAF6F0;color:#29251E;display:grid;place-items:center;height:100vh;-webkit-app-region:drag">
@@ -187,7 +189,6 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
     dlog('copy failed', e.message);
     giveUp(e.message);
   }
-  unlock();
   await new Promise((r) => setTimeout(r, 700));
   app.relaunch(); app.exit(0);
 }
