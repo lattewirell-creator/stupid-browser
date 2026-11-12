@@ -103,7 +103,7 @@ class InstallForm : Form {
   }
 
   // From the worker thread: does nothing once the window is gone (closed while it worked).
-  void Ui(Action a) { try { if (IsHandleCreated && !IsDisposed) BeginInvoke(a); } catch (InvalidOperationException) { } catch (ObjectDisposedException) { } }
+  void Ui(Action a) { try { if (IsHandleCreated && !IsDisposed) BeginInvoke(a); } catch (InvalidOperationException) { } }   // ObjectDisposedException included
   void Set(string st, int ph) { Ui(() => { status = st; if (ph != phase) { phase = ph; phaseStart = DateTime.Now; } Invalidate(); }); }
   volatile bool cancelled = false;
   volatile string setupPath = null;
