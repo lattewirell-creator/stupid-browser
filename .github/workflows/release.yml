@@ -37,6 +37,15 @@ jobs:
           ./installer/build.ps1
           $v = node -p "require('./package.json').version"
           gh release upload "v$v" release/StupidBrowser-Install.exe --clobber -R "${{ github.repository }}"
+      - name: Warn if the friendly installer is missing
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = node -p "require('./package.json').version"
+          $names = gh release view "v$v" -R "${{ github.repository }}" --json assets --jq '.assets[].name'
+          if ($names -notcontains 'StupidBrowser-Install.exe') { Write-Host "::error::StupidBrowser-Install.exe is missing from v$v (the release is out; run installer/build.ps1 and upload it)" } else { "Friendly installer attached." }
 
   # The Linux package for the same version, attached to the release just published (Stupid OS installs and updates
   # the browser from it). A release made by this workflow doesn't start release-linux.yml, so it's built here.
