@@ -204,12 +204,20 @@ class InstallForm : Form {
   bool MakePrivateFolder(string dir) {
     try {
       existedBefore = Directory.Exists(dir);
-      if (existedBefore && Directory.GetFileSystemEntries(dir).Length > 0 && !dir.EndsWith("setup")) return false;   // someone else's folder of that name
+      var me = WindowsIdentity.GetCurrent().User;
+      // A folder of that name made by another account is never used (its owner could change it back), nor one with
+      // something already in it (other than our own leftover setup folder).
+      if (existedBefore) {
+        var owner = Directory.GetAccessControl(dir).GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+        if (owner == null || !owner.Equals(me)) return false;
+        if (Directory.GetFileSystemEntries(dir).Length > 0 && !dir.EndsWith("setup")) return false;
+      }
       Directory.CreateDirectory(dir);
       var sec = new DirectorySecurity();
       sec.SetAccessRuleProtection(true, false);
       var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
-      sec.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+      sec.SetOwner(me);
+      sec.AddAccessRule(new FileSystemAccessRule(me, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
       sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
       sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
       Directory.SetAccessControl(dir, sec);
