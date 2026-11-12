@@ -13,6 +13,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using System.Management;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Collections.Generic;
 
 [assembly: AssemblyTitle("The Stupid Browser")]
 [assembly: AssemblyProduct("The Stupid Browser")]
@@ -26,7 +30,8 @@ static class Program {
     Application.EnableVisualStyles();
     Application.SetCompatibleTextRenderingDefault(false);
     bool test = Array.IndexOf(args, "--test") >= 0;   // CI: install, don't open the browser, exit with a code
-    var f = new InstallForm(test);
+    bool pretendFull = Array.IndexOf(args, "--pretend-full") >= 0;   // CI: act as if the usual disk had no room
+    var f = new InstallForm(test, pretendFull);
     Application.Run(f);
     Environment.ExitCode = f.Result;
   }
@@ -42,7 +47,7 @@ class InstallForm : Form {
   static readonly Color ClayLight = Color.FromArgb(242, 181, 154);
   static readonly Color Sage = Color.FromArgb(63, 185, 138);
 
-  readonly bool test;
+  readonly bool test, pretendFull;
   public int Result = 1;
   float scale = 1f;
   string status = "Getting things ready…";
@@ -55,8 +60,8 @@ class InstallForm : Form {
   Rectangle closeBtn, retryBtn;
   Point dragFrom; bool dragging;
 
-  public InstallForm(bool test) {
-    this.test = test;
+  public InstallForm(bool test, bool pretendFull) {
+    this.test = test; this.pretendFull = pretendFull;
     using (var g = CreateGraphics()) scale = g.DpiX / 96f;
     FormBorderStyle = FormBorderStyle.None;
     StartPosition = FormStartPosition.Manual;
@@ -115,7 +120,7 @@ class InstallForm : Form {
   static void CloseBrowser() { foreach (var p in Mine()) { try { p.CloseMainWindow(); } catch { } p.Dispose(); } }
 
   void Work() {
-    string setup = setupPath = Path.Combine(Path.GetTempPath(), "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
+    string setup = null, installDir = null;
     try {
       // 1. The browser can't be replaced while it's open, and closing it for you without asking could lose something:
       // ask, and carry on by itself the moment it's closed.
@@ -124,7 +129,41 @@ class InstallForm : Form {
         while (BrowserOpen()) { if (cancelled) return; if (closeAsked) CloseBrowser(); Thread.Sleep(700); }   // every window, one by one
         Ui(() => { waitingForClose = false; title = "Installing The Stupid Browser"; Invalidate(); });
       }
-      // 2. Unpack the real installer (embedded in this file).
+      // 2. Room on the disk. A new install goes where Windows normally puts apps (C:); if that disk hasn't got room for
+      // it, it goes on the disk with the most free space instead. An existing install is updated where it is.
+      long setupSize;
+      using (var probe = Assembly.GetExecutingAssembly().GetManifestResourceStream("setup.exe")) setupSize = probe == null ? 0 : probe.Length;
+      long need = setupSize * 4 + (200L << 20);   // unpacked app (~3.5x the download) plus some breathing room
+      string current = FindBrowser();
+      bool existing = current != null;
+      string usualRoot = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+      string tempDir = Path.GetTempPath();
+      if (!existing && (pretendFull || Free(usualRoot) < need + setupSize)) {
+        // Other disks with room, most free first; USB disks (they can be unplugged) only if there's nothing else.
+        var usb = UsbLetters();
+        var drives = new List<DriveInfo>();
+        foreach (var d in DriveInfo.GetDrives()) {
+          try { if (d.DriveType == DriveType.Fixed && d.IsReady && !string.Equals(d.Name, usualRoot, StringComparison.OrdinalIgnoreCase) && d.AvailableFreeSpace >= need + setupSize) drives.Add(d); } catch { }
+        }
+        drives.Sort((x, y) => { bool ux = usb.Contains(x.Name.Substring(0, 1).ToUpperInvariant()), uy = usb.Contains(y.Name.Substring(0, 1).ToUpperInvariant()); if (ux != uy) return ux ? 1 : -1; return y.AvailableFreeSpace.CompareTo(x.AvailableFreeSpace); });
+        foreach (var d in drives) { string dir = Path.Combine(d.RootDirectory.FullName, "The Stupid Browser"); if (MakePrivateFolder(dir)) { installDir = dir; madeDir = !existedBefore; chosen = d; break; } }
+        if (installDir == null) throw new Exception("There isn't enough room on any disk. The Stupid Browser needs about " + Mb(need + setupSize) + ". Free up some space and try again.");
+        tempDir = installDir;   // unpack there too: the usual disk is the full one
+        long freeThere = 0; try { freeThere = chosen.AvailableFreeSpace; } catch { }
+        Set("Your " + usualRoot.TrimEnd('\\') + " drive is almost full, so it goes on " + chosen.Name.TrimEnd('\\') + " (" + Mb(freeThere) + " free).", 0);
+        Thread.Sleep(1600);
+      } else if (Free(Path.GetPathRoot(tempDir)) < setupSize + (50L << 20)) {
+        // Room for the app but not for unpacking in the usual temp folder: unpack in a private folder on another disk.
+        foreach (var d in DriveInfo.GetDrives()) {
+          try {
+            if (d.DriveType != DriveType.Fixed || !d.IsReady || d.AvailableFreeSpace < setupSize + (50L << 20)) continue;
+            string dir = Path.Combine(d.RootDirectory.FullName, "The Stupid Browser setup");
+            if (MakePrivateFolder(dir)) { tempDir = dir; break; }
+          } catch { }
+        }
+      }
+      setup = setupPath = Path.Combine(tempDir, "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
+      // 3. Unpack the real installer (embedded in this file).
       using (var src = Assembly.GetExecutingAssembly().GetManifestResourceStream("setup.exe")) {
         if (src == null) throw new Exception("The installer is incomplete. Download it again.");
         using (var dst = File.Create(setup)) {
@@ -132,9 +171,9 @@ class InstallForm : Form {
           while ((n = src.Read(buf, 0, buf.Length)) > 0) { dst.Write(buf, 0, n); done_ += n; double p = 0.12 * done_ / Math.Max(1, total); Ui(() => { target = p; }); }
         }
       }
-      // 3. Run the real installer silently.
+      // 4. Run the real installer silently (into the chosen folder: /D= has to come last).
       Set("Putting everything in place…", 1);
-      var psi = new ProcessStartInfo(setup, "/S") { UseShellExecute = false, CreateNoWindow = true };
+      var psi = new ProcessStartInfo(setup, installDir == null ? "/S" : "/S /D=" + installDir) { UseShellExecute = false, CreateNoWindow = true };
       using (var p = Process.Start(psi)) {
         p.WaitForExit();
         if (p.ExitCode != 0) throw new Exception("Windows stopped the install (code " + p.ExitCode + "). Try again.");
@@ -142,19 +181,66 @@ class InstallForm : Form {
       try { File.Delete(setup); } catch { }   // now, before the window closes (the app ends with it)
       string exe = FindBrowser();
       if (exe == null) throw new Exception("The browser wasn't found after installing. Try again.");
-      // 4. Open it.
+      // 5. Open it.
       Ui(() => { target = 1; title = "All set"; status = test ? "Installed." : "Opening The Stupid Browser…"; phase = 2; phaseStart = DateTime.Now; done = true; Result = 0; Invalidate(); });
       if (!test) { try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) }); } catch { } }
       Thread.Sleep(test ? 2500 : 1400);
       Ui(() => { fadingOut = true; });
     } catch (Exception ex) {
       string msg = ex.Message;
+      // A folder made for this install and still empty goes again.
+      try { if (madeDir && installDir != null && Directory.Exists(installDir) && Directory.GetFileSystemEntries(installDir).Length == 0) Directory.Delete(installDir); } catch { }
       if (test) { try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "stupid-install-error.txt"), msg); } catch { } Ui(() => { Result = 1; failed = true; allowClose = true; Close(); }); return; }
       Ui(() => { failed = true; title = "That didn't work"; status = msg; Invalidate(); });
     } finally {
-      try { if (File.Exists(setup)) File.Delete(setup); } catch { }
+      try { if (setup != null && File.Exists(setup)) File.Delete(setup); } catch { }
+      try { var d = setup == null ? null : Path.GetDirectoryName(setup); if (d != null && Path.GetFileName(d) == "The Stupid Browser setup" && Directory.GetFileSystemEntries(d).Length == 0) Directory.Delete(d); } catch { }
     }
   }
+
+  bool madeDir = false, existedBefore = false; DriveInfo chosen = null;
+  // A folder only this Windows user (and the system) can change: a folder at the top of a disk would otherwise let
+  // any other account on the computer swap the browser's files.
+  bool MakePrivateFolder(string dir) {
+    try {
+      existedBefore = Directory.Exists(dir);
+      var me = WindowsIdentity.GetCurrent().User;
+      // A folder of that name made by another account is never used (its owner could change it back), nor one with
+      // something already in it (other than our own leftover setup folder).
+      if (existedBefore) {
+        var owner = Directory.GetAccessControl(dir).GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+        if (owner == null || !owner.Equals(me)) return false;
+        if (Directory.GetFileSystemEntries(dir).Length > 0 && !dir.EndsWith("setup")) return false;
+      }
+      Directory.CreateDirectory(dir);
+      var sec = new DirectorySecurity();
+      sec.SetAccessRuleProtection(true, false);
+      var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+      sec.SetOwner(me);
+      sec.AddAccessRule(new FileSystemAccessRule(me, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+      sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+      sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+      Directory.SetAccessControl(dir, sec);
+      var probe = Path.Combine(dir, ".write-test"); File.WriteAllText(probe, ""); File.Delete(probe);
+      return true;
+    } catch { return false; }
+  }
+  // Drive letters on USB disks (Windows' storage info); if it can't tell, none are treated as USB.
+  static HashSet<string> UsbLetters() {
+    var set = new HashSet<string>();
+    try {
+      var scope = new ManagementScope(@"\\.\ROOT\Microsoft\Windows\Storage");
+      var usbDisks = new HashSet<string>();
+      using (var q = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT Number, BusType FROM MSFT_Disk"))) foreach (ManagementObject o in q.Get()) { if (Convert.ToInt32(o["BusType"]) == 7) usbDisks.Add(Convert.ToString(o["Number"])); }
+      if (usbDisks.Count == 0) return set;
+      using (var q = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT DiskNumber, DriveLetter FROM MSFT_Partition"))) foreach (ManagementObject o in q.Get()) {
+        var l = Convert.ToChar(o["DriveLetter"] ?? '\0'); if (l != '\0' && usbDisks.Contains(Convert.ToString(o["DiskNumber"]))) set.Add(char.ToUpperInvariant(l).ToString());
+      }
+    } catch { }
+    return set;
+  }
+  static long Free(string root) { try { return new DriveInfo(root).AvailableFreeSpace; } catch { return long.MaxValue; } }
+  static string Mb(long b) { return b >= (1L << 30) ? (b / (double)(1L << 30)).ToString("0.0") + " GB" : (b >> 20) + " MB"; }
 
   // Where it was installed: the uninstall entry Windows keeps (a folder chosen in an older version is respected),
   // else the usual place.
