@@ -28,6 +28,8 @@ jobs:
         run: bash scripts/release.sh "$NOTES"
       # The installer people download: a calm window in the browser's look around the setup above (installer/).
       - name: Friendly installer
+        # If this step fails the release is already out (and the Linux package still gets built).
+        continue-on-error: true
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

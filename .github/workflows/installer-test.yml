@@ -42,12 +42,18 @@ jobs:
           Start-Sleep -Seconds 4; Shot "middle"
           if (-not $p.WaitForExit(180000)) { "TIMEOUT"; Shot "stuck"; $p.Kill(); exit 1 }
           "EXIT=$($p.ExitCode)"
+          if (Test-Path "$env:TEMP\stupid-install-error.txt") { "ERROR=" + (Get-Content "$env:TEMP\stupid-install-error.txt") }
+          "LEFTOVER=" + (Get-ChildItem "$env:TEMP\StupidBrowser-Setup-*.exe" -ErrorAction SilentlyContinue | Measure-Object).Count
           $exe = "$env:LOCALAPPDATA\Programs\the-stupid-browser\StupidBrowser.exe"
           "INSTALLED=$(Test-Path $exe)"
           Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { $_.GetValue("DisplayName") + " | " + $_.GetValue("UninstallString") }
           if ($p.ExitCode -ne 0 -or -not (Test-Path $exe)) { exit 1 }
-          "--- again, over the existing install ---"
+          "--- again, over the existing install, with the browser open ---"
+          $b = Start-Process -FilePath $exe -PassThru; Start-Sleep -Seconds 8
           $p2 = Start-Process -FilePath release\StupidBrowser-Install.exe -ArgumentList "--test" -PassThru
+          Start-Sleep -Seconds 4; Shot "waiting"
+          Get-Process StupidBrowser -ErrorAction SilentlyContinue | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+          Start-Sleep -Seconds 6; Get-Process StupidBrowser -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 3; Shot "again"
           if (-not $p2.WaitForExit(180000)) { "TIMEOUT2"; exit 1 }
           "EXIT2=$($p2.ExitCode)"

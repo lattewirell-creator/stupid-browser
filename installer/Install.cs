@@ -80,9 +80,16 @@ class InstallForm : Form {
   }
 
   int S(float v) { return (int)Math.Round(v * scale); }
-  bool Hit(Point p) { return failed && (closeBtn.Contains(p) || retryBtn.Contains(p)); }
+  bool waitingForClose = false;   // the browser is open: asked to close it first
+  bool Hit(Point p) { return (failed || waitingForClose) && (closeBtn.Contains(p) || retryBtn.Contains(p)); }
 
   void OnClick(object s, MouseEventArgs e) {
+    if (waitingForClose) {
+      // "Close it for me": asks the browser to close the normal way (it saves your tabs), like clicking its ×.
+      if (retryBtn.Contains(e.Location)) { foreach (var pr in Process.GetProcessesByName("StupidBrowser")) { try { pr.CloseMainWindow(); } catch { } } }
+      else if (closeBtn.Contains(e.Location)) { cancelled = true; Result = 1; Close(); }
+      return;
+    }
     if (!failed) return;
     if (closeBtn.Contains(e.Location)) { Result = 1; Close(); }
     else if (retryBtn.Contains(e.Location)) { failed = false; done = false; target = 0; shown = 0; phase = 0; Start(); }
@@ -95,7 +102,11 @@ class InstallForm : Form {
     new Thread(Work) { IsBackground = true }.Start();
   }
 
-  void Set(string st, int ph) { BeginInvoke((Action)(() => { status = st; if (ph != phase) { phase = ph; phaseStart = DateTime.Now; } Invalidate(); })); }
+  // From the worker thread: does nothing once the window is gone (closed while it worked).
+  void Ui(Action a) { try { if (IsHandleCreated && !IsDisposed) BeginInvoke(a); } catch (InvalidOperationException) { } catch (ObjectDisposedException) { } }
+  void Set(string st, int ph) { Ui(() => { status = st; if (ph != phase) { phase = ph; phaseStart = DateTime.Now; } Invalidate(); }); }
+  volatile bool cancelled = false;
+  static bool BrowserOpen() { var ps = Process.GetProcessesByName("StupidBrowser"); foreach (var p in ps) p.Dispose(); return ps.Length > 0; }
 
   void Work() {
     string setup = Path.Combine(Path.GetTempPath(), "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
@@ -105,28 +116,37 @@ class InstallForm : Form {
         if (src == null) throw new Exception("The installer is incomplete. Download it again.");
         using (var dst = File.Create(setup)) {
           var buf = new byte[1 << 20]; long total = src.Length, done_ = 0; int n;
-          while ((n = src.Read(buf, 0, buf.Length)) > 0) { dst.Write(buf, 0, n); done_ += n; double p = 0.12 * done_ / Math.Max(1, total); BeginInvoke((Action)(() => { target = p; })); }
+          while ((n = src.Read(buf, 0, buf.Length)) > 0) { dst.Write(buf, 0, n); done_ += n; double p = 0.12 * done_ / Math.Max(1, total); Ui(() => { target = p; }); }
         }
       }
-      // 2. Run it silently. It closes a running copy of the browser itself and keeps all your data.
+      // 2. The browser can't be replaced while it's open, and closing it for you without asking could lose something:
+      // ask, and carry on by itself the moment it's closed.
+      if (BrowserOpen()) {
+        Ui(() => { waitingForClose = true; title = "Close The Stupid Browser first"; status = "It's open right now. Close it and this carries on by itself; your tabs come back."; Invalidate(); });
+        while (BrowserOpen()) { if (cancelled) return; Thread.Sleep(500); }
+        Ui(() => { waitingForClose = false; title = "Installing The Stupid Browser"; Invalidate(); });
+      }
+      // 3. Run the real installer silently.
       Set("Putting everything in place…", 1);
       var psi = new ProcessStartInfo(setup, "/S") { UseShellExecute = false, CreateNoWindow = true };
       using (var p = Process.Start(psi)) {
         p.WaitForExit();
         if (p.ExitCode != 0) throw new Exception("Windows stopped the install (code " + p.ExitCode + "). Try again.");
       }
+      try { File.Delete(setup); } catch { }   // now, before the window closes (the app ends with it)
       string exe = FindBrowser();
       if (exe == null) throw new Exception("The browser wasn't found after installing. Try again.");
-      // 3. Open it.
-      BeginInvoke((Action)(() => { target = 1; title = "All set"; status = test ? "Installed." : "Opening The Stupid Browser…"; phase = 2; phaseStart = DateTime.Now; done = true; Result = 0; Invalidate(); }));
+      // 4. Open it.
+      Ui(() => { target = 1; title = "All set"; status = test ? "Installed." : "Opening The Stupid Browser…"; phase = 2; phaseStart = DateTime.Now; done = true; Result = 0; Invalidate(); });
       if (!test) { try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) }); } catch { } }
       Thread.Sleep(test ? 2500 : 1400);
-      BeginInvoke((Action)(() => { fadingOut = true; }));
+      Ui(() => { fadingOut = true; });
     } catch (Exception ex) {
       string msg = ex.Message;
-      BeginInvoke((Action)(() => { failed = true; title = "That didn't work"; status = msg; Invalidate(); }));
+      if (test) { try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "stupid-install-error.txt"), msg); } catch { } Ui(() => { Result = 1; failed = true; allowClose = true; Close(); }); return; }
+      Ui(() => { failed = true; title = "That didn't work"; status = msg; Invalidate(); });
     } finally {
-      try { if (File.Exists(setup)) { Thread.Sleep(500); File.Delete(setup); } } catch { }
+      try { if (File.Exists(setup)) File.Delete(setup); } catch { }
     }
   }
 
@@ -213,7 +233,7 @@ class InstallForm : Form {
     using (var fs = new Font("Segoe UI", 9.75f)) using (var b = new SolidBrush(Muted))
       g.DrawString(status, fs, b, new RectangleF(S(30), S(162), w - S(60), S(40)), center);
 
-    if (!failed) {
+    if (!failed && !waitingForClose) {
       // Progress: a thin rounded track and fill.
       int bw = S(220), bh = S(5), bx = (w - bw) / 2, by = S(214);
       using (var track = Rounded(new Rectangle(bx, by, bw, bh), bh / 2)) using (var tb = new SolidBrush(Line)) g.FillPath(tb, track);
@@ -222,14 +242,14 @@ class InstallForm : Form {
       closeBtn = Rectangle.Empty; retryBtn = Rectangle.Empty;
     } else {
       // Two quiet buttons: Try again (filled) and Close.
-      int bh = S(34), gap = S(10), w1 = S(110), w2 = S(90), y = S(212), x = (w - (w1 + w2 + gap)) / 2;
+      int bh = S(34), gap = S(10), w1 = S(waitingForClose ? 140 : 110), w2 = S(90), y = S(212), x = (w - (w1 + w2 + gap)) / 2;
       retryBtn = new Rectangle(x, y, w1, bh); closeBtn = new Rectangle(x + w1 + gap, y, w2, bh);
       using (var f = new Font("Segoe UI Semibold", 9.75f)) {
         using (var p = Rounded(retryBtn, bh / 2)) using (var b = new SolidBrush(Clay)) g.FillPath(b, p);
         using (var p = Rounded(closeBtn, bh / 2)) using (var pen = new Pen(Line, S(1))) g.DrawPath(pen, p);
         var mid = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        using (var b = new SolidBrush(Color.White)) g.DrawString("Try again", f, b, retryBtn, mid);
-        using (var b = new SolidBrush(Ink)) g.DrawString("Close", f, b, closeBtn, mid);
+        using (var b = new SolidBrush(Color.White)) g.DrawString(waitingForClose ? "Close it for me" : "Try again", f, b, retryBtn, mid);
+        using (var b = new SolidBrush(Ink)) g.DrawString(waitingForClose ? "Cancel" : "Close", f, b, closeBtn, mid);
       }
     }
     using (var ff = new Font("Segoe UI", 8f)) using (var b = new SolidBrush(Color.FromArgb(150, Muted)))
@@ -237,6 +257,14 @@ class InstallForm : Form {
   }
 
   // Esc closes only if it failed (an install isn't stopped halfway).
+  // Not closed halfway through an install (Alt+F4, the taskbar): only before it starts copying, when it failed, or done.
+  bool allowClose = false;
+  protected override void OnFormClosing(FormClosingEventArgs e) {
+    bool busy = !failed && !done && !waitingForClose && !allowClose && !fadingOut;
+    if (busy && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; return; }
+    if (waitingForClose) cancelled = true;
+    base.OnFormClosing(e);
+  }
   protected override bool ProcessCmdKey(ref Message msg, Keys keyData) {
     if (keyData == Keys.Escape && failed) { Close(); return true; }
     return base.ProcessCmdKey(ref msg, keyData);
