@@ -72,5 +72,6 @@ jobs:
           if (Test-Path "$env:TEMP\stupid-install-error.txt") { "ERROR3=" + (Get-Content "$env:TEMP\stupid-install-error.txt") }
           $found = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -ne "C" } | ForEach-Object { "$($_.Name):\The Stupid Browser\StupidBrowser.exe" } | Where-Object { Test-Path $_ }
           "OTHERDISK=$found"
+          if ($found) { "ACL:"; (Get-Acl (Split-Path $found)).Access | ForEach-Object { "  $($_.IdentityReference) $($_.FileSystemRights) inherited=$($_.IsInherited)" } }
           Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { $_.GetValue("DisplayName") + " | " + $_.GetValue("UninstallString") }
           if ($p3.ExitCode -ne 0 -or -not $found) { exit 1 }

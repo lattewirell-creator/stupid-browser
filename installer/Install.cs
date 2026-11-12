@@ -13,6 +13,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using System.Management;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Collections.Generic;
 
 [assembly: AssemblyTitle("The Stupid Browser")]
 [assembly: AssemblyProduct("The Stupid Browser")]
@@ -130,26 +134,33 @@ class InstallForm : Form {
       long setupSize;
       using (var probe = Assembly.GetExecutingAssembly().GetManifestResourceStream("setup.exe")) setupSize = probe == null ? 0 : probe.Length;
       long need = setupSize * 4 + (200L << 20);   // unpacked app (~3.5x the download) plus some breathing room
-      bool existing = FindBrowser() != null;
+      string current = FindBrowser();
+      bool existing = current != null;
       string usualRoot = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
       string tempDir = Path.GetTempPath();
       if (!existing && (pretendFull || Free(usualRoot) < need + setupSize)) {
-        DriveInfo best = null;
+        // Other disks with room, most free first; USB disks (they can be unplugged) only if there's nothing else.
+        var usb = UsbLetters();
+        var drives = new List<DriveInfo>();
         foreach (var d in DriveInfo.GetDrives()) {
-          try { if (d.DriveType != DriveType.Fixed || !d.IsReady) continue; if (string.Equals(d.Name, usualRoot, StringComparison.OrdinalIgnoreCase)) continue; if (best == null || d.AvailableFreeSpace > best.AvailableFreeSpace) best = d; } catch { }
+          try { if (d.DriveType == DriveType.Fixed && d.IsReady && !string.Equals(d.Name, usualRoot, StringComparison.OrdinalIgnoreCase) && d.AvailableFreeSpace >= need + setupSize) drives.Add(d); } catch { }
         }
-        if (best == null || best.AvailableFreeSpace < need + setupSize) throw new Exception("There isn't enough room on any disk. The Stupid Browser needs about " + Mb(need + setupSize) + ". Free up some space and try again.");
-        installDir = Path.Combine(best.RootDirectory.FullName, "The Stupid Browser");
-        Directory.CreateDirectory(installDir);
+        drives.Sort((x, y) => { bool ux = usb.Contains(x.Name.Substring(0, 1).ToUpperInvariant()), uy = usb.Contains(y.Name.Substring(0, 1).ToUpperInvariant()); if (ux != uy) return ux ? 1 : -1; return y.AvailableFreeSpace.CompareTo(x.AvailableFreeSpace); });
+        foreach (var d in drives) { string dir = Path.Combine(d.RootDirectory.FullName, "The Stupid Browser"); if (MakePrivateFolder(dir)) { installDir = dir; madeDir = !existedBefore; chosen = d; break; } }
+        if (installDir == null) throw new Exception("There isn't enough room on any disk. The Stupid Browser needs about " + Mb(need + setupSize) + ". Free up some space and try again.");
         tempDir = installDir;   // unpack there too: the usual disk is the full one
-        string letter = best.Name.TrimEnd('\\');
-        Set("Your " + usualRoot.TrimEnd('\\') + " drive is almost full, so it goes on " + letter + " (" + Mb(best.AvailableFreeSpace) + " free).", 0);
+        long freeThere = 0; try { freeThere = chosen.AvailableFreeSpace; } catch { }
+        Set("Your " + usualRoot.TrimEnd('\\') + " drive is almost full, so it goes on " + chosen.Name.TrimEnd('\\') + " (" + Mb(freeThere) + " free).", 0);
         Thread.Sleep(1600);
       } else if (Free(Path.GetPathRoot(tempDir)) < setupSize + (50L << 20)) {
-        // Room for the app but not for unpacking in the usual temp folder: unpack next to where it's going.
-        string root = existing ? Path.GetPathRoot(FindBrowser()) : usualRoot;
-        tempDir = Path.Combine(root, "The Stupid Browser setup");
-        Directory.CreateDirectory(tempDir);
+        // Room for the app but not for unpacking in the usual temp folder: unpack in a private folder on another disk.
+        foreach (var d in DriveInfo.GetDrives()) {
+          try {
+            if (d.DriveType != DriveType.Fixed || !d.IsReady || d.AvailableFreeSpace < setupSize + (50L << 20)) continue;
+            string dir = Path.Combine(d.RootDirectory.FullName, "The Stupid Browser setup");
+            if (MakePrivateFolder(dir)) { tempDir = dir; break; }
+          } catch { }
+        }
       }
       setup = setupPath = Path.Combine(tempDir, "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
       // 3. Unpack the real installer (embedded in this file).
@@ -177,6 +188,8 @@ class InstallForm : Form {
       Ui(() => { fadingOut = true; });
     } catch (Exception ex) {
       string msg = ex.Message;
+      // A folder made for this install and still empty goes again.
+      try { if (madeDir && installDir != null && Directory.Exists(installDir) && Directory.GetFileSystemEntries(installDir).Length == 0) Directory.Delete(installDir); } catch { }
       if (test) { try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "stupid-install-error.txt"), msg); } catch { } Ui(() => { Result = 1; failed = true; allowClose = true; Close(); }); return; }
       Ui(() => { failed = true; title = "That didn't work"; status = msg; Invalidate(); });
     } finally {
@@ -185,6 +198,39 @@ class InstallForm : Form {
     }
   }
 
+  bool madeDir = false, existedBefore = false; DriveInfo chosen = null;
+  // A folder only this Windows user (and the system) can change: a folder at the top of a disk would otherwise let
+  // any other account on the computer swap the browser's files.
+  bool MakePrivateFolder(string dir) {
+    try {
+      existedBefore = Directory.Exists(dir);
+      if (existedBefore && Directory.GetFileSystemEntries(dir).Length > 0 && !dir.EndsWith("setup")) return false;   // someone else's folder of that name
+      Directory.CreateDirectory(dir);
+      var sec = new DirectorySecurity();
+      sec.SetAccessRuleProtection(true, false);
+      var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+      sec.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+      sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+      sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+      Directory.SetAccessControl(dir, sec);
+      var probe = Path.Combine(dir, ".write-test"); File.WriteAllText(probe, ""); File.Delete(probe);
+      return true;
+    } catch { return false; }
+  }
+  // Drive letters on USB disks (Windows' storage info); if it can't tell, none are treated as USB.
+  static HashSet<string> UsbLetters() {
+    var set = new HashSet<string>();
+    try {
+      var scope = new ManagementScope(@"\\.\ROOT\Microsoft\Windows\Storage");
+      var usbDisks = new HashSet<string>();
+      using (var q = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT Number, BusType FROM MSFT_Disk"))) foreach (ManagementObject o in q.Get()) { if (Convert.ToInt32(o["BusType"]) == 7) usbDisks.Add(Convert.ToString(o["Number"])); }
+      if (usbDisks.Count == 0) return set;
+      using (var q = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT DiskNumber, DriveLetter FROM MSFT_Partition"))) foreach (ManagementObject o in q.Get()) {
+        var l = Convert.ToChar(o["DriveLetter"] ?? '\0'); if (l != '\0' && usbDisks.Contains(Convert.ToString(o["DiskNumber"]))) set.Add(char.ToUpperInvariant(l).ToString());
+      }
+    } catch { }
+    return set;
+  }
   static long Free(string root) { try { return new DriveInfo(root).AvailableFreeSpace; } catch { return long.MaxValue; } }
   static string Mb(long b) { return b >= (1L << 30) ? (b / (double)(1L << 30)).ToString("0.0") + " GB" : (b >> 20) + " MB"; }
 
