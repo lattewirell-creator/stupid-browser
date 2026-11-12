@@ -142,6 +142,10 @@ class InstallForm : Form {
             int comma = icon.LastIndexOf(','); if (comma > 0) icon = icon.Substring(0, comma);
             icon = icon.Trim('"');
             if (icon.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(icon)) return icon;
+            // The uninstaller sits in the install folder ("…\Uninstall The Stupid Browser.exe" /currentuser).
+            var un = (k.GetValue("UninstallString") as string ?? "").Trim();
+            if (un.StartsWith("\"")) { int q = un.IndexOf('"', 1); if (q > 1) un = un.Substring(1, q - 1); }
+            try { var dir = Path.GetDirectoryName(un); if (!string.IsNullOrEmpty(dir) && File.Exists(Path.Combine(dir, "StupidBrowser.exe"))) return Path.Combine(dir, "StupidBrowser.exe"); } catch { }
             var loc = k.GetValue("InstallLocation") as string;
             if (loc != null && File.Exists(Path.Combine(loc, "StupidBrowser.exe"))) return Path.Combine(loc, "StupidBrowser.exe");
           }
