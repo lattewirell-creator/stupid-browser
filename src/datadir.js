@@ -147,14 +147,9 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
   const { from, to } = state.pending;
   const p0 = readPointer();
   const tries = ((p0.pending && p0.pending.tries) || 0) + 1;
-  // Only one copy at a time (another start of the browser, another profile).
-  const LOCK = path.join(HOME, 'move.lock');
-  // The lock names the process doing the copy: one left behind by a crash (or a power cut) is simply taken over.
-  const alive = (pid) => { if (!pid || pid === process.pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-  let holder = 0; try { holder = parseInt(fs.readFileSync(LOCK, 'utf8'), 10) || 0; } catch {}
-  if (alive(holder)) { await dialog.showMessageBox({ type: 'info', title: 'The Stupid Browser', message: 'Your data is being moved', detail: 'Another window of the browser is moving it right now. It opens by itself when it’s done.', buttons: ['OK'], noLink: true }); app.exit(0); return; }
-  try { fs.rmSync(LOCK, { force: true }); fs.writeFileSync(LOCK, String(process.pid), { flag: 'wx' }); } catch { app.exit(0); return; }
-  const unlock = () => { try { fs.rmSync(LOCK, { force: true }); } catch {} };
+  // Only one copy runs at a time: during a move every start (any profile) shares the scratch folder's single-instance
+  // lock, so a second one just quits. No lock file of our own that a crash could leave behind.
+  const unlock = () => {};
   const giveUp = (msg) => {
     if (!same(to, HOME)) { try { fs.rmSync(to, { recursive: true, force: true }); } catch {} }
     writePointer(Object.assign(readPointer(), { pending: null, error: `Moving your data didn’t work (${msg}). Everything is still where it was.` }));
