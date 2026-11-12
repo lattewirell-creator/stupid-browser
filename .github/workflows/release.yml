@@ -26,6 +26,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ inputs.notes }}
         run: bash scripts/release.sh "$NOTES"
+      # The installer people download: a calm window in the browser's look around the setup above (installer/).
+      - name: Friendly installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./installer/build.ps1
+          $v = node -p "require('./package.json').version"
+          gh release upload "v$v" release/StupidBrowser-Install.exe --clobber -R "${{ github.repository }}"
 
   # The Linux package for the same version, attached to the release just published (Stupid OS installs and updates
   # the browser from it). A release made by this workflow doesn't start release-linux.yml, so it's built here.

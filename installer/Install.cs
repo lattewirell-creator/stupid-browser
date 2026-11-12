@@ -59,7 +59,7 @@ class InstallForm : Form {
     this.test = test;
     using (var g = CreateGraphics()) scale = g.DpiX / 96f;
     FormBorderStyle = FormBorderStyle.None;
-    StartPosition = FormStartPosition.CenterScreen;
+    StartPosition = FormStartPosition.Manual;
     ClientSize = new Size(S(440), S(280));
     BackColor = Bg;
     DoubleBuffered = true;
@@ -74,6 +74,8 @@ class InstallForm : Form {
     MouseMove += (s, e) => { if (dragging) Location = new Point(Location.X + e.X - dragFrom.X, Location.Y + e.Y - dragFrom.Y); Cursor = Hit(e.Location) ? Cursors.Hand : Cursors.Default; };
     MouseUp += (s, e) => { dragging = false; };
     MouseClick += OnClick;
+    // Centred on the screen the pointer is on (Windows' own centring is off when the scale isn't 100%).
+    Load += (s, e) => { var wa = Screen.FromPoint(Cursor.Position).WorkingArea; Location = new Point(wa.X + (wa.Width - Width) / 2, wa.Y + (wa.Height - Height) / 2); };
     Shown += (s, e) => { tick.Start(); Start(); };
   }
 

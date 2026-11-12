@@ -4,6 +4,8 @@ name: Installer test
 on:
   push:
     branches: [feat/clean-installer]
+    paths: ['installer/**', '.github/workflows/installer-test.yml']
+  workflow_dispatch:
 jobs:
   test:
     runs-on: windows-latest
