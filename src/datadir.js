@@ -149,8 +149,11 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
   const tries = ((p0.pending && p0.pending.tries) || 0) + 1;
   // Only one copy at a time (another start of the browser, another profile).
   const LOCK = path.join(HOME, 'move.lock');
-  try { const st = fs.statSync(LOCK); if (Date.now() - st.mtimeMs < 10 * 60000) { app.exit(0); return; } fs.rmSync(LOCK, { force: true }); } catch {}
-  try { fs.closeSync(fs.openSync(LOCK, 'wx')); } catch { app.exit(0); return; }
+  // The lock names the process doing the copy: one left behind by a crash (or a power cut) is simply taken over.
+  const alive = (pid) => { if (!pid || pid === process.pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+  let holder = 0; try { holder = parseInt(fs.readFileSync(LOCK, 'utf8'), 10) || 0; } catch {}
+  if (alive(holder)) { await dialog.showMessageBox({ type: 'info', title: 'The Stupid Browser', message: 'Your data is being moved', detail: 'Another window of the browser is moving it right now. It opens by itself when it’s done.', buttons: ['OK'], noLink: true }); app.exit(0); return; }
+  try { fs.rmSync(LOCK, { force: true }); fs.writeFileSync(LOCK, String(process.pid), { flag: 'wx' }); } catch { app.exit(0); return; }
   const unlock = () => { try { fs.rmSync(LOCK, { force: true }); } catch {} };
   const giveUp = (msg) => {
     if (!same(to, HOME)) { try { fs.rmSync(to, { recursive: true, force: true }); } catch {} }
@@ -166,7 +169,7 @@ async function runPendingMove({ otherProfilesOpen } = {}) {
   const show = (pct, text) => { if (!win.isDestroyed()) win.webContents.executeJavaScript(`b.style.width='${pct}%';${text ? `s.textContent=${JSON.stringify(text)};` : ''}`).catch(() => {}); };
   try {
     if (otherProfilesOpen) throw new Error('another profile was open');
-    if (overlapReal(from, to) && !(same(to, HOME) && !overlapReal(from, HOME))) throw new Error('the two places overlap');
+    if (overlapReal(from, to)) throw new Error('the two places overlap');
     if (!fs.existsSync(to)) throw new Error('the new folder is gone');
     // Back to the usual folder: whatever is left there from before (an old copy that couldn't be cleared) goes first,
     // so old files never sit next to the current ones.
@@ -213,7 +216,7 @@ async function clearOld() {
   const p = readPointer(); delete p.cleanup; writePointer(p);
 }
 // The scratch folder from a move (or a missing-disk start) isn't needed on a normal start.
-async function removeScratch() { if (state.pending || state.missing || same(app.getPath('userData'), SCRATCH)) return; try { await fs.promises.rm(SCRATCH, { recursive: true, force: true, maxRetries: 3 }); } catch {} }
+async function removeScratch() { if (CUSTOM || state.pending || state.missing || same(app.getPath('userData'), SCRATCH)) return; try { await fs.promises.rm(SCRATCH, { recursive: true, force: true, maxRetries: 3 }); } catch {} }
 function takeNotice() { const p = readPointer(); const n = { movedTo: p.movedTo || null, error: p.error || null }; if (n.movedTo || n.error) { delete p.movedTo; delete p.error; writePointer(p); } return n; }
 
 module.exports = { SCRATCH, removeScratch, state, requestMove, runPendingMove, askAboutMissing, clearOld, takeNotice, sizeOf, freeOn, windowsDrives, HOME };
