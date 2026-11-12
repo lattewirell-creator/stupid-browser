@@ -3,7 +3,7 @@
 name: Installer test
 on:
   push:
-    branches: [feat/clean-installer]
+    branches: [feat/clean-installer, feat/installer-disk]
     paths: ['installer/**', '.github/workflows/installer-test.yml']
   workflow_dispatch:
 jobs:
@@ -58,3 +58,19 @@ jobs:
           if (-not $p2.WaitForExit(180000)) { "TIMEOUT2"; exit 1 }
           "EXIT2=$($p2.ExitCode)"
           if ($p2.ExitCode -ne 0) { exit 1 }
+          "--- fresh install with the usual disk 'full': goes on another disk ---"
+          Get-PSDrive -PSProvider FileSystem | ForEach-Object { "DRIVE $($_.Name): free $([math]::Round($_.Free/1GB,1)) GB" }
+          $un = (Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | Where-Object { $_.GetValue("DisplayName") -like "The Stupid Browser*" } | Select-Object -First 1).GetValue("UninstallString")
+          "UNINSTALL=$un"
+          Start-Process -FilePath "cmd.exe" -ArgumentList "/c $un /S" -Wait
+          Start-Sleep -Seconds 5; "GONE=$(-not (Test-Path $exe))"
+          if (Test-Path "$env:TEMP\stupid-install-error.txt") { Remove-Item "$env:TEMP\stupid-install-error.txt" }
+          $p3 = Start-Process -FilePath release\StupidBrowser-Install.exe -ArgumentList "--test","--pretend-full" -PassThru
+          Start-Sleep -Milliseconds 1200; Shot "otherdisk"
+          if (-not $p3.WaitForExit(180000)) { "TIMEOUT3"; exit 1 }
+          "EXIT3=$($p3.ExitCode)"
+          if (Test-Path "$env:TEMP\stupid-install-error.txt") { "ERROR3=" + (Get-Content "$env:TEMP\stupid-install-error.txt") }
+          $found = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -ne "C" } | ForEach-Object { "$($_.Name):\The Stupid Browser\StupidBrowser.exe" } | Where-Object { Test-Path $_ }
+          "OTHERDISK=$found"
+          Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { $_.GetValue("DisplayName") + " | " + $_.GetValue("UninstallString") }
+          if ($p3.ExitCode -ne 0 -or -not $found) { exit 1 }

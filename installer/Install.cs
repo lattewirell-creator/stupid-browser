@@ -26,7 +26,8 @@ static class Program {
     Application.EnableVisualStyles();
     Application.SetCompatibleTextRenderingDefault(false);
     bool test = Array.IndexOf(args, "--test") >= 0;   // CI: install, don't open the browser, exit with a code
-    var f = new InstallForm(test);
+    bool pretendFull = Array.IndexOf(args, "--pretend-full") >= 0;   // CI: act as if the usual disk had no room
+    var f = new InstallForm(test, pretendFull);
     Application.Run(f);
     Environment.ExitCode = f.Result;
   }
@@ -42,7 +43,7 @@ class InstallForm : Form {
   static readonly Color ClayLight = Color.FromArgb(242, 181, 154);
   static readonly Color Sage = Color.FromArgb(63, 185, 138);
 
-  readonly bool test;
+  readonly bool test, pretendFull;
   public int Result = 1;
   float scale = 1f;
   string status = "Getting things ready…";
@@ -55,8 +56,8 @@ class InstallForm : Form {
   Rectangle closeBtn, retryBtn;
   Point dragFrom; bool dragging;
 
-  public InstallForm(bool test) {
-    this.test = test;
+  public InstallForm(bool test, bool pretendFull) {
+    this.test = test; this.pretendFull = pretendFull;
     using (var g = CreateGraphics()) scale = g.DpiX / 96f;
     FormBorderStyle = FormBorderStyle.None;
     StartPosition = FormStartPosition.Manual;
@@ -115,7 +116,7 @@ class InstallForm : Form {
   static void CloseBrowser() { foreach (var p in Mine()) { try { p.CloseMainWindow(); } catch { } p.Dispose(); } }
 
   void Work() {
-    string setup = setupPath = Path.Combine(Path.GetTempPath(), "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
+    string setup = null, installDir = null;
     try {
       // 1. The browser can't be replaced while it's open, and closing it for you without asking could lose something:
       // ask, and carry on by itself the moment it's closed.
@@ -124,7 +125,34 @@ class InstallForm : Form {
         while (BrowserOpen()) { if (cancelled) return; if (closeAsked) CloseBrowser(); Thread.Sleep(700); }   // every window, one by one
         Ui(() => { waitingForClose = false; title = "Installing The Stupid Browser"; Invalidate(); });
       }
-      // 2. Unpack the real installer (embedded in this file).
+      // 2. Room on the disk. A new install goes where Windows normally puts apps (C:); if that disk hasn't got room for
+      // it, it goes on the disk with the most free space instead. An existing install is updated where it is.
+      long setupSize;
+      using (var probe = Assembly.GetExecutingAssembly().GetManifestResourceStream("setup.exe")) setupSize = probe == null ? 0 : probe.Length;
+      long need = setupSize * 4 + (200L << 20);   // unpacked app (~3.5x the download) plus some breathing room
+      bool existing = FindBrowser() != null;
+      string usualRoot = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+      string tempDir = Path.GetTempPath();
+      if (!existing && (pretendFull || Free(usualRoot) < need + setupSize)) {
+        DriveInfo best = null;
+        foreach (var d in DriveInfo.GetDrives()) {
+          try { if (d.DriveType != DriveType.Fixed || !d.IsReady) continue; if (string.Equals(d.Name, usualRoot, StringComparison.OrdinalIgnoreCase)) continue; if (best == null || d.AvailableFreeSpace > best.AvailableFreeSpace) best = d; } catch { }
+        }
+        if (best == null || best.AvailableFreeSpace < need + setupSize) throw new Exception("There isn't enough room on any disk. The Stupid Browser needs about " + Mb(need + setupSize) + ". Free up some space and try again.");
+        installDir = Path.Combine(best.RootDirectory.FullName, "The Stupid Browser");
+        Directory.CreateDirectory(installDir);
+        tempDir = installDir;   // unpack there too: the usual disk is the full one
+        string letter = best.Name.TrimEnd('\\');
+        Set("Your " + usualRoot.TrimEnd('\\') + " drive is almost full, so it goes on " + letter + " (" + Mb(best.AvailableFreeSpace) + " free).", 0);
+        Thread.Sleep(1600);
+      } else if (Free(Path.GetPathRoot(tempDir)) < setupSize + (50L << 20)) {
+        // Room for the app but not for unpacking in the usual temp folder: unpack next to where it's going.
+        string root = existing ? Path.GetPathRoot(FindBrowser()) : usualRoot;
+        tempDir = Path.Combine(root, "The Stupid Browser setup");
+        Directory.CreateDirectory(tempDir);
+      }
+      setup = setupPath = Path.Combine(tempDir, "StupidBrowser-Setup-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
+      // 3. Unpack the real installer (embedded in this file).
       using (var src = Assembly.GetExecutingAssembly().GetManifestResourceStream("setup.exe")) {
         if (src == null) throw new Exception("The installer is incomplete. Download it again.");
         using (var dst = File.Create(setup)) {
@@ -132,9 +160,9 @@ class InstallForm : Form {
           while ((n = src.Read(buf, 0, buf.Length)) > 0) { dst.Write(buf, 0, n); done_ += n; double p = 0.12 * done_ / Math.Max(1, total); Ui(() => { target = p; }); }
         }
       }
-      // 3. Run the real installer silently.
+      // 4. Run the real installer silently (into the chosen folder: /D= has to come last).
       Set("Putting everything in place…", 1);
-      var psi = new ProcessStartInfo(setup, "/S") { UseShellExecute = false, CreateNoWindow = true };
+      var psi = new ProcessStartInfo(setup, installDir == null ? "/S" : "/S /D=" + installDir) { UseShellExecute = false, CreateNoWindow = true };
       using (var p = Process.Start(psi)) {
         p.WaitForExit();
         if (p.ExitCode != 0) throw new Exception("Windows stopped the install (code " + p.ExitCode + "). Try again.");
@@ -142,7 +170,7 @@ class InstallForm : Form {
       try { File.Delete(setup); } catch { }   // now, before the window closes (the app ends with it)
       string exe = FindBrowser();
       if (exe == null) throw new Exception("The browser wasn't found after installing. Try again.");
-      // 4. Open it.
+      // 5. Open it.
       Ui(() => { target = 1; title = "All set"; status = test ? "Installed." : "Opening The Stupid Browser…"; phase = 2; phaseStart = DateTime.Now; done = true; Result = 0; Invalidate(); });
       if (!test) { try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) }); } catch { } }
       Thread.Sleep(test ? 2500 : 1400);
@@ -152,9 +180,13 @@ class InstallForm : Form {
       if (test) { try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "stupid-install-error.txt"), msg); } catch { } Ui(() => { Result = 1; failed = true; allowClose = true; Close(); }); return; }
       Ui(() => { failed = true; title = "That didn't work"; status = msg; Invalidate(); });
     } finally {
-      try { if (File.Exists(setup)) File.Delete(setup); } catch { }
+      try { if (setup != null && File.Exists(setup)) File.Delete(setup); } catch { }
+      try { var d = setup == null ? null : Path.GetDirectoryName(setup); if (d != null && Path.GetFileName(d) == "The Stupid Browser setup" && Directory.GetFileSystemEntries(d).Length == 0) Directory.Delete(d); } catch { }
     }
   }
+
+  static long Free(string root) { try { return new DriveInfo(root).AvailableFreeSpace; } catch { return long.MaxValue; } }
+  static string Mb(long b) { return b >= (1L << 30) ? (b / (double)(1L << 30)).ToString("0.0") + " GB" : (b >> 20) + " MB"; }
 
   // Where it was installed: the uninstall entry Windows keeps (a folder chosen in an older version is respected),
   // else the usual place.
