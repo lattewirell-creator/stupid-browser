@@ -1203,7 +1203,7 @@ handle('tab:typedInFrame', ['shell'], (_e, id) => typedInFrame.has(+id));
 // ONE window (the one holding the tab left longest) puts one tab or sidebar app to sleep, then it waits 30 s to see
 // the effect. It eases down to 90% of the limit and stops when there is nothing left it may put to sleep (the limit
 // may be below what the browser itself needs). The note shows once, until it has stayed under for 10 minutes.
-let memNextCheck = 0, memNoteShown = false, memUnderSince = 0, memStuck = false, memBusy = false;
+let memNextCheck = 0, memNoteShown = false, memUnderSince = 0, memStuck = false, memStuckUntil = 0, memBusy = false;
 const memLimitOf = () => { const v = +getSettings().memLimit || 0; return [600, 800, 1000, 1500, 2000, 3000].includes(v) ? v : 0; };
 setInterval(async () => {
   if (!app.isReady() || memBusy || Date.now() < memNextCheck) return;
@@ -1211,18 +1211,23 @@ setInterval(async () => {
   let mb = 0; try { for (const p of app.getAppMetrics()) mb += (p.memory.workingSetSize || 0) / 1024; } catch { return; }
   if (mb <= limit * 0.9) { memStuck = false; if (!memUnderSince) memUnderSince = Date.now(); else if (Date.now() - memUnderSince > 10 * 60000) memNoteShown = false; return; }
   memUnderSince = 0;
+  if (memStuck && Date.now() > memStuckUntil) memStuck = false;
   if (mb <= limit || memStuck) return;
   memBusy = true;
   try {
     // Private windows count toward the total but are left alone (their pages can't come back the same way).
     const wins = [...windows.values()].filter((w) => !w.win.isDestroyed() && !w.incognito);
-    const run = (w, js) => Promise.race([w.win.webContents.executeJavaScript(js, true), new Promise((r) => setTimeout(() => r(null), 8000))]).catch(() => null);
+    const TIMEOUT = Symbol('timeout');
+    const run = (w, js) => Promise.race([w.win.webContents.executeJavaScript(js, true), new Promise((r) => setTimeout(() => r(TIMEOUT), 8000))]).catch(() => null);
     const asks = await Promise.all(wins.map((w) => run(w, 'typeof memCandidate === "function" ? memCandidate() : null').then((c) => (c ? { w, c } : null))));
     // Oldest first; a window that can't free anything right now (its candidate is busy) passes to the next.
     for (const { w } of asks.filter(Boolean).sort((a, b) => a.c.last - b.c.last)) {
-      if (await run(w, `typeof memFree === "function" ? memFree(${limit}, ${!memNoteShown}) : false`)) { memNoteShown = true; memNextCheck = Date.now() + 30000; return; }
+      const r = await run(w, `typeof memFree === "function" ? memFree(${limit}, ${!memNoteShown}) : false`);
+      if (r === TIMEOUT) { memNextCheck = Date.now() + 30000; return; }   // still working there: end this round, no second one
+      if (r) { memNoteShown = true; memNextCheck = Date.now() + 30000; return; }
     }
-    memStuck = true;   // nothing may sleep right now: wait until something changes
+    // Nothing may sleep right now (a draft, a call…): look again in 2 minutes, or sooner if something changes.
+    memStuck = true; memStuckUntil = Date.now() + 120000;
   } finally { memBusy = false; }
 }, 10000).unref();
 // New tabs or apps waking up may give the limit something to do again.
